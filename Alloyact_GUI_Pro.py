@@ -12,13 +12,16 @@ matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'FangSong
 matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 matplotlib.rcParams['font.size'] = 12  # 增加图表字体大小
 
+# 使用Matplotlib的数学文本渲染（不依赖LaTeX）
+matplotlib.rcParams['text.usetex'] = False
+matplotlib.rcParams['mathtext.default'] = 'regular'
 # Import PyQt5 modules
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QGridLayout, QLabel, QLineEdit, QComboBox, QPushButton,
                              QTabWidget, QSplitter, QFrame, QGroupBox, QTextEdit, QMessageBox,
                              QStatusBar, QDoubleSpinBox)
 from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtGui import QFont, QPalette, QColor
+from PyQt5.QtGui import QFont, QPalette, QColor, QGuiApplication
 
 # 导入计算模块
 
@@ -32,7 +35,7 @@ from Activity import Melt
 class MplCanvas(FigureCanvas):
 	"""Matplotlib画布类"""
 	
-	def __init__ (self, parent=None, width=5, height=4, dpi=100):
+	def __init__ (self, parent=None, width=7, height=6, dpi=100):
 		self.fig = Figure(figsize=(width, height), dpi=dpi)
 		self.axes = self.fig.add_subplot(111)
 		super(MplCanvas, self).__init__(self.fig)
@@ -42,8 +45,14 @@ class AlloyActProGUI(QMainWindow):
 	def __init__ (self):
 		super().__init__()
 		self.setWindowTitle("AlloyAct Pro - 合金热力学计算器")
-		self.setGeometry(100, 100, 1200, 800)
-		self.setMinimumSize(1000, 700)
+		self.resize(1400, 900)
+		self.setMinimumSize(1000, 900)
+		
+		# 新版PyQt5中将窗口居中
+		qr = self.frameGeometry()
+		cp = QGuiApplication.primaryScreen().availableGeometry().center()
+		qr.moveCenter(cp)
+		self.move(qr.topLeft())
 		
 		# 创建计算实例
 		self.binary_model = BinaryModel()
@@ -62,6 +71,7 @@ class AlloyActProGUI(QMainWindow):
 		
 		# 创建标题栏
 		self.create_title_bar()
+		
 		
 		# 创建选项卡控件
 		self.tabs = QTabWidget()
@@ -83,7 +93,7 @@ class AlloyActProGUI(QMainWindow):
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
                 font-weight: bold;
-                font-size: 13px;
+                font-size: 16px;
             }
             QTabBar::tab:selected {
                 background: #3498db;
@@ -111,6 +121,11 @@ class AlloyActProGUI(QMainWindow):
 		
 		# 设置选项卡切换事件
 		self.tabs.currentChanged.connect(self.on_tab_changed)
+		# 设置所有选项卡的字体
+		tab_font = QFont("Microsoft YaHei UI", 16,QFont.Bold)  # 设置更大的字体
+		for i in range(self.tabs.count()):
+			self.tabs.setTabText(i, self.tabs.tabText(i))  # 这会触发文本重新设置
+			self.tabs.tabBar().setFont(tab_font)
 		
 		# 设置全局样式
 		self.set_global_styles()
@@ -996,14 +1011,16 @@ class AlloyActProGUI(QMainWindow):
 			                               f'{height:.3f}', ha='center', va='bottom', fontsize=12)
 		
 		# 设置图表属性
-		self.activity_canvas.axes.set_title(f'{results["solute"]} 在 {results["solvent"]} 中的活度比较', fontsize=14)
-		self.activity_canvas.axes.set_ylabel('活度值', fontsize=13)
+		solute = results["solute"]
+		solvent = results["solvent"]
+		self.activity_canvas.axes.set_title(f'${solute}$ 在 ${solvent}$ 中的活度比较', fontsize=14)
+		self.activity_canvas.axes.set_ylabel(f'Activity($a_{{{solute}}}$)', fontsize=13)
 		self.activity_canvas.axes.grid(True, axis='y', linestyle='--', alpha=0.7)
 		
 		# 添加摩尔分数参考线
 		self.activity_canvas.axes.axhline(y=results['mole_fraction'], color='r', linestyle='--', alpha=0.5)
 		self.activity_canvas.axes.text(0, results['mole_fraction'] * 1.05,
-		                               f'摩尔分数: {results["mole_fraction"]:.3f}',
+		                               f'摩尔分数 $X_{{{solute}}}$: {results["mole_fraction"]:.3f}',
 		                               color='r', alpha=0.7, fontsize=12)
 		
 		self.activity_canvas.fig.tight_layout()
@@ -1046,8 +1063,10 @@ class AlloyActProGUI(QMainWindow):
 			                           f'{height:.3f}', ha='center', va='bottom', fontsize=12)
 		
 		# 设置图表属性
-		self.coef_canvas.axes.set_title(f'{results["solute"]} 在 {results["solvent"]} 中的活度系数比较', fontsize=14)
-		self.coef_canvas.axes.set_ylabel('活度系数', fontsize=13)
+		solute = results["solute"]
+		solvent = results["solvent"]
+		self.coef_canvas.axes.set_title(f'${solute}$ 在 ${solvent}$ 中的活度系数比较', fontsize=14)
+		self.coef_canvas.axes.set_ylabel(f'Activity Coefficient($γ_{{{solute}}}$)', fontsize=13)
 		self.coef_canvas.axes.grid(True, axis='y', linestyle='--', alpha=0.7)
 		
 		# 添加理想行为参考线
@@ -1100,9 +1119,12 @@ class AlloyActProGUI(QMainWindow):
 			                               f'{height:.3f}', ha='center', va='bottom', fontsize=12)
 		
 		# 设置图表属性
+		solvent = results["solvent"]
+		solute_i = results["solute_i"]
+		solute_j = results["solute_j"]
 		self.interact_canvas.axes.set_title(
-			f'{results["solute_j"]} 对 {results["solute_i"]} 在 {results["solvent"]} 中的相互作用系数', fontsize=14)
-		self.interact_canvas.axes.set_ylabel('相互作用系数', fontsize=13)
+				f'${solute_j}$ 对 ${solute_i}$ 在 ${solvent}$ 中的相互作用系数', fontsize=14)
+		self.interact_canvas.axes.set_ylabel(f'$\\varepsilon^{{{solute_j}}}_{{{solute_i}}}$', fontsize=14)
 		self.interact_canvas.axes.grid(True, axis='y', linestyle='--', alpha=0.7)
 		
 		self.interact_canvas.fig.tight_layout()
@@ -1125,10 +1147,22 @@ class AlloyActProGUI(QMainWindow):
 	
 	def update_second_chart (self, results):
 		"""更新二阶相互作用系数图表"""
+		"""更新二阶相互作用系数图表"""
 		self.second_canvas.axes.clear()
 		
 		# 数据
-		coefficients = ['ρi^ii', 'ρi^ij', 'ρi^jj', 'ρi^jk']
+		solute_i = results["solute_i"]
+		solute_j = results["solute_j"]
+		solute_k = results["solute_k"]
+		
+		# 创建更具数学意义的标签
+		coefficients = [
+			f'$\\rho_{{{solute_i}}}^{{{solute_i},{solute_i}}}$',
+			f'$\\rho_{{{solute_i}}}^{{{solute_i},{solute_j}}}$',
+			f'$\\rho_{{{solute_i}}}^{{{solute_j},{solute_j}}}$',
+			f'$\\rho_{{{solute_i}}}^{{{solute_j},{solute_k}}}$'
+		]
+		
 		values = [
 			results['ri_ii'],
 			results['ri_ij'],
@@ -1148,9 +1182,12 @@ class AlloyActProGUI(QMainWindow):
 			                             f'{height:.3f}', ha='center', va='bottom', fontsize=12)
 		
 		# 设置图表属性
-		title = f'二阶相互作用系数 ({results["solvent"]}-{results["solute_i"]}-{results["solute_j"]})'
-		if results["solute_k"]:
-			title += f'-{results["solute_k"]}'
+		solvent = results["solvent"]
+		title = f'二阶相互作用系数 (${solvent}$-${solute_i}$-${solute_j}$'
+		if solute_k:
+			title += f'-${solute_k}$'
+		title += ')'
+		
 		self.second_canvas.axes.set_title(title, fontsize=14)
 		self.second_canvas.axes.set_ylabel('系数值', fontsize=13)
 		self.second_canvas.axes.grid(True, axis='y', linestyle='--', alpha=0.7)
@@ -1176,6 +1213,7 @@ class AlloyActProGUI(QMainWindow):
 	def update_act_conc_chart (self, conc_list, activity_darken, activity_wagner, activity_elliot, solvent, target,
 	                           varying):
 		"""更新活度-浓度关系图表"""
+		"""更新活度-浓度关系图表"""
 		self.act_conc_canvas.axes.clear()
 		
 		# 绘制曲线
@@ -1189,9 +1227,9 @@ class AlloyActProGUI(QMainWindow):
 			self.act_conc_canvas.axes.plot(conc_list, ideal_line, '--', label='理想行为', color='gray', alpha=0.7)
 		
 		# 设置图表属性
-		self.act_conc_canvas.axes.set_title(f'{target} 的活度随 {varying} 浓度的变化关系', fontsize=14)
-		self.act_conc_canvas.axes.set_xlabel(f'{varying} 的摩尔分数', fontsize=13)
-		self.act_conc_canvas.axes.set_ylabel(f'{target} 的活度', fontsize=13)
+		self.act_conc_canvas.axes.set_title(f'${target}$ 的活度随 ${varying}$ 浓度的变化关系', fontsize=14)
+		self.act_conc_canvas.axes.set_xlabel(f'$X_{{{varying}}}$', fontsize=13)
+		self.act_conc_canvas.axes.set_ylabel(f'Activity($a_{{{target}}}$)', fontsize=14)
 		self.act_conc_canvas.axes.grid(True, linestyle='--', alpha=0.7)
 		self.act_conc_canvas.axes.legend(fontsize=11)
 		
@@ -1226,9 +1264,9 @@ class AlloyActProGUI(QMainWindow):
 		self.coef_conc_canvas.axes.axhline(y=1.0, linestyle='--', color='gray', alpha=0.7, label='理想行为')
 		
 		# 设置图表属性
-		self.coef_conc_canvas.axes.set_title(f'{target} 的活度系数随 {varying} 浓度的变化关系', fontsize=14)
-		self.coef_conc_canvas.axes.set_xlabel(f'{varying} 的摩尔分数', fontsize=13)
-		self.coef_conc_canvas.axes.set_ylabel(f'{target} 的活度系数', fontsize=13)
+		self.coef_conc_canvas.axes.set_title(f'${target}$ 的活度系数随 ${varying}$ 浓度的变化关系', fontsize=14)
+		self.coef_conc_canvas.axes.set_xlabel(f'$X_{{{varying}}}$', fontsize=13)
+		self.coef_conc_canvas.axes.set_ylabel(f'Activity Coefficient($γ_{{{target}}}$)', fontsize=14)
 		self.coef_conc_canvas.axes.grid(True, linestyle='--', alpha=0.7)
 		self.coef_conc_canvas.axes.legend(fontsize=11)
 		
