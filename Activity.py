@@ -1,5 +1,7 @@
 from typing import Callable
 
+from PyQt5.QtWidgets import QMessageBox
+
 extrap_func = Callable[[str, str, str, float, str], float]
 
 
@@ -237,17 +239,17 @@ class BinaryModel:
 		
 		return 10 ** (-9) * dhe
 	
-	def yeta (self, k, a, b):
+	def yeta (self, k, a, b,Temp:float,state:str):
 		"""Calculate GSM's similarity coefficient"""
 		m1 = BinaryModel()
 		m2 = BinaryModel()
 		
-		m1.set_state("liquid")
-		m2.set_state("liquid")
-		m1.set_temperature(self.temperature)
-		m2.set_temperature(self.temperature)
+		m1.set_state(state)
+		m2.set_state(state)
+		m1.set_temperature(Temp)
+		m2.set_temperature(Temp)
 		
-		key = k + a + b + str(self.temperature)
+		key = k + a + b + str(Temp)
 		if key in self.yeta_dict:
 			return self.yeta_dict[key]
 		
@@ -367,7 +369,7 @@ class BinaryModel:
 		else:
 			return math.pi / 2.0
 	
-	def uem1 (self, k, i, j, Tem: float, phase_state: str):
+	def UEM1 (self, k, i, j, Tem: float, phase_state: str):
 		"""Implementation of UEM1 model"""
 		ek = Element(k)
 		ei = Element(i)
@@ -394,7 +396,7 @@ class BinaryModel:
 		
 		return alpha_ka
 	
-	def uem2 (self, k, i, j, Tem: float, phase_state: str):
+	def UEM2 (self, k, i, j, Tem: float, phase_state: str):
 		"""Implementation of UEM2 model"""
 		ek = Element(k)
 		ei = Element(i)
@@ -404,8 +406,8 @@ class BinaryModel:
 		ternary.set_state(phase_state)
 		ternary.set_temperature(Tem)
 		ternary.set_entropy(False)
-		df_ki = self.deviation_func(k, i, j, self.temperature)
-		df_kj = self.deviation_func(k, j, i, self.temperature)
+		df_ki = self.deviation_func(k, i, j, Tem)
+		df_kj = self.deviation_func(k, j, i, Tem)
 		
 		df_ki = 1 * df_ki ** 1
 		df_kj = 1 * df_kj ** 1
@@ -415,14 +417,14 @@ class BinaryModel:
 		
 		return alpha_ka
 	
-	def gsm (self, k, i, j, Tem: float, phase_state: str):
+	def GSM (self, k, i, j, Tem: float, phase_state: str):
 		"""Implementation of GSM model"""
-		nki = self.yeta(k, i, j)
-		nkj = self.yeta(k, j, i)
+		nki = self.yeta(k, i, j,Tem,phase_state)
+		nkj = self.yeta(k, j, i,Tem,phase_state)
 		
 		return nki / (nki + nkj)
 	
-	def muggianu (self, k, i, j, Tem: float, phase_state: str):
+	def Muggianu (self, k, i, j, Tem: float, phase_state: str):
 		return 0.5
 
 
@@ -466,7 +468,7 @@ class TernaryMelts:
 		
 		avg_tm = 1.0 / ei.tm + 1.0 / ej.tm
 		
-		if self._entropy:
+		if s:
 			if self._state == "liquid":
 				entropy_term = 1.0 / 14 * self._temperature * avg_tm
 			else:
@@ -515,7 +517,8 @@ class TernaryMelts:
 	
 	def first_derivative_qx (self, i_element: Element, j_element: Element, xi: float = 0) -> float:
 		"""Calculate first derivative of Q(x)"""
-		fij = self.fab_func_contain_s(i_element, j_element)
+		
+		fij = self.fab_func_contain_s(i_element, j_element,entropy_judge(i_element.name,j_element.name))
 		
 		vi = i_element.v
 		vj = j_element.v
@@ -540,9 +543,9 @@ class TernaryMelts:
 		
 		return dfx
 	
-	def second_derivative_q0 (self, i_element, j_element, xi=0):
+	def second_derivative_q0 (self, i_element: Element, j_element: Element, xi=0):
 		"""Calculate second derivative of Q(x) at x=0"""
-		fij = self.fab_func_contain_s(i_element, j_element)
+		fij = self.fab_func_contain_s(i_element, j_element,entropy_judge(i_element.name,j_element.name))
 		
 		vi = i_element.v
 		vj = j_element.v
@@ -559,7 +562,7 @@ class TernaryMelts:
 	
 	def ln_y0 (self, solvent, solutei):
 		"""Calculate ln(γ°i) = G^E_i/(RT)"""
-		fik = self.fab_func_contain_s(solvent, solutei)
+		fik = self.fab_func_contain_s(solvent, solutei,entropy_judge(solvent,solutei))
 		dhtrans = solutei.dh_trans
 		
 		lny0 = 1000 * fik * solutei.v * (1 + solutei.u * (solutei.phi - solvent.phi)) + 1000 * dhtrans
@@ -598,10 +601,10 @@ class TernaryMelts:
 	                                       geo_model_name="UEM1"):
 		"""Calculate first-order interaction coefficient"""
 		import os
-		
-		fij = self.fab_func_contain_s(solui, soluj)
-		fik = self.fab_func_contain_s(solv, solui)
-		fjk = self.fab_func_contain_s(solv, soluj)
+		entropy_yesornot = entropy_judge(solv,solui,soluj)
+		fij = self.fab_func_contain_s(solui, soluj,entropy_yesornot)
+		fik = self.fab_func_contain_s(solv, solui,entropy_yesornot)
+		fjk = self.fab_func_contain_s(solv, soluj,entropy_yesornot)
 		
 		file_path = os.path.join(os.getcwd(), "Contribution Coefficient")
 		os.makedirs(file_path, exist_ok=True)
@@ -639,7 +642,7 @@ class TernaryMelts:
 		
 		chemical_term = omaga_ij - omaga_jk - omaga_ik + d_omaga_ik_j + d_omaga_jk_i
 		
-		return 1000 * chemical_term / (Constants.R * self._temperature)
+		return 1000 * chemical_term / (Constants.R * Tem)
 	
 	def roui_ii (self, solv, solui, Tem: float, state: str, geo_model, geo_model_name="UEM1"):
 		"""Calculate second-order self-interaction coefficient ρi^ii"""
@@ -647,7 +650,7 @@ class TernaryMelts:
 		df10 = self.first_derivative_qx(solui, solv, 0)
 		df20 = self.second_derivative_q0(solui, solv, 0)
 		
-		rii = -sii + 1000 * (-6 * df10 + 3 * df20) / (Constants.R * self._temperature)
+		rii = -sii + 1000 * (-6 * df10 + 3 * df20) / (Constants.R * Tem)
 		
 		return rii
 	
@@ -668,7 +671,7 @@ class TernaryMelts:
 		qjk = 2 * aij_jk * self.second_derivative_q0(soluj, solv, 0) - 2 * (
 				2 * aij_jk + aik_jk) * self.first_derivative_qx(soluj, solv, 0)
 		
-		ri_jj = (-sjj + 1000 * (qij + qik + qjk) / (Constants.R * self._temperature))
+		ri_jj = (-sjj + 1000 * (qij + qik + qjk) / (Constants.R * Tem))
 		
 		return ri_jj
 	
@@ -689,7 +692,7 @@ class TernaryMelts:
 		qjk = aij_jk * aij_jk * self.second_derivative_q0(soluj, solv, 0) - 2 * aij_jk * (
 				aij_jk + aik_jk) * self.first_derivative_qx(soluj, solv, 0)
 		
-		return (-sji + 1000 * (qij + qik + qjk) / (Constants.R * self._temperature))
+		return (-sji + 1000 * (qij + qik + qjk) / (Constants.R * Tem))
 	
 	def roui_jk (self, m, i, j, k, Tem: float, state: str, geo_model: extrap_func, geo_model_name="UEM1"):
 		"""Calculate cross-interaction parameter, the influence of components j,k on i"""
@@ -748,7 +751,7 @@ class TernaryMelts:
 		ddfkm = self.second_derivative_q0(k, m, 0)
 		qkm = aik_km * ajk_km * ddfkm - (aik_km * ajm_km + ajk_km * aim_km + 2 * aik_km * ajk_km) * dfkm
 		
-		return 1000 * (qij + qik + qim + qjk + qjm + qkm) / (Constants.R * self._temperature) - skj
+		return 1000 * (qij + qik + qim + qjk + qjm + qkm) / (Constants.R * Tem) - skj
 
 
 class ActivityCoefficient:
@@ -1220,6 +1223,47 @@ class Melt:
 import argparse
 
 
+def entropy_judge (*elements: str) -> bool:
+	"""
+
+	Args:
+
+
+	Returns:
+		bool: 如果根据规则需要考虑过剩熵，则返回 True，否则返回 False。
+
+	规则 (基于 C# 代码逻辑):
+	1. 如果体系中含有 'O' (氧):
+	   - 当 'O' 与非金属元素相互作用时，考虑过剩熵 (返回 True)。
+
+	2. 如果体系中不含 'O'，但含有 'H' (氢) 或 'N' (氮):
+	   - 不考虑过剩熵 (返回 False)。
+	3. 如果体系中既不含 'O'，也不含 'H' 或 'N':
+	   - 考虑过剩熵 (返回 True)。
+	"""
+	if not elements:
+		QMessageBox.warning(None, "输入错误", "entropy_judge 函数至少需要一个元素参数。")
+		return False
+	
+	s_set = set(elements)  # 使用集合进行快速成员检查
+	
+	if "O" in s_set:
+		# 规则 1: 体系含 O
+		# 检查 O 是否与非金属元素相互作用 (遵循 C# 的配对逻辑)
+		other_elements = s_set - {"O"}
+		if other_elements.intersection(Constants.non_metal_list):
+			return True
+		else:
+			return False
+	
+	elif "H" in s_set or "N" in s_set:
+		# 规则 2: 不含 O，但含 H 或 N
+		return False
+	else:
+		# 规则 3: 不含 O、H、N
+		
+		return True
+
 def calculate_activity (alloy_composition, solvent, solute, temperature, state, geomodel: extrap_func,
                         extra_model_name: str):
 	"""
@@ -1366,7 +1410,7 @@ def calculate_interaction_coefficient (solvent, solute_i, solute_j, temperature,
 	# Calculate interaction coefficient
 	sij_uem1 = ternary.activity_interact_coefficient_1st(solv, solui, soluj, temperature, state, geomodel,
 	                                                     extra_model_name)
-	sij_uem2 = ternary.activity_interact_coefficient_1st(solv, solui, soluj, temperature, state, binary_model.uem2,
+	sij_uem2 = ternary.activity_interact_coefficient_1st(solv, solui, soluj, temperature, state, binary_model.UEM2,
 	                                                     "UEM2-Adv")
 	
 	# Get experimental value if available
@@ -1442,67 +1486,20 @@ def calculate_second_order (solvent, solute_i, solute_j, solute_k, temperature, 
 	
 	return results
 
-
-def entropy_judge (k, i, j, sol_k=None):
-	"""
-	Determine whether to consider excess entropy for a system
-
-	Args:
-		k: Base metal
-		i: First solute
-		j: Second solute
-		sol_k: Third solute (optional)
-
-	Returns:
-		Boolean indicating whether to include excess entropy
-	"""
-	elements = [k, i, j]
-	if sol_k:
-		elements.append(sol_k)
-	
-	if "O" in elements:
-		# O interacting with non-metal elements, consider excess entropy
-		if i == "O":
-			if j in Constants.non_metal_list or k in Constants.non_metal_list:
-				return True
-			else:
-				return False
-		elif j == "O":
-			if i in Constants.non_metal_list or k in Constants.non_metal_list:
-				return True
-			else:
-				return False
-		else:
-			if i in Constants.non_metal_list or j in Constants.non_metal_list:
-				return True
-			else:
-				return False
-	elif "H" in elements or "N" in elements:
-		# System without O but with gaseous elements H, N, don't consider excess entropy
-		return False
-	else:
-		# System without O and without H or N
-		# If it contains C, Si, Ge, consider excess entropy
-		if "C" in elements or "Si" in elements or "B" in elements:
-			return True
-		else:
-			return False
-
-
 def main ():
 	parser = argparse.ArgumentParser(description="AlloyAct - Thermodynamic calculations for alloys")
 	subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 	binary_model = BinaryModel()
-	results = calculate_activity("Fe0.70C0.03Si0.27", "Fe", "C", 1873.0, "liquid", binary_model.uem1, 'UEM1')
+	results = calculate_activity("Fe0.70C0.03Si0.27", "Fe", "C", 1873.0, "liquid", binary_model.UEM1, 'UEM1')
 	print(results)
 	
-	results = calculate_interaction_coefficient("Fe", "C", "Si", 1873.0, "liquid", binary_model.uem1, 'UEM1')
+	results = calculate_interaction_coefficient("Fe", "C", "Si", 1873.0, "liquid", binary_model.UEM1, 'UEM1')
 	print(results)
 	# Calculate activity coefficient
-	results = calculate_activity_coefficient("Ni0.5Al0.3", "Fe", "Ni", 1600.0, "liquid", binary_model.uem1, 'UEM1')
+	results = calculate_activity_coefficient("Ni0.5Al0.3", "Fe", "Ni", 1600.0, "liquid", binary_model.UEM1, 'UEM1')
 	print(results)
 	
-	results = calculate_second_order('Al', 'Si', 'Cu', 'Mn', 805, 'liquid', binary_model.uem1, 'UEM1')
+	results = calculate_second_order('Al', 'Si', 'Cu', 'Mn', 805, 'liquid', binary_model.UEM1, 'UEM1')
 	
 	print(results)
 
