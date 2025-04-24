@@ -1,25 +1,28 @@
-import sys
 import math
 import re
-import numpy as np
-import matplotlib
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+import sys
 
-import Activity
+import matplotlib
+import numpy as np
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 # Set matplotlib font settings
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'FangSong', 'SimSun', 'DejaVu Sans']
 matplotlib.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+matplotlib.rcParams['font.size'] = 12  # 增加图表字体大小
+
+# 使用Matplotlib的数学文本渲染（不依赖LaTeX）
+matplotlib.rcParams['text.usetex'] = False
+matplotlib.rcParams['mathtext.default'] = 'regular'
 
 # Import PyQt5 modules
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QGridLayout, QLabel, QLineEdit, QComboBox, QPushButton,
                              QTabWidget, QSplitter, QFrame, QGroupBox, QTextEdit, QMessageBox,
                              QStatusBar)
-from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtGui import QFont, QPalette, QColor
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont, QGuiApplication
 
 # 导入计算模块
 
@@ -33,7 +36,7 @@ from Activity import Melt
 class MplCanvas(FigureCanvas):
 	"""Matplotlib画布类"""
 	
-	def __init__ (self, parent=None, width=5, height=4, dpi=100):
+	def __init__ (self, parent=None, width=7, height=6, dpi=100):
 		self.fig = Figure(figsize=(width, height), dpi=dpi)
 		self.axes = self.fig.add_subplot(111)
 		super(MplCanvas, self).__init__(self.fig)
@@ -43,8 +46,14 @@ class AlloyActProGUI(QMainWindow):
 	def __init__ (self):
 		super().__init__()
 		self.setWindowTitle("AlloyAct Pro - 合金热力学计算器")
-		self.setGeometry(100, 100, 1200, 800)
-		self.setMinimumSize(1000, 700)
+		self.resize(1400, 900)
+		self.setMinimumSize(1000, 900)
+		
+		# 新版PyQt5中将窗口居中
+		qr = self.frameGeometry()
+		cp = QGuiApplication.primaryScreen().availableGeometry().center()
+		qr.moveCenter(cp)
+		self.move(qr.topLeft())
 		
 		# 创建计算实例
 		self.binary_model = BinaryModel()
@@ -77,13 +86,15 @@ class AlloyActProGUI(QMainWindow):
             QTabBar::tab {
                 background: #e0e0e0;
                 color: #333333;
-                padding: 8px 16px;
-                margin-right: 2px;
+                padding: 10px 30px;
+                margin-right: 8px;
                 border: 1px solid #b8b8b8;
                 border-bottom: none;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
                 font-weight: bold;
+                font-size: 15px;
+                min-width:150px;
             }
             QTabBar::tab:selected {
                 background: #3498db;
@@ -120,7 +131,7 @@ class AlloyActProGUI(QMainWindow):
                 border: 1px solid #b8b8b8;
                 border-radius: 4px;
                 background-color: white;
-                font-size: 11pt;
+                font-size: 14pt;
             }
             QComboBox {
                 padding: 6px;
@@ -128,7 +139,7 @@ class AlloyActProGUI(QMainWindow):
                 border-radius: 4px;
                 background-color: white;
                 selection-background-color: #3498db;
-                font-size: 11pt;
+                font-size: 14pt;
             }
             QComboBox::drop-down {
                 subcontrol-origin: padding;
@@ -159,25 +170,35 @@ class AlloyActProGUI(QMainWindow):
                 border-radius: 4px;
                 margin-top: 10px;
                 padding-top: 15px;
+                font-size: 12pt;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
                 padding: 0 5px;
+                font-size: 12pt;
             }
             QTextEdit {
                 border: 1px solid #b8b8b8;
                 border-radius: 4px;
                 background-color: white;
                 font-family: "Microsoft YaHei UI";
-                font-size: 10pt;
+                font-size: 12pt;
             }
             QLabel {
-                font-size: 10pt;
+                font-size: 12pt;
             }
             QStatusBar {
                 background-color: #e0e0e0;
+                font-size: 12pt;
             }
+            QDoubleSpinBox {
+            padding: 8px;
+            border: 1px solid #b8b8b8;
+            border-radius: 4px;
+            background-color: white;
+            font-size: 13pt;
+        }
         """)
 	
 	def create_title_bar (self):
@@ -668,6 +689,63 @@ class AlloyActProGUI(QMainWindow):
 		self.activity_canvas.fig.tight_layout()
 		self.activity_canvas.draw()
 	
+	def setup_value_labels (self, axes, bars, values, min_height=0.0):
+		"""设置统一的数值标签位置
+
+		参数:
+		axes - 图表的轴对象
+		bars - 柱状图对象列表
+		values - 柱状图对应的数值
+		min_height - 最小高度阈值，用于决定标签是否放在柱内
+		"""
+		
+		for i, bar in enumerate(bars):
+			height = bar.get_height()
+			value = values[i]
+			
+			# 确定标签位置和样式
+			if abs(height) > min_height:
+				# 对于较高的柱子，将标签放在柱内
+				y_pos = height / 2
+				va = 'center'
+				color = 'white'
+				fontweight = 'bold'
+			else:
+				# 对于较矮的柱子，将标签放在柱子上方或下方
+				if height >= 0:
+					y_pos = height + 0.05
+					va = 'bottom'
+				else:
+					y_pos = height - 0.15
+					va = 'top'
+				color = 'black'
+				fontweight = 'normal'
+			
+			axes.text(
+					bar.get_x() + bar.get_width() / 2., y_pos,
+					f'{value:.3f}', ha='center', va=va,
+					fontsize=10, color=color, fontweight=fontweight
+			)
+	
+	def set_fixed_y_axis (self, axes, values, y_min, y_max):
+		max_values = max(values)
+		min_values = min(values)
+		y_max = y_max
+		y_min = y_min
+		if max_values * min_values < 0:
+			y_max = max_values * 1.2
+			y_min = min_values * 1.2
+		elif max_values * min_values == 0:
+			y_max = y_max
+			y_min = y_min
+		elif max_values > 0:
+			y_max = max_values * 1.2
+			y_min = 0
+		
+		else:
+			y_max = 0
+			y_min = min_values * 1.2
+		axes.set_ylim(y_min, y_max)
 	def update_activity_chart (self, results):
 		"""更新活度图表"""
 		self.activity_canvas.axes.clear()
@@ -679,15 +757,15 @@ class AlloyActProGUI(QMainWindow):
 		# 创建柱状图
 		bars = self.activity_canvas.axes.bar(models, values, color=['#3498db', '#2ecc71', '#e74c3c'])
 		
+		mole_fraction = results["mole_fraction"]
+		max_value = max(values)
+		y_max = 1.0 if max(max_value,mole_fraction) >0.84 and max(max_value,mole_fraction)<1.01  else max(max_value,mole_fraction)*1.2
 		# 添加数值标签
-		for bar in bars:
-			height = bar.get_height()
-			self.activity_canvas.axes.text(bar.get_x() + bar.get_width() / 2., height + 0.001,
-			                               f'{height:.3f}', ha='center', va='bottom')
-		
+		self.activity_canvas.axes.set_ylim(0,y_max)
+		self.setup_value_labels(self.activity_canvas.axes, bars, values,0.05)
 		# 设置图表属性
-		self.activity_canvas.axes.set_title(f'{results["solute"]} 在 {results["solvent"]} 中的活度比较')
-		self.activity_canvas.axes.set_ylabel('活度值')
+		self.activity_canvas.axes.set_title(f'{results["solute"]} 在 {results["solvent"]} 中的活度比较', fontsize=14, pad=10)
+		self.activity_canvas.axes.set_ylabel(f'Activity($a_{results["solute"]}$)', fontsize=13)
 		self.activity_canvas.axes.grid(True, axis='y', linestyle='--', alpha=0.7)
 		
 		# 添加摩尔分数参考线
@@ -695,6 +773,11 @@ class AlloyActProGUI(QMainWindow):
 		self.activity_canvas.axes.text(0, results['mole_fraction'] * 1.05,
 		                               f'摩尔分数: {results["mole_fraction"]:.3f}',
 		                               color='r', alpha=0.7)
+		# 增加顶部和底部边距，防止标签出界
+		self.activity_canvas.fig.subplots_adjust(bottom=0.2, top=0.85)
+		
+		# 设置较小的标签字体
+		self.activity_canvas.axes.tick_params(axis='x', labelsize=10)
 		
 		self.activity_canvas.fig.tight_layout()
 		self.activity_canvas.draw()
@@ -729,21 +812,24 @@ class AlloyActProGUI(QMainWindow):
 		# 创建柱状图
 		bars = self.coef_canvas.axes.bar(models, values, color=['#3498db', '#2ecc71', '#e74c3c'])
 		
-		# 添加数值标签
-		for bar in bars:
-			height = bar.get_height()
-			self.coef_canvas.axes.text(bar.get_x() + bar.get_width() / 2., height + 0.01,
-			                           f'{height:.3f}', ha='center', va='bottom')
 		
+		# 添加数值标签
+		self.setup_value_labels(self.coef_canvas.axes, bars, values)
+		
+		values_max = max(values)
+		y_max = max(values_max, 1.0) * 1.2
+		self.coef_canvas.axes.set_ylim(0, y_max)
 		# 设置图表属性
-		self.coef_canvas.axes.set_title(f'{results["solute"]} 在 {results["solvent"]} 中的活度系数比较')
-		self.coef_canvas.axes.set_ylabel('活度系数')
+		self.coef_canvas.axes.set_title(f'{results["solute"]} 在 {results["solvent"]} 中的活度系数比较',fontsize=14, pad=10)
+		self.coef_canvas.axes.set_ylabel(f'活度系数($γ_{{{results["solute"]}}})$',fontsize=13)
 		self.coef_canvas.axes.grid(True, axis='y', linestyle='--', alpha=0.7)
 		
 		# 添加理想行为参考线
 		self.coef_canvas.axes.axhline(y=1.0, color='r', linestyle='--', alpha=0.5)
 		self.coef_canvas.axes.text(0, 1.05, '理想行为: 1.000', color='r', alpha=0.7)
 		
+		self.coef_canvas.fig.subplots_adjust(bottom = 0.2,top=0.85)
+		self.coef_canvas.axes.tick_params(axis='x', labelsize=10)
 		self.coef_canvas.fig.tight_layout()
 		self.coef_canvas.draw()
 	
@@ -783,18 +869,19 @@ class AlloyActProGUI(QMainWindow):
 		
 		bars = self.interact_canvas.axes.bar(models, values, color=colors)
 		
-		# 添加数值标签
-		for bar in bars:
-			height = bar.get_height()
-			self.interact_canvas.axes.text(bar.get_x() + bar.get_width() / 2., height + 0.05,
-			                               f'{height:.3f}', ha='center', va='bottom')
+		self.setup_value_labels(self.interact_canvas.axes, bars, values)
 		
+		self.set_fixed_y_axis(self.interact_canvas.axes,values,-10,10)
 		# 设置图表属性
 		self.interact_canvas.axes.set_title(
-			f'{results["solute_j"]} 对 {results["solute_i"]} 在 {results["solvent"]} 中的相互作用系数')
-		self.interact_canvas.axes.set_ylabel('相互作用系数')
+			f'{results["solute_j"]} 对 {results["solute_i"]} 在 {results["solvent"]} 中的相互作用系数', fontsize=14, pad=10)
+		self.interact_canvas.axes.set_ylabel(f'相互作用系数$\\varepsilon^{results["solute_j"]}_{results["solute_i"]}$',fontsize=14)
 		self.interact_canvas.axes.grid(True, axis='y', linestyle='--', alpha=0.7)
+		# 增加顶部和底部边距，防止标签出界
+		self.interact_canvas.fig.subplots_adjust(bottom=0.2, top=0.85)
 		
+		# 设置较小的标签字体
+		self.interact_canvas.axes.tick_params(axis='x', labelsize=10)
 		self.interact_canvas.fig.tight_layout()
 		self.interact_canvas.draw()
 	
@@ -818,7 +905,12 @@ class AlloyActProGUI(QMainWindow):
 		self.second_canvas.axes.clear()
 		
 		# 数据
-		coefficients = ['ρi^ii', 'ρi^ij', 'ρi^jj', 'ρi^jk']
+		coefficients = [
+			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_i']},{results['solute_i']}}}$',
+			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_i']},{results['solute_j']}}}$',
+			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_j']},{results['solute_j']}}}$',
+			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_j']},{results['solute_k']}}}$'
+		]
 		values = [
 			results['ri_ii'],
 			results['ri_ij'],
@@ -831,19 +923,23 @@ class AlloyActProGUI(QMainWindow):
 		bars = self.second_canvas.axes.bar(coefficients, values, color=colors)
 		
 		# 添加数值标签
-		for bar in bars:
-			height = bar.get_height()
-			self.second_canvas.axes.text(bar.get_x() + bar.get_width() / 2.,
-			                             height + 0.3 if height >= 0 else height - 0.7,
-			                             f'{height:.3f}', ha='center', va='bottom')
-		
+		self.setup_value_labels(self.second_canvas.axes, bars, values)
+			
+		self.set_fixed_y_axis(self.second_canvas.axes,values,-20,20)
 		# 设置图表属性
 		title = f'二阶相互作用系数 ({results["solvent"]}-{results["solute_i"]}-{results["solute_j"]})'
 		if results["solute_k"]:
 			title += f'-{results["solute_k"]}'
-		self.second_canvas.axes.set_title(title)
-		self.second_canvas.axes.set_ylabel('系数值')
+		self.second_canvas.axes.set_title(title, fontsize=14, pad=10)
+		self.second_canvas.axes.set_ylabel('系数值', fontsize=13)
 		self.second_canvas.axes.grid(True, axis='y', linestyle='--', alpha=0.7)
+		
+		# 增加顶部和底部边距，防止标签出界
+		self.second_canvas.fig.subplots_adjust(bottom=0.2, top=0.85)
+		# 设置较小的标签字体
+		self.second_canvas.axes.tick_params(axis='x', labelsize=10)
+		
+		
 		
 		self.second_canvas.fig.tight_layout()
 		self.second_canvas.draw()
@@ -945,7 +1041,7 @@ class AlloyActProGUI(QMainWindow):
 			xi = comp_dict.get(solute, 0.0)
 			
 			# 计算活度
-			acf_darken = math.exp(darken_acf) * xi
+			darken_act = math.exp(darken_acf) * xi
 			wagner_act = math.exp(wagner_acf) * xi
 			elliot_act = math.exp(elliot_acf) * xi
 			
@@ -957,7 +1053,7 @@ class AlloyActProGUI(QMainWindow):
 				"temperature": temp,
 				"state": state,
 				"model": model_name,
-				"activity_darken": round(acf_darken, 3),
+				"activity_darken": round(darken_act, 3),
 				"activity_wagner": round(wagner_act, 3),
 				"activity_elliot": round(elliot_act, 3),
 				"mole_fraction": round(xi, 3),

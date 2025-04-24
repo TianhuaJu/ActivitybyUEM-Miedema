@@ -3,6 +3,7 @@ import math
 import re
 import numpy as np
 import matplotlib
+from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
@@ -34,6 +35,7 @@ from Activity import Melt
 
 class MplCanvas(FigureCanvas):
 	"""Matplotlib画布类"""
+	axes: Axes
 	
 	def __init__ (self, parent=None, width=7, height=6, dpi=100):
 		self.fig = Figure(figsize=(width, height), dpi=dpi)
@@ -978,11 +980,74 @@ class AlloyActProGUI(QMainWindow):
 		# 添加到选项卡
 		self.tabs.addTab(coef_conc_widget, "活度系数-浓度关系")
 	
+	def setup_value_labels (self, axes:matplotlib.axes.Axes, bars, values, min_height=0.0):
+		"""设置统一的数值标签位置
+
+		参数:
+		axes - 图表的轴对象
+		bars - 柱状图对象列表
+		values - 柱状图对应的数值
+		min_height - 最小高度阈值，用于决定标签是否放在柱内
+		"""
+		
+		
+		for i, bar in enumerate(bars):
+			height = bar.get_height()
+			value = values[i]
+			
+			# 确定标签位置和样式
+			if abs(height) > min_height:
+				# 对于较高的柱子，将标签放在柱内
+				y_pos = height / 2
+				va = 'center'
+				color = 'white'
+				fontweight = 'bold'
+			else:
+				# 对于较矮的柱子，将标签放在柱子上方或下方
+				if height >= 0:
+					y_pos = height + 0.05
+					va = 'bottom'
+				else:
+					y_pos = height - 0.15
+					va = 'top'
+				color = 'black'
+				fontweight = 'normal'
+			
+			axes.text(
+					bar.get_x() + bar.get_width() / 2., y_pos,
+					f'{value:.3f}', ha='center', va=va,
+					fontsize=10, color=color, fontweight=fontweight
+			)
+		
+	def set_fixed_y_axis(self,axes:matplotlib.axes.Axes,values,y_min,y_max):
+		max_values = max(values)
+		min_values = min(values)
+		y_max = y_max
+		y_min = y_min
+		if max_values * min_values < 0:
+			y_max = max_values * 1.2
+			y_min = min_values * 1.2
+		elif max_values * min_values == 0:
+			y_max = y_max
+			y_min = y_min
+		elif max_values > 0:
+			y_max = max_values * 1.2
+			y_min = 0
+		
+		else:
+			y_max = 0
+			y_min = min_values * 1.2
+		axes.set_ylim(y_min, y_max)
+		
+		
+
+
+
 	def clear_activity_result (self):
-		"""清除活度计算结果"""
-		self.activity_result.clear()
-		self.init_activity_chart()
-	
+			"""清除活度计算结果"""
+			self.activity_result.clear()
+			self.init_activity_chart()
+		
 	def init_activity_chart (self):
 		"""初始化活度图表"""
 		self.activity_canvas.axes.clear()
@@ -1005,11 +1070,14 @@ class AlloyActProGUI(QMainWindow):
 		bars = self.activity_canvas.axes.bar(models, values, color=['#3498db', '#2ecc71', '#e74c3c'])
 		
 		# 添加数值标签
-		for bar in bars:
-			height = bar.get_height()
-			self.activity_canvas.axes.text(bar.get_x() + bar.get_width() / 2., height + 0.001,
-			                               f'{height:.3f}', ha='center', va='bottom', fontsize=12)
+		self.setup_value_labels(self.activity_canvas.axes, bars, values, 0.01)
 		
+		mole_fraction = results["mole_fraction"]
+		max_value = max(values)
+		y_max = 1.0 if max(max_value, mole_fraction) > 0.84 and max(max_value, mole_fraction) < 1.01 else max(max_value,
+		                                                                                                      mole_fraction) * 1.2
+		
+		self.activity_canvas.axes.set_ylim(0,y_max)
 		# 设置图表属性
 		solute = results["solute"]
 		solvent = results["solvent"]
@@ -1022,9 +1090,14 @@ class AlloyActProGUI(QMainWindow):
 		self.activity_canvas.axes.text(0, results['mole_fraction'] * 1.05,
 		                               f'摩尔分数 $X_{{{solute}}}$: {results["mole_fraction"]:.3f}',
 		                               color='r', alpha=0.7, fontsize=12)
+		# 增加顶部和底部边距，防止标签出界
+		self.activity_canvas.fig.subplots_adjust(bottom=0.2, top=0.85)
 		
+		# 设置较小的标签字体
+		self.activity_canvas.axes.tick_params(axis='x', labelsize=10)
 		self.activity_canvas.fig.tight_layout()
 		self.activity_canvas.draw()
+		
 	
 	def clear_coef_result (self):
 		"""清除活度系数计算结果"""
@@ -1057,11 +1130,10 @@ class AlloyActProGUI(QMainWindow):
 		bars = self.coef_canvas.axes.bar(models, values, color=['#3498db', '#2ecc71', '#e74c3c'])
 		
 		# 添加数值标签
-		for bar in bars:
-			height = bar.get_height()
-			self.coef_canvas.axes.text(bar.get_x() + bar.get_width() / 2., height + 0.01,
-			                           f'{height:.3f}', ha='center', va='bottom', fontsize=12)
-		
+		self.setup_value_labels(self.coef_canvas.axes,bars,values)
+		values_max = max(values)
+		y_max = max(values_max,1.0)*1.2
+		self.coef_canvas.axes.set_ylim(0,y_max)
 		# 设置图表属性
 		solute = results["solute"]
 		solvent = results["solvent"]
@@ -1073,6 +1145,8 @@ class AlloyActProGUI(QMainWindow):
 		self.coef_canvas.axes.axhline(y=1.0, color='r', linestyle='--', alpha=0.5)
 		self.coef_canvas.axes.text(0, 1.05, '理想行为: 1.000', color='r', alpha=0.7, fontsize=12)
 		
+		self.coef_canvas.fig.subplots_adjust(bottom=0.2, top=0.85)
+		self.coef_canvas.axes.tick_params(axis='x', labelsize=10)
 		self.coef_canvas.fig.tight_layout()
 		self.coef_canvas.draw()
 	
@@ -1113,10 +1187,9 @@ class AlloyActProGUI(QMainWindow):
 		bars = self.interact_canvas.axes.bar(models, values, color=colors)
 		
 		# 添加数值标签
-		for bar in bars:
-			height = bar.get_height()
-			self.interact_canvas.axes.text(bar.get_x() + bar.get_width() / 2., height + 0.05,
-			                               f'{height:.3f}', ha='center', va='bottom', fontsize=12)
+		self.setup_value_labels(self.interact_canvas.axes,bars,values)
+		self.set_fixed_y_axis(self.interact_canvas.axes,values,-10.0,10)
+		
 		
 		# 设置图表属性
 		solvent = results["solvent"]
@@ -1175,11 +1248,9 @@ class AlloyActProGUI(QMainWindow):
 		bars = self.second_canvas.axes.bar(coefficients, values, color=colors)
 		
 		# 添加数值标签
-		for bar in bars:
-			height = bar.get_height()
-			self.second_canvas.axes.text(bar.get_x() + bar.get_width() / 2.,
-			                             height + 0.3 if height >= 0 else height - 0.7,
-			                             f'{height:.3f}', ha='center', va='bottom', fontsize=12)
+		self.setup_value_labels(self.second_canvas.axes,bars,values)
+		
+		self.set_fixed_y_axis(self.second_canvas.axes,values,-20,20)
 		
 		# 设置图表属性
 		solvent = results["solvent"]
