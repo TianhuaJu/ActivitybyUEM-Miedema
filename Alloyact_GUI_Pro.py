@@ -1287,10 +1287,12 @@ class AlloyActProGUI(QMainWindow):
 		"""更新活度-浓度关系图表"""
 		self.act_conc_canvas.axes.clear()
 		
-		# 绘制曲线
+		# 绘制曲线, Darken means the activity coefficent equation is modified as G-D equation with only first order activity interaction parameter
+		# Wagner means the activity coefficent equation is calculated by Wagner dilution theory which only first order activity interaction parameter is considered
+		# Elloit-Lupis means the activity coefficent is calculated by considering the second order activity interaction parameter.
 		self.act_conc_canvas.axes.plot(conc_list, activity_darken, 'o-', label='Darken', color='#3498db', linewidth=2)
 		self.act_conc_canvas.axes.plot(conc_list, activity_wagner, 's-', label='Wagner', color='#2ecc71', linewidth=2)
-		self.act_conc_canvas.axes.plot(conc_list, activity_elliot, '^-', label='Elliot', color='#e74c3c', linewidth=2)
+		self.act_conc_canvas.axes.plot(conc_list, activity_elliot, '^-', label='Elloit', color='#e74c3c', linewidth=2)
 		
 		# 绘制理想线 (对比)
 		ideal_line = np.array(conc_list)
@@ -1326,7 +1328,9 @@ class AlloyActProGUI(QMainWindow):
 		"""更新活度系数-浓度关系图表"""
 		self.coef_conc_canvas.axes.clear()
 		
-		# 绘制曲线
+		# 绘制曲线, Darken means the activity coefficent equation is modified as G-D equation with only first order activity interaction parameter
+		# Wagner means the activity coefficent equation is calculated by Wagner dilution theory which only first order activity interaction parameter is considered
+		# Elloit-Lupis means the activity coefficent is calculated by considering the second order activity interaction parameter.
 		self.coef_conc_canvas.axes.plot(conc_list, coef_darken, 'o-', label='Darken', color='#3498db', linewidth=2)
 		self.coef_conc_canvas.axes.plot(conc_list, coef_wagner, 's-', label='Wagner', color='#2ecc71', linewidth=2)
 		self.coef_conc_canvas.axes.plot(conc_list, coef_elliot, '^-', label='Elliot', color='#e74c3c', linewidth=2)
