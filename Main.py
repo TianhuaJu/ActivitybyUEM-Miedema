@@ -1,9 +1,9 @@
 import sys
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
-from gui.alloyact_gui import AlloyActProGUI
+from gui.alloyact_gui import AlloyActGUI
 from gui.ActivityVaryTemperatureWdget import ActivityTemperatureVariationWidget
-from gui.Alloyact_GUI_Pro import AlloyActProGUIp
+from gui.Alloyact_GUI_Pro import AlloyActProGUI
 from gui.ActivityVaryConcentrationWdget import CompositionVariationWidget
 
 def run_gui():
@@ -18,10 +18,9 @@ def run_gui():
     app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
     # 创建主窗口实例
-    main_window = AlloyActProGUI()
-    main_window_pro = AlloyActProGUIp()
-    comp_window = CompositionVariationWidget()
-    temp_window = ActivityTemperatureVariationWidget()
+    main_window = AlloyActGUI()
+    main_window_pro = AlloyActProGUI()
+    
     
 
     # 显示窗口

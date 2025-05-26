@@ -40,7 +40,7 @@ class MplCanvas(FigureCanvas):
 		super(MplCanvas, self).__init__(self.fig)
 
 
-class AlloyActProGUI(QMainWindow):
+class AlloyActGUI(QMainWindow):
 	def __init__ (self):
 		super().__init__()
 		self.setWindowTitle("AlloyAct Pro - 合金热力学计算器")
@@ -1436,6 +1436,6 @@ if __name__ == "__main__":
 	app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
 	app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 	
-	window = AlloyActProGUI()
+	window = AlloyActGUI()
 	window.show()
 	sys.exit(app.exec_())
