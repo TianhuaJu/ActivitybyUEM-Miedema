@@ -48,8 +48,8 @@ class AlloyActProGUI(QMainWindow):
 	def __init__ (self):
 		super().__init__()
 		self.setWindowTitle("AlloyAct Pro - 合金热力学计算器")
-		self.resize(1400, 900)
-		self.setMinimumSize(1000, 900)
+		self.resize(1400, 1000)
+		self.setMinimumSize(1000, 1200)
 		
 		# 窗口居中
 		self.center_window()
@@ -198,7 +198,7 @@ class AlloyActProGUI(QMainWindow):
 		title_layout.addStretch()
 		title_layout.addWidget(version_label)
 		
-		self.main_layout.addLayout(title_layout)
+		#self.main_layout.addLayout(title_layout)
 	
 	def create_basic_calculation_tabs (self):
 		"""创建基础计算选项卡"""

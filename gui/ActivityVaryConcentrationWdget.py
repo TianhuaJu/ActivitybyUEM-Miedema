@@ -99,7 +99,7 @@ class ModernButton(QPushButton):
                     color: #333333;
                     border: 1px solid #CCCCCC;
                     border-radius: 6px;
-                    padding: 8px 16px;
+                    padding: 8px 8px;
                     font-weight: bold;
                 }
                 QPushButton:hover {
@@ -465,7 +465,7 @@ class CompositionVariationWidget(QWidget):
 		comp_layout.addWidget(self.matrix_input)
 		
 		update_btn = ModernButton("刷新", "secondary")
-		update_btn.setFixedWidth(55)  # 稍微减小按钮
+		update_btn.setFixedWidth(60)  # 稍微减小按钮
 		update_btn.clicked.connect(self.update_element_dropdowns)
 		comp_layout.addWidget(update_btn)
 		

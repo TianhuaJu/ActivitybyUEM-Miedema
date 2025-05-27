@@ -64,7 +64,7 @@ class ModernButton(QPushButton):
 		super().__init__(text, parent)
 		self.button_type = button_type
 		self.setMinimumHeight(40)
-		self.setFont(QFont("Microsoft YaHei", 10, QFont.Bold))
+		self.setFont(QFont("Microsoft YaHei", 13, QFont.Bold))
 		self.update_style()
 	
 	def update_style (self):
@@ -100,7 +100,7 @@ class ModernButton(QPushButton):
                     color: #333333;
                     border: 1px solid #CCCCCC;
                     border-radius: 6px;
-                    padding: 8px 16px;
+                    padding: 8px 8px;
                     font-weight: bold;
                 }
                 QPushButton:hover {
@@ -447,6 +447,16 @@ class ActivityTemperatureVariationWidget(QWidget):
 		
 		return left_panel
 	
+	def adjust_font_size (self,button):
+		# 获取按钮的宽度
+		button_width = button.width()
+		
+		# 根据按钮的宽度动态调整字体大小，假设字体大小是宽度的1/5
+		font_size = max(10, int(button_width / 2))  # 设置最小字体大小为 10
+		
+		# 设置字体
+		font = QFont("Microsoft YaHei", font_size, QFont.Bold)
+		button.setFont(font)
 	def create_alloy_and_calc_params_group (self):
 		"""创建合金与计算参数组"""
 		group = ModernGroupBox("🔬 合金与计算参数")
@@ -465,7 +475,10 @@ class ActivityTemperatureVariationWidget(QWidget):
 		comp_layout.addWidget(self.matrix_input)
 		
 		update_btn = ModernButton("刷新", "secondary")
-		update_btn.setFixedWidth(55)  # 稍微减小按钮
+		update_btn.setFixedWidth(60)  # 稍微减小按钮
+		#update_btn.setMinimumWidth(60)
+		#self.adjust_font_size(update_btn)
+		update_btn.adjustSize()
 		update_btn.clicked.connect(self.update_element_dropdowns)
 		comp_layout.addWidget(update_btn)
 		
