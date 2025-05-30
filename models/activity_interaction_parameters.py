@@ -288,9 +288,9 @@ class TernaryMelts:
         aki_ij = geo_model(k.name, i.name, j.name, Tem, state)
         akj_ij = geo_model(k.name, j.name, i.name, Tem, state)
         
-        amk_ik = geo_model(m.name, k.name, j.name, Tem, state)
+        amk_ik = geo_model(m.name, k.name, i.name, Tem, state)
         ami_ik = geo_model(m.name, i.name, k.name, Tem, state)
-        aji_ik = geo_model(j.name, i.name, i.name, Tem, state)
+        aji_ik = geo_model(j.name, i.name, k.name, Tem, state)
         ajk_ik = geo_model(j.name, k.name, i.name, Tem, state)
         
         aji_im = geo_model(j.name, i.name, m.name, Tem, state)

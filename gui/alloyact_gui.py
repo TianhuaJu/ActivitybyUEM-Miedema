@@ -1032,8 +1032,8 @@ class AlloyActGUI(QMainWindow):
 			wagner_acf = self.activity_coefficient.activity_coefficient_wagner(
 					comp_dict, solvent, solute, temp, state, model_func, model_name)
 			
-			elliot_acf = self.activity_coefficient.activity_coefficient_elloit(
-					comp_dict, solute, solvent, temp, state, model_func, model_name)
+			elliot_acf = self.activity_coefficient.activity_coefficient_elliott(comp_dict, solute, solvent, temp, state,
+			                                                                    model_func, model_name)
 			
 			# 获取摩尔分数
 			xi = comp_dict.get(solute, 0.0)
@@ -1148,8 +1148,8 @@ class AlloyActGUI(QMainWindow):
 			wagner_acf = self.activity_coefficient.activity_coefficient_wagner(
 					comp_dict, solvent, solute, temp, state, model_func, model_name)
 			
-			elliot_acf = self.activity_coefficient.activity_coefficient_elloit(
-					comp_dict, solute, solvent, temp, state, model_func, model_name)
+			elliot_acf = self.activity_coefficient.activity_coefficient_elliott(comp_dict, solute, solvent, temp, state,
+			                                                                    model_func, model_name)
 			
 			# 准备结果
 			results = {

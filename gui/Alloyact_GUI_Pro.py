@@ -681,7 +681,11 @@ class AlloyActProGUI(QMainWindow):
 		elif model_name == "GSM":
 			return self.binary_model.GSM
 		elif model_name == "Muggianu":
-			return self.binary_model.UEM1  # 临时使用 UEM1 代替
+			return self.binary_model.Muggianu
+		elif model_name == "Toop-Muggianu":
+			return self.binary_model.Toop_Muggianu
+		elif model_name == "Toop-Kohler":
+			return self.binary_model.Toop_Kohler
 		else:
 			return self.binary_model.UEM1
 	
@@ -731,9 +735,10 @@ class AlloyActProGUI(QMainWindow):
 			wagner_acf = self.activity_coefficient.activity_coefficient_wagner(
 					comp_dict, solvent, solute, temp, state, model_func, model_name)
 			
-			elliot_acf = self.activity_coefficient.activity_coefficient_elloit(
-					comp_dict, solute, solvent, temp, state, model_func, model_name)
-			
+			elliot_acf = self.activity_coefficient.activity_coefficient_elliott(comp_dict, solute, solvent, temp, state,
+			                                                                    model_func, model_name)
+			corrected_acf = self.activity_coefficient.activity_coefficient_corrected(comp_dict, solute, solvent, temp,
+			                                                                         state, model_func, model_name)
 			# 获取摩尔分数
 			xi = comp_dict.get(solute, 0.0)
 			
@@ -741,6 +746,7 @@ class AlloyActProGUI(QMainWindow):
 			acf = math.exp(darken_acf) * xi
 			wagner_act = math.exp(wagner_acf) * xi
 			elliot_act = math.exp(elliot_acf) * xi
+			corrected_act = math.exp(corrected_acf) * xi
 			
 			# 准备结果
 			results = {
@@ -753,10 +759,12 @@ class AlloyActProGUI(QMainWindow):
 				"activity": round(acf, 3),
 				"activity_wagner": round(wagner_act, 3),
 				"activity_elliot": round(elliot_act, 3),
+				"activity_corrected": round(corrected_act, 3),
 				"mole_fraction": round(xi, 3),
 				"activity_coefficient_darken": round(math.exp(darken_acf), 3),
 				"activity_coefficient_wagner": round(math.exp(wagner_acf), 3),
-				"activity_coefficient_elliot": round(math.exp(elliot_acf), 3)
+				"activity_coefficient_elliot": round(math.exp(elliot_acf), 3),
+				"activity_coefficient_corrected": round(math.exp(corrected_acf), 3),
 			}
 			
 			# 显示结果
@@ -904,11 +912,12 @@ class AlloyActProGUI(QMainWindow):
 			ternary = TernaryMelts(temp, state, is_entropy)
 			
 			# 计算二阶系数
-			rii = ternary.roui_ii(solv, solui, temp, state, model_func, model_name)
-			rij = ternary.roui_ij(solv, solui, soluj, temp, state, model_func, model_name)
-			rjj = ternary.roui_jj(solv, solui, soluj, temp, state, model_func, model_name)
-			rjk = ternary.roui_jk(solv, solui, soluj, soluk, temp, state, model_func, model_name)
-			
+			ri_ii = ternary.roui_ii(solv, solui, temp, state, model_func, model_name)
+			ri_ij = ternary.roui_ij(solv, solui, soluj, temp, state, model_func, model_name)
+			ri_jj = ternary.roui_jj(solv, solui, soluj, temp, state, model_func, model_name)
+			ri_jk = ternary.roui_jk(solv, solui, soluj, soluk, temp, state, model_func, model_name)
+			ri_ik = ternary.roui_ij(solv, solui, soluk, temp, state, model_func, model_name)
+			ri_kk = ternary.roui_jj(solv, solui, soluk, temp, state, model_func, model_name)
 			# 准备结果
 			results = {
 				"solvent": solvent,
@@ -918,10 +927,12 @@ class AlloyActProGUI(QMainWindow):
 				"temperature": temp,
 				"state": state,
 				"model": model_name,
-				"ri_ii": round(rii, 3),
-				"ri_ij": round(rij, 3),
-				"ri_jj": round(rjj, 3),
-				"ri_jk": round(rjk, 3)
+				"ri_ii": round(ri_ii, 3),
+				"ri_ij": round(ri_ij, 3),
+				"ri_jj": round(ri_jj, 3),
+				"ri_jk": round(ri_jk, 3),
+				"ri_kk": round(ri_kk, 3),
+				"ri_ik": round(ri_ik, 3),
 			}
 			
 			# 显示结果
@@ -959,10 +970,12 @@ class AlloyActProGUI(QMainWindow):
 		result_text += f"活度值 (Darken模型): {results['activity']}\n"
 		result_text += f"活度值 (Wagner模型): {results['activity_wagner']}\n"
 		result_text += f"活度值 (Elliot模型): {results['activity_elliot']}\n"
+		result_text += f"活度值 (Corrected by G-D): {results['activity_corrected']}\n"
 		result_text += f"摩尔分数: {results['mole_fraction']}\n\n"
 		result_text += f"活度系数 (Darken模型): {results['activity_coefficient_darken']}\n"
 		result_text += f"活度系数 (Wagner模型): {results['activity_coefficient_wagner']}\n"
 		result_text += f"活度系数 (Elliot模型): {results['activity_coefficient_elliot']}\n"
+		result_text += f"活度系数 (Corrected by G-D): {results['activity_coefficient_corrected']}\n"
 		
 		if current_text:
 			self.activity_result.append(result_text)
@@ -1024,8 +1037,11 @@ class AlloyActProGUI(QMainWindow):
 		result_text += f"外推模型: {results['model']}\n\n"
 		result_text += f"ρi^ii: {results['ri_ii']}\n"
 		result_text += f"ρi^ij: {results['ri_ij']}\n"
+		result_text += f"ρi^ik: {results['ri_ik']}\n"
 		result_text += f"ρi^jj: {results['ri_jj']}\n"
 		result_text += f"ρi^jk: {results['ri_jk']}\n"
+		result_text += f"ρi^kk: {results['ri_kk']}\n"
+		
 		
 		if current_text:
 			self.second_result.append(result_text)
@@ -1137,8 +1153,8 @@ class AlloyActProGUI(QMainWindow):
 		self.activity_canvas.axes.clear()
 		
 		# 数据
-		models = ['Darken', 'Wagner', 'Elliot']
-		values = [results['activity'], results['activity_wagner'], results['activity_elliot']]
+		models = ['Darken', 'Wagner', 'Elliot','Corrected']
+		values = [results['activity'], results['activity_wagner'], results['activity_elliot'],results['activity_corrected']]
 		
 		# 创建柱状图
 		bars = self.activity_canvas.axes.bar(models, values, color=['#3498db', '#2ecc71', '#e74c3c'])
@@ -1219,15 +1235,19 @@ class AlloyActProGUI(QMainWindow):
 		coefficients = [
 			f'ρ_{solute_i}^{solute_i},{solute_i}',
 			f'ρ_{solute_i}^{solute_i},{solute_j}',
+			f'ρ_{solute_i}^{solute_i},{solute_k}',
 			f'ρ_{solute_i}^{solute_j},{solute_j}',
-			f'ρ_{solute_i}^{solute_j},{solute_k}'
+			f'ρ_{solute_i}^{solute_j},{solute_k}',
+			f'ρ_{solute_i}^{solute_k},{solute_k}',
 		]
 		
 		values = [
 			results['ri_ii'],
 			results['ri_ij'],
+			results['ri_ik'],
 			results['ri_jj'],
-			results['ri_jk']
+			results['ri_jk'],
+			results['ri_kk']
 		]
 		
 		# 创建柱状图

@@ -318,7 +318,14 @@ class ActivityTemperatureVariationWidget(QWidget):
 		self.binary_model = BinaryModel()
 		self.activity_calc_module = ActivityCoefficient()
 		
-		self.calculation_results = {"activity": {}, "activity_coefficient": {}}
+		# 🆕 修改数据结构，支持原始值和修正值
+		self.calculation_results = {
+			"activity": {},  # 原始Elliott模型的活度
+			"activity_coefficient": {},  # 原始Elliott模型的活度系数
+			"activity_corrected": {},  # 修正模型的活度
+			"activity_coefficient_corrected": {}  # 修正模型的活度系数
+		}
+		
 		self.current_parameters = {
 			"base_matrix": "", "solute": "", "solvent": "", "phase_state": "",
 			"order_degree": "", "temp_range": [], "selected_models": []
@@ -328,7 +335,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 		self.legend_cids = []
 		
 		self.setWindowTitle("热力学性质随温度变化计算器")
-		self.resize(1400, 800)  # 调整窗口大小
+		self.resize(1400, 800)
 		self.init_ui()
 		self.update_element_dropdowns()
 		self.apply_global_style()
@@ -555,8 +562,8 @@ class ActivityTemperatureVariationWidget(QWidget):
 		"""创建模型选择组"""
 		group = ModernGroupBox("⚙️ 外推模型选择")
 		layout = QGridLayout(group)
-		layout.setSpacing(10)  # 减少间距
-		layout.setContentsMargins(15, 20, 15, 15)  # 减少内边距
+		layout.setSpacing(10)
+		layout.setContentsMargins(15, 20, 15, 15)
 		
 		self.model_checkboxes = {}
 		models = [
@@ -573,6 +580,44 @@ class ActivityTemperatureVariationWidget(QWidget):
 			self.model_checkboxes[key] = checkbox
 			row, col = index // 2, index % 2
 			layout.addWidget(checkbox, row, col)
+		
+		# 🆕 添加对比选项
+		layout.addWidget(QFrame(), 2, 0, 1, 2)  # 分隔线
+		
+		# 对比选项复选框
+		self.comparison_checkbox = ModernCheckBox("📊 显示Elliott vs 修正模型对比")
+		self.comparison_checkbox.setStyleSheet("""
+	        QCheckBox {
+	            font-weight: bold;
+	            color: #2E5BBA;
+	            padding: 5px;
+	        }
+	        QCheckBox::indicator {
+	            width: 18px;
+	            height: 18px;
+	        }
+	        QCheckBox::indicator:unchecked {
+	            border: 2px solid #BDC3C7;
+	            background-color: white;
+	            border-radius: 3px;
+	        }
+	        QCheckBox::indicator:checked {
+	            border: 2px solid #2E5BBA;
+	            background-color: #2E5BBA;
+	            border-radius: 3px;
+	        }
+	        QCheckBox::indicator:checked::before {
+	            content: "✓";
+	            color: white;
+	            font-weight: bold;
+	            position: absolute;
+	            left: 3px;
+	            top: 1px;
+	        }
+	    """)
+		self.comparison_checkbox.setToolTip("勾选后将在图表和结果中同时显示Elliott原始模型和修正模型的对比")
+		self.comparison_checkbox.stateChanged.connect(self.on_comparison_option_changed)
+		layout.addWidget(self.comparison_checkbox, 3, 0, 1, 2)
 		
 		return group
 	
@@ -932,7 +977,13 @@ class ActivityTemperatureVariationWidget(QWidget):
 		"""计算所有属性"""
 		try:
 			self.has_calculated = False
-			self.calculation_results = {"activity": {}, "activity_coefficient": {}}
+			# 🆕 重置所有数据结构
+			self.calculation_results = {
+				"activity": {},
+				"activity_coefficient": {},
+				"activity_corrected": {},
+				"activity_coefficient_corrected": {}
+			}
 			
 			# 获取参数
 			base_matrix_str = self.matrix_input.text().strip()
@@ -985,26 +1036,45 @@ class ActivityTemperatureVariationWidget(QWidget):
 				QMessageBox.warning(self, "模型未选择", "请至少选择一个外推模型。")
 				return
 			
+			# 🆕 检查是否启用对比
+			is_comparison_enabled = self.comparison_checkbox.isChecked()
+			
 			# 创建结果HTML
 			current_timestamp = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
 			new_results_html = f"<hr><b>🕐 计算时间: {current_timestamp}</b><br>"
 			new_results_html += f"<b>📋 计算参数:</b><br>"
 			new_results_html += f"合金: {base_matrix_str}, 溶剂: {solvent_elem}, 溶质: {solute_elem}<br>"
 			new_results_html += f"相态: {phase}, 温度: {min_t}K - {max_t}K (步长 {step_t}K)<br>"
-			new_results_html += f"外推模型: {', '.join(self.current_parameters['selected_models'])}<hr>"
+			new_results_html += f"外推模型: {', '.join(self.current_parameters['selected_models'])}<br>"
+			
+			# 🆕 显示对比选项状态
+			comparison_status = "是" if is_comparison_enabled else "否"
+			new_results_html += f"Elliott vs 修正模型对比: {comparison_status}<hr>"
 			
 			# 设置进度条
-			total_calcs = len(selected_models_to_run) * len(temperatures)
+			total_calcs = len(selected_models_to_run) * len(temperatures) * (2 if is_comparison_enabled else 1)
 			if hasattr(self, 'progress_dialog'):
 				self.progress_dialog.setRange(0, total_calcs)
 			calcs_done = 0
 			
 			# 执行计算
 			for model_key_geo, geo_model_function in selected_models_to_run:
-				current_activities, current_coefficients = [], []
+				# 🆕 为每个模型存储原始值和修正值
+				current_activities = []
+				current_coefficients = []
+				current_activities_corrected = []
+				current_coefficients_corrected = []
+				
 				new_results_html += f"<br><b>⚙️ 外推模型: {model_key_geo}</b><br>"
-				new_results_html += "<font face='Courier New'>Temp(K)  | Act(a)   | ActCoef(γ)</font><br>"
-				new_results_html += "<font face='Courier New'>---------|----------|-----------</font><br>"
+				
+				if is_comparison_enabled:
+					# 🆕 对比模式的表头
+					new_results_html += "<font face='Courier New'>Temp(K)  | Elliott-Act | Elliott-γ  | Corrected-Act | Corrected-γ</font><br>"
+					new_results_html += "<font face='Courier New'>---------|------------|------------|---------------|-------------</font><br>"
+				else:
+					# 原始模式的表头
+					new_results_html += "<font face='Courier New'>Temp(K)  | Act(a)   | ActCoef(γ)</font><br>"
+					new_results_html += "<font face='Courier New'>---------|----------|-----------</font><br>"
 				
 				for temp_k in temperatures:
 					if hasattr(self, 'progress_dialog') and self.progress_dialog.wasCanceled():
@@ -1015,23 +1085,47 @@ class ActivityTemperatureVariationWidget(QWidget):
 					xi_solute = comp_for_calc.get(solute_elem, 0.0)
 					
 					try:
-						ln_gamma = self.activity_calc_module.activity_coefficient_elloit(
-								comp_for_calc, solute_elem, solvent_elem, temp_k, phase, geo_model_function,
-								model_key_geo
+						# 🆕 计算原始Elliott模型
+						ln_gamma = self.activity_calc_module.activity_coefficient_elliott(
+								comp_for_calc, solute_elem, solvent_elem, temp_k, phase,
+								geo_model_function, model_key_geo
 						)
 						gamma_val = math.exp(ln_gamma) if not (math.isnan(ln_gamma) or math.isinf(ln_gamma)) else float(
 								'nan')
 						act_val = gamma_val * xi_solute if not math.isnan(gamma_val) else float('nan')
 						
+						# 🆕 计算修正模型
+						ln_gamma_corr = self.activity_calc_module.activity_coefficient_corrected(
+								comp_for_calc, solute_elem, solvent_elem, temp_k, phase,
+								geo_model_function, model_key_geo
+						)
+						gamma_corr_val = math.exp(ln_gamma_corr) if not (
+								math.isnan(ln_gamma_corr) or math.isinf(ln_gamma_corr)) else float('nan')
+						act_corr_val = gamma_corr_val * xi_solute if not math.isnan(gamma_corr_val) else float('nan')
+						
+						# 存储数据
 						current_activities.append(act_val)
 						current_coefficients.append(gamma_val)
-						new_results_html += f"<font face='Courier New'>{temp_k:<9.1f}| {act_val:<9.4f}| {gamma_val:<10.4f}</font><br>"
+						current_activities_corrected.append(act_corr_val)
+						current_coefficients_corrected.append(gamma_corr_val)
+						
+						# 🆕 根据对比选项显示结果
+						if is_comparison_enabled:
+							new_results_html += f"<font face='Courier New'>{temp_k:<9.1f}| {act_val:<11.4f}| {gamma_val:<11.4f}| {act_corr_val:<14.4f}| {gamma_corr_val:<12.4f}</font><br>"
+						else:
+							new_results_html += f"<font face='Courier New'>{temp_k:<9.1f}| {act_val:<9.4f}| {gamma_val:<10.4f}</font><br>"
 					
 					except Exception as e_calc:
 						print(f"计算错误 (T={temp_k}K, 模型={model_key_geo}): {e_calc}")
 						current_activities.append(float('nan'))
 						current_coefficients.append(float('nan'))
-						new_results_html += f"<font face='Courier New'>{temp_k:<9.1f}|   N/A    |     N/A    </font><br>"
+						current_activities_corrected.append(float('nan'))
+						current_coefficients_corrected.append(float('nan'))
+						
+						if is_comparison_enabled:
+							new_results_html += f"<font face='Courier New'>{temp_k:<9.1f}|     N/A    |     N/A    |      N/A      |     N/A     </font><br>"
+						else:
+							new_results_html += f"<font face='Courier New'>{temp_k:<9.1f}|   N/A    |     N/A    </font><br>"
 					
 					calcs_done += 1
 					if hasattr(self, 'progress_dialog'):
@@ -1041,7 +1135,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 				if hasattr(self, 'progress_dialog') and self.progress_dialog.wasCanceled():
 					break
 				
-				# 存储结果
+				# 🆕 存储所有结果
 				self.calculation_results["activity"][model_key_geo] = {
 					"temperatures": temperatures.copy(),
 					"values": np.array(current_activities)
@@ -1049,6 +1143,14 @@ class ActivityTemperatureVariationWidget(QWidget):
 				self.calculation_results["activity_coefficient"][model_key_geo] = {
 					"temperatures": temperatures.copy(),
 					"values": np.array(current_coefficients)
+				}
+				self.calculation_results["activity_corrected"][model_key_geo] = {
+					"temperatures": temperatures.copy(),
+					"values": np.array(current_activities_corrected)
+				}
+				self.calculation_results["activity_coefficient_corrected"][model_key_geo] = {
+					"temperatures": temperatures.copy(),
+					"values": np.array(current_coefficients_corrected)
 				}
 			
 			# 更新界面
@@ -1075,19 +1177,30 @@ class ActivityTemperatureVariationWidget(QWidget):
 			return
 		
 		selected_prop_idx = self.property_combo.currentIndex()
-		prop_to_plot = "activity" if selected_prop_idx == 0 else "activity_coefficient"
-		data_for_plotting = self.calculation_results.get(prop_to_plot, {})
+		is_comparison_enabled = self.comparison_checkbox.isChecked()
 		
-		if not data_for_plotting:
-			self.figure.clear()
-			ax = self.figure.add_subplot(111)
-			ax.text(0.5, 0.5, "无数据可显示", ha='center', va='center', transform=ax.transAxes,
-			        fontsize=14, color='#666666')
-			ax.set_facecolor('#F8F9FA')
-			self.canvas.draw()
-			return
-		
-		self.plot_property_variation(data_for_plotting, prop_to_plot)
+		if is_comparison_enabled:
+			# 🆕 对比模式：同时显示原始和修正值
+			prop_to_plot = "activity" if selected_prop_idx == 0 else "activity_coefficient"
+			original_data = self.calculation_results.get(prop_to_plot, {})
+			corrected_data = self.calculation_results.get(f"{prop_to_plot}_corrected", {})
+			
+			self.plot_comparison_variation(original_data, corrected_data, prop_to_plot)
+		else:
+			# 原始模式：只显示Elliott原始值
+			prop_to_plot = "activity" if selected_prop_idx == 0 else "activity_coefficient"
+			data_for_plotting = self.calculation_results.get(prop_to_plot, {})
+			
+			if not data_for_plotting:
+				self.figure.clear()
+				ax = self.figure.add_subplot(111)
+				ax.text(0.5, 0.5, "无数据可显示", ha='center', va='center', transform=ax.transAxes,
+				        fontsize=14, color='#666666')
+				ax.set_facecolor('#F8F9FA')
+				self.canvas.draw()
+				return
+			
+			self.plot_property_variation(data_for_plotting, prop_to_plot)
 	
 	def plot_property_variation (self, model_data_dict, property_type):
 		"""绘制属性变化图"""
@@ -1171,6 +1284,155 @@ class ActivityTemperatureVariationWidget(QWidget):
 		self.figure.tight_layout(rect=[0, 0, 1, 0.96])
 		self.canvas.draw()
 	
+	def on_comparison_option_changed (self):
+		"""处理对比选项变化"""
+		if self.has_calculated:
+			# 如果已经有计算结果，重新绘制图表
+			self.update_plot_display_only()
+			# 重新显示结果
+			self.refresh_results_display()
+		
+		if self.comparison_checkbox.isChecked():
+			self.status_bar.set_status("已启用Elliott vs 修正模型对比显示")
+		else:
+			self.status_bar.set_status("已关闭对比显示")
+	
+	def plot_comparison_variation (self, original_data, corrected_data, property_type):
+		"""绘制对比图表：Elliott原始 vs 修正模型"""
+		self.figure.clear()
+		ax = self.figure.add_subplot(111)
+		
+		# 设置图表样式
+		ax.set_facecolor('#FAFAFA')
+		self.figure.patch.set_facecolor('white')
+		
+		plot_handles, plot_labels = [], []
+		color_cycle = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6', '#1ABC9C', '#E67E22', '#34495E']
+		marker_cycle = ['o', 's', '^', 'D', 'v', 'P', '*', 'X']
+		line_styles = ['-', '--']  # 实线表示原始，虚线表示修正
+		min_T_overall, max_T_overall = float('inf'), float('-inf')
+		
+		plot_index = 0
+		
+		# 🆕 绘制对比曲线
+		for i, model_key in enumerate(original_data.keys()):
+			if model_key not in corrected_data:
+				continue
+			
+			# 原始Elliott数据
+			orig_data = original_data[model_key]
+			orig_temps, orig_vals = orig_data.get("temperatures"), orig_data.get("values")
+			
+			# 修正模型数据
+			corr_data = corrected_data[model_key]
+			corr_temps, corr_vals = corr_data.get("temperatures"), corr_data.get("values")
+			
+			if (orig_temps is None or orig_vals is None or len(orig_temps) == 0 or
+					corr_temps is None or corr_vals is None or len(corr_temps) == 0):
+				continue
+			
+			# 处理原始数据
+			orig_valid_indices = ~np.isnan(orig_vals) & ~np.isinf(orig_vals)
+			orig_temps_p, orig_vals_p = orig_temps[orig_valid_indices], orig_vals[orig_valid_indices]
+			
+			# 处理修正数据
+			corr_valid_indices = ~np.isnan(corr_vals) & ~np.isinf(corr_vals)
+			corr_temps_p, corr_vals_p = corr_temps[corr_valid_indices], corr_vals[corr_valid_indices]
+			
+			if len(orig_temps_p) == 0 and len(corr_temps_p) == 0:
+				continue
+			
+			# 更新温度范围
+			if len(orig_temps_p) > 0:
+				min_T_overall = min(min_T_overall, orig_temps_p.min())
+				max_T_overall = max(max_T_overall, orig_temps_p.max())
+			if len(corr_temps_p) > 0:
+				min_T_overall = min(min_T_overall, corr_temps_p.min())
+				max_T_overall = max(max_T_overall, corr_temps_p.max())
+			
+			color = color_cycle[i % len(color_cycle)]
+			marker = marker_cycle[i % len(marker_cycle)]
+			
+			# 绘制原始Elliott曲线
+			if len(orig_temps_p) > 0:
+				line_orig, = ax.plot(orig_temps_p, orig_vals_p,
+				                     label=f'{model_key} (Elliott)',
+				                     color=color,
+				                     marker=marker,
+				                     markersize=6,
+				                     linewidth=2.5,
+				                     linestyle='-',
+				                     alpha=0.8)
+				plot_handles.append(line_orig)
+				plot_labels.append(f'{model_key} (Elliott)')
+			
+			# 绘制修正模型曲线
+			if len(corr_temps_p) > 0:
+				line_corr, = ax.plot(corr_temps_p, corr_vals_p,
+				                     label=f'{model_key} (修正)',
+				                     color=color,
+				                     marker=marker,
+				                     markersize=6,
+				                     linewidth=2.5,
+				                     linestyle='--',
+				                     alpha=0.8)
+				plot_handles.append(line_corr)
+				plot_labels.append(f'{model_key} (修正)')
+		
+		# 设置标签和标题
+		solute = self.current_parameters.get("solute", "?")
+		prop_name_cn = "活度" if property_type == "activity" else "活度系数"
+		y_label = f"{prop_name_cn} ($a_{{{solute}}}$)" if property_type == "activity" else f"{prop_name_cn} ($\\gamma_{{{solute}}}$)"
+		
+		title = (f"{self.current_parameters.get('base_matrix', 'N/A')} 中 {solute} 的 {prop_name_cn} vs. 温度\n"
+		         f"Elliott模型 vs 修正模型对比 | 溶剂: {self.current_parameters.get('solvent', 'N/A')}, "
+		         f"相态: {self.current_parameters.get('phase_state', 'N/A')}")
+		
+		ax.set_xlabel("温度 (K)", fontsize=12, fontweight='bold')
+		ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
+		ax.set_title(title, fontsize=13, fontweight='bold', pad=20, color='#2C3E50')
+		
+		# 网格设置
+		ax.grid(True, linestyle='--', alpha=0.3, color='#BDC3C7')
+		ax.tick_params(axis='both', which='major', labelsize=10)
+		
+		# 添加参考线
+		if plot_handles and min_T_overall != float('inf'):
+			if property_type == "activity":
+				comp_dict_ref = ActivityTemperatureVariationWidget._parse_composition_static(
+						self.current_parameters["base_matrix"])
+				if comp_dict_ref and solute in comp_dict_ref:
+					mole_frac = comp_dict_ref[solute]
+					ax.axhline(y=mole_frac, color='#7F8C8D', linestyle=':', linewidth=2, alpha=0.7,
+					           label=f"$X_{{{solute}}}$ = {mole_frac:.3f}")
+			elif property_type == "activity_coefficient":
+				ax.axhline(y=1.0, color='#7F8C8D', linestyle=':', linewidth=2, alpha=0.7,
+				           label="理想溶液 ($\\gamma=1$)")
+		
+		# 🆕 特殊的对比图例设置
+		if plot_handles:
+			# 创建自定义图例
+			import matplotlib.lines as mlines
+			legend_elements = []
+			
+			# 添加数据线条
+			for handle, label in zip(plot_handles, plot_labels):
+				legend_elements.append(handle)
+			
+			# 添加图例说明
+			legend_elements.append(mlines.Line2D([], [], color='black', linestyle='-', label='Elliott原始'))
+			legend_elements.append(mlines.Line2D([], [], color='black', linestyle='--', label='修正模型'))
+			
+			ax.legend(handles=legend_elements, loc='best', fontsize=9, frameon=True,
+			          fancybox=True, shadow=True, framealpha=0.9, facecolor='white',
+			          edgecolor='#CCCCCC', ncol=1)
+		else:
+			ax.text(0.5, 0.5, "无有效数据", ha='center', va='center', transform=ax.transAxes,
+			        fontsize=14, color='#E74C3C', fontweight='bold')
+		
+		# 调整布局
+		self.figure.tight_layout(rect=[0, 0, 1, 0.96])
+		self.canvas.draw()
 	def export_data (self):
 		"""导出数据"""
 		if not self.has_calculated or not any(self.calculation_results.values()):
@@ -1205,6 +1467,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 		
 		all_temps = set()
 		sel_models = self.current_parameters.get("selected_models", [])
+		is_comparison_enabled = self.comparison_checkbox.isChecked()
 		
 		if not sel_models:
 			return
@@ -1229,40 +1492,100 @@ class ActivityTemperatureVariationWidget(QWidget):
 			for key, val in self.current_parameters.items():
 				value_str = ", ".join(val) if isinstance(val, list) and key == "selected_models" else str(val)
 				writer.writerow([f"# {key}", value_str])
+			writer.writerow([f"# 对比模式", "是" if is_comparison_enabled else "否"])
 			writer.writerow([])
 			
-			# 写入数据表头
-			header = ['温度 (K)']
-			for mk in sel_models:
-				header.extend([f'{mk}-活度(a)', f'{mk}-活度系数(γ)'])
+			# 🆕 根据对比模式写入不同的表头
+			if is_comparison_enabled:
+				header = ['温度 (K)']
+				for mk in sel_models:
+					header.extend([
+						f'{mk}-Elliott-活度(a)', f'{mk}-Elliott-活度系数(γ)',
+						f'{mk}-修正-活度(a)', f'{mk}-修正-活度系数(γ)'
+					])
+			else:
+				header = ['温度 (K)']
+				for mk in sel_models:
+					header.extend([f'{mk}-活度(a)', f'{mk}-活度系数(γ)'])
+			
 			writer.writerow(header)
 			
 			# 写入数据
 			for temp_k in sorted_temps:
 				row = [temp_k]
 				for model_key in sel_models:
-					act_v, coef_v = "N/A", "N/A"
-					
-					# 活度数据
-					if model_key in self.calculation_results["activity"]:
-						temps_list_act = list(self.calculation_results["activity"][model_key]["temperatures"])
-						if temp_k in temps_list_act:
-							idx_act = temps_list_act.index(temp_k)
-							val_act = self.calculation_results["activity"][model_key]["values"][idx_act]
-							if not (math.isnan(val_act) or math.isinf(val_act)):
-								act_v = f"{val_act:.6f}"
-					
-					# 活度系数数据
-					if model_key in self.calculation_results["activity_coefficient"]:
-						temps_list_coef = list(
-								self.calculation_results["activity_coefficient"][model_key]["temperatures"])
-						if temp_k in temps_list_coef:
-							idx_coef = temps_list_coef.index(temp_k)
-							val_coef = self.calculation_results["activity_coefficient"][model_key]["values"][idx_coef]
-							if not (math.isnan(val_coef) or math.isinf(val_coef)):
-								coef_v = f"{val_coef:.6f}"
-					
-					row.extend([act_v, coef_v])
+					if is_comparison_enabled:
+						# 🆕 对比模式：输出4列数据
+						# Elliott原始活度
+						act_elliott = "N/A"
+						if model_key in self.calculation_results["activity"]:
+							temps_list = list(self.calculation_results["activity"][model_key]["temperatures"])
+							if temp_k in temps_list:
+								idx = temps_list.index(temp_k)
+								val = self.calculation_results["activity"][model_key]["values"][idx]
+								if not (math.isnan(val) or math.isinf(val)):
+									act_elliott = f"{val:.6f}"
+						
+						# Elliott原始活度系数
+						coef_elliott = "N/A"
+						if model_key in self.calculation_results["activity_coefficient"]:
+							temps_list = list(
+									self.calculation_results["activity_coefficient"][model_key]["temperatures"])
+							if temp_k in temps_list:
+								idx = temps_list.index(temp_k)
+								val = self.calculation_results["activity_coefficient"][model_key]["values"][idx]
+								if not (math.isnan(val) or math.isinf(val)):
+									coef_elliott = f"{val:.6f}"
+						
+						# 修正模型活度
+						act_corrected = "N/A"
+						if model_key in self.calculation_results["activity_corrected"]:
+							temps_list = list(self.calculation_results["activity_corrected"][model_key]["temperatures"])
+							if temp_k in temps_list:
+								idx = temps_list.index(temp_k)
+								val = self.calculation_results["activity_corrected"][model_key]["values"][idx]
+								if not (math.isnan(val) or math.isinf(val)):
+									act_corrected = f"{val:.6f}"
+						
+						# 修正模型活度系数
+						coef_corrected = "N/A"
+						if model_key in self.calculation_results["activity_coefficient_corrected"]:
+							temps_list = list(
+									self.calculation_results["activity_coefficient_corrected"][model_key][
+										"temperatures"])
+							if temp_k in temps_list:
+								idx = temps_list.index(temp_k)
+								val = self.calculation_results["activity_coefficient_corrected"][model_key]["values"][
+									idx]
+								if not (math.isnan(val) or math.isinf(val)):
+									coef_corrected = f"{val:.6f}"
+						
+						row.extend([act_elliott, coef_elliott, act_corrected, coef_corrected])
+					else:
+						# 原始模式：只输出Elliott原始值
+						act_v, coef_v = "N/A", "N/A"
+						
+						# 活度数据
+						if model_key in self.calculation_results["activity"]:
+							temps_list_act = list(self.calculation_results["activity"][model_key]["temperatures"])
+							if temp_k in temps_list_act:
+								idx_act = temps_list_act.index(temp_k)
+								val_act = self.calculation_results["activity"][model_key]["values"][idx_act]
+								if not (math.isnan(val_act) or math.isinf(val_act)):
+									act_v = f"{val_act:.6f}"
+						
+						# 活度系数数据
+						if model_key in self.calculation_results["activity_coefficient"]:
+							temps_list_coef = list(
+									self.calculation_results["activity_coefficient"][model_key]["temperatures"])
+							if temp_k in temps_list_coef:
+								idx_coef = temps_list_coef.index(temp_k)
+								val_coef = self.calculation_results["activity_coefficient"][model_key]["values"][
+									idx_coef]
+								if not (math.isnan(val_coef) or math.isinf(val_coef)):
+									coef_v = f"{val_coef:.6f}"
+						
+						row.extend([act_v, coef_v])
 				
 				writer.writerow(row)
 	
@@ -1293,11 +1616,23 @@ class ActivityTemperatureVariationWidget(QWidget):
 			'bold': True, 'bg_color': '#ECF0F1', 'border': 1
 		})
 		
+		# 🆕 对比模式的特殊格式
+		elliott_format = workbook.add_format({
+			'num_format': '0.000000', 'align': 'center', 'border': 1,
+			'bg_color': '#E8F4FD'  # 浅蓝色背景
+		})
+		corrected_format = workbook.add_format({
+			'num_format': '0.000000', 'align': 'center', 'border': 1,
+			'bg_color': '#E8F6F3'  # 浅绿色背景
+		})
+		
 		row = 0
+		is_comparison_enabled = self.comparison_checkbox.isChecked()
 		
 		# 标题
-		worksheet.write(row, 0, '热力学性质计算结果', title_format)
-		worksheet.merge_range(row, 0, row, 5, '热力学性质计算结果', title_format)
+		title_text = '热力学性质计算结果 (对比模式)' if is_comparison_enabled else '热力学性质计算结果'
+		worksheet.write(row, 0, title_text, title_format)
+		worksheet.merge_range(row, 0, row, 8 if is_comparison_enabled else 5, title_text, title_format)
 		row += 2
 		
 		# 参数信息
@@ -1320,7 +1655,10 @@ class ActivityTemperatureVariationWidget(QWidget):
 			worksheet.write(row, 1, value_str)
 			row += 1
 		
-		row += 1
+		# 🆕 添加对比模式说明
+		worksheet.write(row, 0, '对比模式', param_format)
+		worksheet.write(row, 1, "是" if is_comparison_enabled else "否")
+		row += 2
 		
 		# 数据表格
 		all_temps = set()
@@ -1341,16 +1679,27 @@ class ActivityTemperatureVariationWidget(QWidget):
 			workbook.close()
 			return
 		
-		# 表头
+		# 🆕 根据对比模式设置不同的表头
 		col = 0
 		worksheet.write(row, col, '温度 (K)', header_format)
 		col += 1
 		
-		for mk in sel_models:
-			worksheet.write(row, col, f'{mk}-活度(a)', header_format)
-			col += 1
-			worksheet.write(row, col, f'{mk}-活度系数(γ)', header_format)
-			col += 1
+		if is_comparison_enabled:
+			for mk in sel_models:
+				worksheet.write(row, col, f'{mk}-Elliott-活度', header_format)
+				col += 1
+				worksheet.write(row, col, f'{mk}-Elliott-γ', header_format)
+				col += 1
+				worksheet.write(row, col, f'{mk}-修正-活度', header_format)
+				col += 1
+				worksheet.write(row, col, f'{mk}-修正-γ', header_format)
+				col += 1
+		else:
+			for mk in sel_models:
+				worksheet.write(row, col, f'{mk}-活度(a)', header_format)
+				col += 1
+				worksheet.write(row, col, f'{mk}-活度系数(γ)', header_format)
+				col += 1
 		
 		row += 1
 		
@@ -1361,28 +1710,80 @@ class ActivityTemperatureVariationWidget(QWidget):
 			col += 1
 			
 			for mk in sel_models:
-				# 活度
-				act_v = np.nan
-				if mk in self.calculation_results["activity"]:
-					temps_list_act = list(self.calculation_results["activity"][mk]["temperatures"])
-					if tk in temps_list_act:
-						idx_act = temps_list_act.index(tk)
-						act_v = self.calculation_results["activity"][mk]["values"][idx_act]
-				
-				# 活度系数
-				coef_v = np.nan
-				if mk in self.calculation_results["activity_coefficient"]:
-					temps_list_coef = list(self.calculation_results["activity_coefficient"][mk]["temperatures"])
-					if tk in temps_list_coef:
-						idx_coef = temps_list_coef.index(tk)
-						coef_v = self.calculation_results["activity_coefficient"][mk]["values"][idx_coef]
-				
-				# 写入数据
-				worksheet.write(row, col, act_v if not (math.isnan(act_v) or math.isinf(act_v)) else "N/A", data_format)
-				col += 1
-				worksheet.write(row, col, coef_v if not (math.isnan(coef_v) or math.isinf(coef_v)) else "N/A",
-				                data_format)
-				col += 1
+				if is_comparison_enabled:
+					# 🆕 对比模式：4列数据，使用不同颜色
+					# Elliott原始活度
+					act_elliott = np.nan
+					if mk in self.calculation_results["activity"]:
+						temps_list = list(self.calculation_results["activity"][mk]["temperatures"])
+						if tk in temps_list:
+							idx = temps_list.index(tk)
+							act_elliott = self.calculation_results["activity"][mk]["values"][idx]
+					
+					# Elliott原始活度系数
+					coef_elliott = np.nan
+					if mk in self.calculation_results["activity_coefficient"]:
+						temps_list = list(self.calculation_results["activity_coefficient"][mk]["temperatures"])
+						if tk in temps_list:
+							idx = temps_list.index(tk)
+							coef_elliott = self.calculation_results["activity_coefficient"][mk]["values"][idx]
+					
+					# 修正活度
+					act_corrected = np.nan
+					if mk in self.calculation_results["activity_corrected"]:
+						temps_list = list(self.calculation_results["activity_corrected"][mk]["temperatures"])
+						if tk in temps_list:
+							idx = temps_list.index(tk)
+							act_corrected = self.calculation_results["activity_corrected"][mk]["values"][idx]
+					
+					# 修正活度系数
+					coef_corrected = np.nan
+					if mk in self.calculation_results["activity_coefficient_corrected"]:
+						temps_list = list(
+								self.calculation_results["activity_coefficient_corrected"][mk]["temperatures"])
+						if tk in temps_list:
+							idx = temps_list.index(tk)
+							coef_corrected = self.calculation_results["activity_coefficient_corrected"][mk]["values"][
+								idx]
+					
+					# 写入数据，使用不同颜色格式
+					worksheet.write(row, col,
+					                act_elliott if not (math.isnan(act_elliott) or math.isinf(act_elliott)) else "N/A",
+					                elliott_format)
+					col += 1
+					worksheet.write(row, col,
+					                coef_elliott if not (
+								                math.isnan(coef_elliott) or math.isinf(coef_elliott)) else "N/A",
+					                elliott_format)
+					col += 1
+					worksheet.write(row, col, act_corrected if not (
+							math.isnan(act_corrected) or math.isinf(act_corrected)) else "N/A", corrected_format)
+					col += 1
+					worksheet.write(row, col, coef_corrected if not (
+							math.isnan(coef_corrected) or math.isinf(coef_corrected)) else "N/A", corrected_format)
+					col += 1
+				else:
+					# 原始模式：只有Elliott原始值
+					act_v = np.nan
+					if mk in self.calculation_results["activity"]:
+						temps_list_act = list(self.calculation_results["activity"][mk]["temperatures"])
+						if tk in temps_list_act:
+							idx_act = temps_list_act.index(tk)
+							act_v = self.calculation_results["activity"][mk]["values"][idx_act]
+					
+					coef_v = np.nan
+					if mk in self.calculation_results["activity_coefficient"]:
+						temps_list_coef = list(self.calculation_results["activity_coefficient"][mk]["temperatures"])
+						if tk in temps_list_coef:
+							idx_coef = temps_list_coef.index(tk)
+							coef_v = self.calculation_results["activity_coefficient"][mk]["values"][idx_coef]
+					
+					worksheet.write(row, col, act_v if not (math.isnan(act_v) or math.isinf(act_v)) else "N/A",
+					                data_format)
+					col += 1
+					worksheet.write(row, col, coef_v if not (math.isnan(coef_v) or math.isinf(coef_v)) else "N/A",
+					                data_format)
+					col += 1
 			
 			row += 1
 		

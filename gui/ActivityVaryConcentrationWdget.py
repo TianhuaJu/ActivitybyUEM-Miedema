@@ -17,7 +17,6 @@ from PyQt5.QtGui import QFont, QPalette, QColor, QIcon, QPixmap, QPainter, QLine
 from models.extrapolation_models import BinaryModel
 from calculations.activity_calculator import ActivityCoefficient
 
-
 # Matplotlib 全局设置
 matplotlib.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'FangSong', 'SimSun', 'DejaVu Sans']
 matplotlib.rcParams['axes.unicode_minus'] = False
@@ -317,7 +316,13 @@ class CompositionVariationWidget(QWidget):
 		self.binary_model = BinaryModel()
 		self.activity_calc_module = ActivityCoefficient()
 		
-		self.calculation_results = {"activity": {}, "activity_coefficient": {}}
+		# 扩展数据结构以支持修正值
+		self.calculation_results = {
+			"activity": {},
+			"activity_coefficient": {},
+			"activity_corrected": {},  # 新增：修正活度
+			"activity_coefficient_corrected": {}  # 新增：修正活度系数
+		}
 		self.current_parameters = {
 			"base_matrix": "", "target_element": "", "varying_element": "", "matrix_element": "",
 			"phase_state": "", "temperature": 0, "composition_range": [], "selected_models": []
@@ -601,8 +606,14 @@ class CompositionVariationWidget(QWidget):
 		export_button = ModernButton("📤 导出数据", "success")
 		export_button.clicked.connect(self.export_data)
 		
+		# 新增：导出对比数据按钮
+		export_comparison_button = ModernButton("📊 导出对比", "secondary")
+		export_comparison_button.clicked.connect(self.export_comparison_data)
+		export_comparison_button.setToolTip("导出原始值与修正值的对比数据")
+		
 		button_layout.addWidget(calculate_button)
 		button_layout.addWidget(export_button)
+		button_layout.addWidget(export_comparison_button)
 		
 		return button_layout
 	
@@ -929,7 +940,7 @@ class CompositionVariationWidget(QWidget):
 			"UEM1": self.binary_model.UEM1,
 			"Toop-Muggianu": self.binary_model.Toop_Muggianu,
 			"GSM": self.binary_model.GSM,
-			"Muggianu": getattr(self.binary_model, 'Muggianu', None)
+			"Muggianu": self.binary_model.Muggianu
 		}
 		
 		func = model_method_map.get(model_name_str)
@@ -975,10 +986,16 @@ class CompositionVariationWidget(QWidget):
 			self.progress_dialog.close()
 	
 	def calculate_all_properties (self):
-		"""计算所有属性"""
+		"""计算所有属性 - 包含原始值和修正值"""
 		try:
 			self.has_calculated = False
-			self.calculation_results = {"activity": {}, "activity_coefficient": {}}
+			# 扩展数据结构以支持修正值
+			self.calculation_results = {
+				"activity": {},
+				"activity_coefficient": {},
+				"activity_corrected": {},  # 新增：修正活度
+				"activity_coefficient_corrected": {}  # 新增：修正活度系数
+			}
 			
 			# 获取参数
 			base_matrix_str = self.matrix_input.text().strip()
@@ -1034,7 +1051,7 @@ class CompositionVariationWidget(QWidget):
 				QMessageBox.warning(self, "模型未选择", "请至少选择一个外推模型。")
 				return
 			
-			# 创建结果HTML
+			# 创建结果HTML - 增强对比显示
 			current_timestamp = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
 			new_results_html = f"<hr><b>🕐 计算时间: {current_timestamp}</b><br>"
 			new_results_html += f"<b>📋 计算参数:</b><br>"
@@ -1052,16 +1069,19 @@ class CompositionVariationWidget(QWidget):
 			
 			# 执行计算
 			for model_key_geo, geo_model_function in selected_models_to_run:
+				# 初始化数据数组
 				current_activities, current_coefficients = [], []
+				current_activities_corrected, current_coefficients_corrected = [], []
 				composition_values = []
 				
 				new_results_html += f"<br><b>⚙️ 外推模型: {model_key_geo}</b><br>"
-				new_results_html += f"<font face='Courier New'>X_{varying_elem}   | Act(a)   | ActCoef(γ)</font><br>"
-				new_results_html += f"<font face='Courier New'>---------|----------|-----------</font><br>"
+				# 更新表头，增加修正值和差异列
+				new_results_html += f"<font face='Courier New' color='#2C3E50'><b>X_{varying_elem}   | Act(原始) | ActCoef(原始) | Act(修正) | ActCoef(修正) | Δa(%)  | Δγ(%)</b></font><br>"
+				new_results_html += f"<font face='Courier New'>---------|-----------|-------------|-----------|-------------|--------|------</font><br>"
 				
 				for comp_val in compositions:
 					if hasattr(self, 'progress_dialog') and self.progress_dialog.wasCanceled():
-						new_results_html += "❌ 计算已取消<br>"
+						new_results_html += "<font color='red'>❌ 计算已取消</font><br>"
 						break
 					
 					# 构建当前组成
@@ -1069,35 +1089,86 @@ class CompositionVariationWidget(QWidget):
 					if current_comp is None:
 						current_activities.append(float('nan'))
 						current_coefficients.append(float('nan'))
-						new_results_html += f"<font face='Courier New'>{comp_val:<9.3f}|   N/A    |     N/A    </font><br>"
+						current_activities_corrected.append(float('nan'))
+						current_coefficients_corrected.append(float('nan'))
+						new_results_html += f"<font face='Courier New'>{comp_val:<9.3f}|   N/A     |     N/A     |   N/A     |     N/A     |  N/A   |  N/A</font><br>"
 						calcs_done += 1
 						continue
 					
 					try:
-						# 计算活度系数
-						ln_gamma = self.activity_calc_module.activity_coefficient_elloit(
-								current_comp, target_elem, matrix_elem, temperature, phase, geo_model_function,
-								model_key_geo
-						)
+						# 计算原始活度系数
+						ln_gamma = self.activity_calc_module.activity_coefficient_elliott(current_comp, target_elem,
+						                                                                  matrix_elem, temperature,
+						                                                                  phase, geo_model_function,
+						                                                                  model_key_geo,verify_gd= True,gd_verbose=True)
 						gamma_val = math.exp(ln_gamma) if not (math.isnan(ln_gamma) or math.isinf(ln_gamma)) else float(
-								'nan')
+							'nan')
+						
+						# 计算修正活度系数
+						ln_gamma_corrc = self.activity_calc_module.activity_coefficient_corrected(
+								current_comp, target_elem, matrix_elem, temperature, phase, geo_model_function,
+								model_key_geo,verify_gd= True,gd_verbose=True)
+						gamma_corr_val = math.exp(ln_gamma_corrc) if not (
+									math.isnan(ln_gamma_corrc) or math.isinf(ln_gamma_corrc)) else float('nan')
 						
 						# 计算活度
 						xi_target = current_comp.get(target_elem, 0.0)
 						act_val = gamma_val * xi_target if not math.isnan(gamma_val) else float('nan')
+						act_val_corrc = gamma_corr_val * xi_target if not math.isnan(gamma_corr_val) else float('nan')
 						
+						# 计算相对差异百分比
+						if not (math.isnan(act_val) or math.isnan(act_val_corrc)) and abs(act_val) > 1e-10:
+							delta_act_percent = abs((act_val_corrc - act_val) / act_val) * 100
+						else:
+							delta_act_percent = float('nan')
+						
+						if not (math.isnan(gamma_val) or math.isnan(gamma_corr_val)) and abs(gamma_val) > 1e-10:
+							delta_gamma_percent = abs((gamma_corr_val - gamma_val) / gamma_val) * 100
+						else:
+							delta_gamma_percent = float('nan')
+						
+						# 存储结果
 						current_activities.append(act_val)
 						current_coefficients.append(gamma_val)
+						current_activities_corrected.append(act_val_corrc)
+						current_coefficients_corrected.append(gamma_corr_val)
 						composition_values.append(comp_val)
 						
-						new_results_html += f"<font face='Courier New'>{comp_val:<9.3f}| {act_val:<9.4f}| {gamma_val:<10.4f}</font><br>"
+						# 格式化显示 - 带颜色标识差异大小
+						delta_act_str = f"{delta_act_percent:6.2f}" if not math.isnan(delta_act_percent) else "  N/A"
+						delta_gamma_str = f"{delta_gamma_percent:6.2f}" if not math.isnan(
+							delta_gamma_percent) else "  N/A"
+						
+						# 根据差异大小设置颜色
+						if not math.isnan(delta_act_percent) and delta_act_percent > 5:
+							delta_act_color = "#E74C3C"  # 红色：差异大
+						elif not math.isnan(delta_act_percent) and delta_act_percent > 1:
+							delta_act_color = "#F39C12"  # 橙色：差异中等
+						else:
+							delta_act_color = "#27AE60"  # 绿色：差异小
+						
+						if not math.isnan(delta_gamma_percent) and delta_gamma_percent > 5:
+							delta_gamma_color = "#E74C3C"
+						elif not math.isnan(delta_gamma_percent) and delta_gamma_percent > 1:
+							delta_gamma_color = "#F39C12"
+						else:
+							delta_gamma_color = "#27AE60"
+						
+						new_results_html += (
+							f"<font face='Courier New'>{comp_val:<9.3f}| {act_val:<10.4f}| {gamma_val:<12.4f}| "
+							f"{act_val_corrc:<10.4f}| {gamma_corr_val:<12.4f}| "
+							f"<font color='{delta_act_color}'>{delta_act_str}</font>| "
+							f"<font color='{delta_gamma_color}'>{delta_gamma_str}</font></font><br>"
+						)
 					
 					except Exception as e_calc:
 						print(f"计算错误 (X={comp_val}, 模型={model_key_geo}): {e_calc}")
 						current_activities.append(float('nan'))
 						current_coefficients.append(float('nan'))
+						current_activities_corrected.append(float('nan'))
+						current_coefficients_corrected.append(float('nan'))
 						composition_values.append(comp_val)
-						new_results_html += f"<font face='Courier New'>{comp_val:<9.3f}|   N/A    |     N/A    </font><br>"
+						new_results_html += f"<font face='Courier New'>{comp_val:<9.3f}|   N/A     |     N/A     |   N/A     |     N/A     |  N/A   |  N/A</font><br>"
 					
 					calcs_done += 1
 					if hasattr(self, 'progress_dialog'):
@@ -1107,7 +1178,7 @@ class CompositionVariationWidget(QWidget):
 				if hasattr(self, 'progress_dialog') and self.progress_dialog.wasCanceled():
 					break
 				
-				# 存储结果
+				# 存储所有结果（原始值和修正值）
 				self.calculation_results["activity"][model_key_geo] = {
 					"compositions": np.array(composition_values),
 					"values": np.array(current_activities)
@@ -1116,6 +1187,40 @@ class CompositionVariationWidget(QWidget):
 					"compositions": np.array(composition_values),
 					"values": np.array(current_coefficients)
 				}
+				self.calculation_results["activity_corrected"][model_key_geo] = {
+					"compositions": np.array(composition_values),
+					"values": np.array(current_activities_corrected)
+				}
+				self.calculation_results["activity_coefficient_corrected"][model_key_geo] = {
+					"compositions": np.array(composition_values),
+					"values": np.array(current_coefficients_corrected)
+				}
+				
+				# 添加统计对比信息
+				if len(current_activities) > 0 and len(current_activities_corrected) > 0:
+					valid_orig_act = [x for x in current_activities if not math.isnan(x)]
+					valid_corr_act = [x for x in current_activities_corrected if not math.isnan(x)]
+					valid_orig_gamma = [x for x in current_coefficients if not math.isnan(x)]
+					valid_corr_gamma = [x for x in current_coefficients_corrected if not math.isnan(x)]
+					
+					if valid_orig_act and valid_corr_act and len(valid_orig_act) == len(valid_corr_act):
+						avg_diff_act = np.mean(
+								[abs((c - o) / o) * 100 for o, c in zip(valid_orig_act, valid_corr_act) if
+								 abs(o) > 1e-10])
+						max_diff_act = np.max([abs((c - o) / o) * 100 for o, c in zip(valid_orig_act, valid_corr_act) if
+						                       abs(o) > 1e-10])
+						
+						if valid_orig_gamma and valid_corr_gamma and len(valid_orig_gamma) == len(valid_corr_gamma):
+							avg_diff_gamma = np.mean(
+									[abs((c - o) / o) * 100 for o, c in zip(valid_orig_gamma, valid_corr_gamma) if
+									 abs(o) > 1e-10])
+							max_diff_gamma = np.max(
+									[abs((c - o) / o) * 100 for o, c in zip(valid_orig_gamma, valid_corr_gamma) if
+									 abs(o) > 1e-10])
+							
+							new_results_html += f"<br><b>📊 模型 {model_key_geo} 对比统计:</b><br>"
+							new_results_html += f"<font color='#2980B9'>活度 - 平均差异: {avg_diff_act:.2f}%, 最大差异: {max_diff_act:.2f}%</font><br>"
+							new_results_html += f"<font color='#8E44AD'>活度系数 - 平均差异: {avg_diff_gamma:.2f}%, 最大差异: {max_diff_gamma:.2f}%</font><br>"
 			
 			# 更新界面
 			self.historical_results_html = new_results_html + self.historical_results_html
@@ -1162,7 +1267,7 @@ class CompositionVariationWidget(QWidget):
 			return None
 	
 	def update_plot_display_only (self):
-		"""仅更新图表显示"""
+		"""更新图表显示 - 支持对比模式"""
 		if not self.has_calculated:
 			self.figure.clear()
 			self.canvas.draw()
@@ -1184,7 +1289,7 @@ class CompositionVariationWidget(QWidget):
 		self.plot_property_variation(data_for_plotting, prop_to_plot)
 	
 	def plot_property_variation (self, model_data_dict, property_type):
-		"""绘制属性变化图"""
+		"""绘制属性变化图 - 支持原始值和修正值对比"""
 		self.figure.clear()
 		ax = self.figure.add_subplot(111)
 		
@@ -1193,8 +1298,12 @@ class CompositionVariationWidget(QWidget):
 		self.figure.patch.set_facecolor('white')
 		
 		plot_handles, plot_labels = [], []
-		color_cycle = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6', '#1ABC9C', '#E67E22', '#34495E']
-		marker_cycle = ['o', 's', '^', 'D', 'v', 'P', '*', 'X']
+		color_cycle = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6', '#1ABC9C']
+		marker_cycle = ['o', 's', '^', 'D', 'v', 'P']
+		
+		# 获取对应的修正值数据
+		corrected_property_type = f"{property_type}_corrected"
+		corrected_data_dict = self.calculation_results.get(corrected_property_type, {})
 		
 		# 收集所有组分数据以确定坐标轴范围
 		all_comps = []
@@ -1207,96 +1316,78 @@ class CompositionVariationWidget(QWidget):
 		
 		if all_comps:
 			x_min, x_max = min(all_comps), max(all_comps)
-			# 稍微扩展范围以便更好显示
 			x_range = x_max - x_min
 			x_min_ext = max(0, x_min - 0.05 * x_range)
 			x_max_ext = min(1, x_max + 0.05 * x_range)
 		else:
 			x_min_ext, x_max_ext = 0, 1
 		
+		# 绘制每个模型的原始值和修正值
 		for i, (model_key, data) in enumerate(model_data_dict.items()):
 			comps, vals = data.get("compositions"), data.get("values")
 			if comps is None or vals is None or len(comps) == 0 or len(vals) == 0:
 				continue
 			
+			# 原始值数据处理
 			valid_indices = ~np.isnan(vals) & ~np.isinf(vals)
-			comps_p, vals_p = comps[valid_indices], vals[valid_indices]
+			comps_orig = comps[valid_indices]
+			vals_orig = vals[valid_indices]
 			
-			if len(comps_p) == 0:
-				continue
-			
-			# 对数据点进行排序，确保绘图顺序正确
-			sorted_indices = np.argsort(comps_p)
-			comps_p = comps_p[sorted_indices]
-			vals_p = vals_p[sorted_indices]
-			
-			# 如果数据点足够多，进行插值以获得更光滑的曲线
-			if len(comps_p) > 3:
-				from scipy.interpolate import interp1d
-				try:
-					# 创建插值函数
-					f_interp = interp1d(comps_p, vals_p, kind='cubic', bounds_error=False, fill_value='extrapolate')
-					# 生成更密集的点
-					comps_smooth = np.linspace(comps_p.min(), comps_p.max(), len(comps_p) * 3)
-					vals_smooth = f_interp(comps_smooth)
-					
-					# 绘制光滑曲线
-					line, = ax.plot(comps_smooth, vals_smooth,
-					                label=model_key,
-					                color=color_cycle[i % len(color_cycle)],
-					                linewidth=1.8,  # 减小线宽
-					                alpha=0.9,
-					                antialiased=True)  # 启用抗锯齿
-					
-					# 绘制原始数据点作为标记
-					ax.plot(comps_p, vals_p,
-					        marker=marker_cycle[i % len(marker_cycle)],
-					        markersize=4,  # 减小标记大小
-					        color=color_cycle[i % len(color_cycle)],
-					        linestyle='None',
-					        alpha=0.8,
-					        markeredgewidth=0.5,
-					        markeredgecolor='white')
+			if len(comps_orig) > 0:
+				# 对数据排序
+				sorted_indices = np.argsort(comps_orig)
+				comps_orig = comps_orig[sorted_indices]
+				vals_orig = vals_orig[sorted_indices]
 				
-				except ImportError:
-					# 如果没有scipy，使用普通绘图
-					line, = ax.plot(comps_p, vals_p,
-					                label=model_key,
-					                color=color_cycle[i % len(color_cycle)],
-					                marker=marker_cycle[i % len(marker_cycle)],
-					                markersize=4,
-					                linewidth=1.8,
-					                alpha=0.9,
-					                antialiased=True,
-					                markeredgewidth=0.5,
-					                markeredgecolor='white')
-				except:
-					# 插值失败时的备用方案
-					line, = ax.plot(comps_p, vals_p,
-					                label=model_key,
-					                color=color_cycle[i % len(color_cycle)],
-					                marker=marker_cycle[i % len(marker_cycle)],
-					                markersize=4,
-					                linewidth=1.8,
-					                alpha=0.9,
-					                antialiased=True,
-					                markeredgewidth=0.5,
-					                markeredgecolor='white')
-			else:
-				# 数据点较少时直接绘制
-				line, = ax.plot(comps_p, vals_p,
-				                label=model_key,
-				                color=color_cycle[i % len(color_cycle)],
-				                marker=marker_cycle[i % len(marker_cycle)],
-				                markersize=4,
-				                linewidth=1.8,
-				                alpha=0.9,
-				                antialiased=True,
-				                markeredgewidth=0.5,
-				                markeredgecolor='white')
+				# 绘制原始值曲线
+				base_color = color_cycle[i % len(color_cycle)]
+				marker = marker_cycle[i % len(marker_cycle)]
+				
+				line_orig, = ax.plot(comps_orig, vals_orig,
+				                     label=f"{model_key} (原始)",
+				                     color=base_color,
+				                     marker=marker,
+				                     markersize=5,
+				                     linewidth=2.5,
+				                     alpha=0.9,
+				                     linestyle='-',
+				                     markeredgewidth=0.5,
+				                     markeredgecolor='white')
+				
+				plot_handles.append(line_orig)
+				plot_labels.append(f"{model_key} (原始)")
 			
-			plot_handles.append(line)
-			plot_labels.append(model_key)
+			# 修正值数据处理
+			if model_key in corrected_data_dict:
+				corr_data = corrected_data_dict[model_key]
+				comps_corr, vals_corr = corr_data.get("compositions"), corr_data.get("values")
+				
+				if comps_corr is not None and vals_corr is not None and len(comps_corr) > 0:
+					valid_indices_corr = ~np.isnan(vals_corr) & ~np.isinf(vals_corr)
+					comps_corr = comps_corr[valid_indices_corr]
+					vals_corr = vals_corr[valid_indices_corr]
+					
+					if len(comps_corr) > 0:
+						# 对数据排序
+						sorted_indices_corr = np.argsort(comps_corr)
+						comps_corr = comps_corr[sorted_indices_corr]
+						vals_corr = vals_corr[sorted_indices_corr]
+						
+						# 绘制修正值曲线（使用虚线和不同标记）
+						line_corr, = ax.plot(comps_corr, vals_corr,
+						                     label=f"{model_key} (修正)",
+						                     color=base_color,
+						                     marker=marker,
+						                     markersize=4,
+						                     linewidth=2,
+						                     alpha=0.7,
+						                     linestyle='--',  # 虚线区分
+						                     markerfacecolor='white',
+						                     markeredgecolor=base_color,
+						                     markeredgewidth=1.5)
+						
+						plot_handles.append(line_corr)
+						plot_labels.append(f"{model_key} (修正)")
 		
 		# 设置标签和标题
 		varying_elem = self.current_parameters.get("varying_element", "?")
@@ -1307,36 +1398,34 @@ class CompositionVariationWidget(QWidget):
 		title = (
 			f"{self.current_parameters.get('base_matrix', 'N/A')} 中 {target_elem} 的 {prop_name_cn} vs. {varying_elem} 浓度\n"
 			f"温度: {self.current_parameters.get('temperature', 'N/A')}K, "
-			f"相态: {self.current_parameters.get('phase_state', 'N/A')}")
+			f"相态: {self.current_parameters.get('phase_state', 'N/A')} (原始值 vs 修正值对比)")
 		
 		ax.set_xlabel(f"{varying_elem} 摩尔分数", fontsize=12, fontweight='bold')
 		ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
-		ax.set_title(title, fontsize=13, fontweight='bold', pad=20, color='#2C3E50')
+		ax.set_title(title, fontsize=11, fontweight='bold', pad=20, color='#2C3E50')
 		
-		# 网格设置 - 更细的网格线
-		ax.grid(True, linestyle='--', alpha=0.2, color='#BDC3C7', linewidth=0.5)
+		# 网格设置
+		ax.grid(True, linestyle='--', alpha=0.3, color='#BDC3C7', linewidth=0.5)
 		ax.tick_params(axis='both', which='major', labelsize=10)
 		
-		# **添加理想线**
-		if all_comps:  # 只有当有数据时才绘制理想线
+		# 添加理想线
+		if all_comps:
 			if property_type == "activity_coefficient":
-				# 活度系数的理想线：γ = 1（水平线）
-				ax.axhline(y=1.0, color='#34495E', linestyle='-.', linewidth=2, alpha=0.7,
+				# 活度系数的理想线：γ = 1
+				ax.axhline(y=1.0, color='#34495E', linestyle='-.', linewidth=2, alpha=0.6,
 				           label="理想溶液 ($\\gamma=1$)", zorder=0)
 			
 			elif property_type == "activity":
-				# **活度的理想线：始终等于目标元素的实际浓度**
+				# 活度的理想线
 				base_comp_dict = CompositionVariationWidget._parse_composition_static(
 						self.current_parameters.get("base_matrix", ""))
 				matrix_elem = self.current_parameters.get("matrix_element", "")
 				
 				if base_comp_dict and matrix_elem:
-					# 计算理想线：在每个组分点计算目标元素的实际浓度
 					ideal_compositions = []
 					ideal_activities = []
 					
 					for comp_val in sorted(all_comps):
-						# 构建当前组成
 						current_comp = self.build_composition_at_point(base_comp_dict, varying_elem, matrix_elem,
 						                                               comp_val)
 						if current_comp:
@@ -1345,17 +1434,18 @@ class CompositionVariationWidget(QWidget):
 							ideal_activities.append(target_fraction)
 					
 					if ideal_compositions and ideal_activities:
-						# 绘制理想活度线
 						ax.plot(ideal_compositions, ideal_activities,
-						        color='#34495E', linestyle='-.', linewidth=2, alpha=0.7,
+						        color='#34495E', linestyle='-.', linewidth=2, alpha=0.6,
 						        label=f"理想溶液 ($a_{{{target_elem}}} = X_{{{target_elem}}}$)",
 						        zorder=0)
 		
-		# 图例设置
+		# 图例设置 - 分组显示
 		if plot_handles:
-			# 将理想线放在图例的最后
-			ax.legend(loc='best', fontsize=10, frameon=True, fancybox=True, shadow=True,
-			          framealpha=0.9, facecolor='white', edgecolor='#CCCCCC')
+			# 创建自定义图例，将原始值和修正值分组
+			legend = ax.legend(loc='best', fontsize=9, frameon=True, fancybox=True, shadow=True,
+			                   framealpha=0.95, facecolor='white', edgecolor='#CCCCCC',
+			                   ncol=2 if len(plot_handles) > 6 else 1)  # 如果项目太多就分两列
+			legend.get_frame().set_linewidth(0.5)
 		else:
 			ax.text(0.5, 0.5, "无有效数据", ha='center', va='center', transform=ax.transAxes,
 			        fontsize=14, color='#E74C3C', fontweight='bold')
@@ -1363,7 +1453,7 @@ class CompositionVariationWidget(QWidget):
 		# 调整布局
 		self.figure.tight_layout(rect=[0, 0, 1, 0.96])
 		
-		# 设置画布抗锯齿
+		# 绘制
 		self.canvas.draw()
 	
 	def export_data (self):
@@ -1393,6 +1483,255 @@ class CompositionVariationWidget(QWidget):
 		except Exception as e:
 			QMessageBox.critical(self, "导出失败", f"导出时发生错误:\n{e}\n\n{traceback.format_exc()}")
 			self.status_bar.set_status("❌ 数据导出失败")
+	
+	def export_comparison_data (self):
+		"""导出原始值与修正值对比数据"""
+		if not self.has_calculated or not any(self.calculation_results.values()):
+			QMessageBox.warning(self, "导出错误", "请先计算数据。")
+			return
+		
+		file_path, _ = QFileDialog.getSaveFileName(
+				self, "导出对比数据",
+				f"活度对比数据_{QDateTime.currentDateTime().toString('yyyyMMdd_hhmmss')}",
+				"Excel 文件 (*.xlsx);;CSV 文件 (*.csv)"
+		)
+		
+		if not file_path:
+			return
+		
+		try:
+			self.status_bar.set_status("正在导出对比数据...")
+			if file_path.lower().endswith('.xlsx'):
+				self._export_comparison_to_excel(file_path)
+			else:
+				self._export_comparison_to_csv(file_path if file_path.lower().endswith('.csv') else file_path + ".csv")
+			
+			QMessageBox.information(self, "导出成功", f"对比数据已成功导出至:\n{file_path}")
+			self.status_bar.set_status("✅ 对比数据导出完成")
+		
+		except Exception as e:
+			QMessageBox.critical(self, "导出失败", f"导出时发生错误:\n{e}")
+			self.status_bar.set_status("❌ 对比数据导出失败")
+	
+	def _export_comparison_to_csv (self, file_path):
+		"""导出对比数据到CSV"""
+		import csv
+		
+		varying_elem = self.current_parameters.get("varying_element", "X")
+		target_elem = self.current_parameters.get("target_element", "Y")
+		
+		with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
+			writer = csv.writer(csvfile)
+			
+			# 写入标题
+			writer.writerow(['# 活度/活度系数原始值与修正值对比数据'])
+			writer.writerow(['# 计算参数'])
+			for key, val in self.current_parameters.items():
+				value_str = ", ".join(val) if isinstance(val, list) and key == "selected_models" else str(val)
+				writer.writerow([f"# {key}", value_str])
+			writer.writerow([])
+			
+			# 写入表头
+			header = [f'{varying_elem} 摩尔分数']
+			for model_key in self.current_parameters.get("selected_models", []):
+				header.extend([
+					f'{model_key}-活度(原始)', f'{model_key}-活度(修正)', f'{model_key}-活度差异(%)',
+					f'{model_key}-活度系数(原始)', f'{model_key}-活度系数(修正)', f'{model_key}-活度系数差异(%)'
+				])
+			writer.writerow(header)
+			
+			# 收集所有组分点
+			all_comps = set()
+			for prop_data in self.calculation_results.values():
+				for model_key in self.current_parameters.get("selected_models", []):
+					if model_key in prop_data:
+						all_comps.update(prop_data[model_key]["compositions"])
+			
+			# 写入数据
+			for comp_val in sorted(all_comps):
+				row = [comp_val]
+				for model_key in self.current_parameters.get("selected_models", []):
+					# 获取各种数据
+					act_orig = self._get_value_at_composition(model_key, "activity", comp_val)
+					act_corr = self._get_value_at_composition(model_key, "activity_corrected", comp_val)
+					gamma_orig = self._get_value_at_composition(model_key, "activity_coefficient", comp_val)
+					gamma_corr = self._get_value_at_composition(model_key, "activity_coefficient_corrected", comp_val)
+					
+					# 计算差异
+					act_diff = abs((act_corr - act_orig) / act_orig) * 100 if not math.isnan(act_orig) and abs(
+						act_orig) > 1e-10 and not math.isnan(act_corr) else float('nan')
+					gamma_diff = abs((gamma_corr - gamma_orig) / gamma_orig) * 100 if not math.isnan(
+						gamma_orig) and abs(gamma_orig) > 1e-10 and not math.isnan(gamma_corr) else float('nan')
+					
+					row.extend([
+						f"{act_orig:.6f}" if not math.isnan(act_orig) else "N/A",
+						f"{act_corr:.6f}" if not math.isnan(act_corr) else "N/A",
+						f"{act_diff:.2f}" if not math.isnan(act_diff) else "N/A",
+						f"{gamma_orig:.6f}" if not math.isnan(gamma_orig) else "N/A",
+						f"{gamma_corr:.6f}" if not math.isnan(gamma_corr) else "N/A",
+						f"{gamma_diff:.2f}" if not math.isnan(gamma_diff) else "N/A"
+					])
+				
+				writer.writerow(row)
+	
+	def _export_comparison_to_excel (self, file_path):
+		"""导出对比数据到Excel"""
+		try:
+			import xlsxwriter
+		except ImportError:
+			QMessageBox.warning(self, "依赖缺失", "导出Excel需要安装 xlsxwriter 库。\n请使用: pip install xlsxwriter")
+			return
+		
+		workbook = xlsxwriter.Workbook(file_path)
+		worksheet = workbook.add_worksheet('对比数据')
+		
+		# 定义格式
+		title_format = workbook.add_format({
+			'bold': True, 'font_size': 16, 'align': 'center',
+			'bg_color': '#8E44AD', 'font_color': 'white'
+		})
+		header_format = workbook.add_format({
+			'bold': True, 'align': 'center', 'bg_color': '#3498DB',
+			'font_color': 'white', 'border': 1, 'text_wrap': True
+		})
+		data_format = workbook.add_format({
+			'num_format': '0.000000', 'align': 'center', 'border': 1
+		})
+		diff_small_format = workbook.add_format({
+			'num_format': '0.00', 'align': 'center', 'border': 1,
+			'bg_color': '#D5EFDF', 'font_color': '#27AE60'  # 绿色：差异小
+		})
+		diff_medium_format = workbook.add_format({
+			'num_format': '0.00', 'align': 'center', 'border': 1,
+			'bg_color': '#FCF3E3', 'font_color': '#F39C12'  # 橙色：差异中等
+		})
+		diff_large_format = workbook.add_format({
+			'num_format': '0.00', 'align': 'center', 'border': 1,
+			'bg_color': '#F5D6D6', 'font_color': '#E74C3C'  # 红色：差异大
+		})
+		
+		row = 0
+		varying_elem = self.current_parameters.get("varying_element", "X")
+		
+		# 标题
+		worksheet.merge_range(row, 0, row, 12, '活度/活度系数原始值与修正值对比数据', title_format)
+		row += 2
+		
+		# 参数信息
+		param_format = workbook.add_format({'bold': True, 'bg_color': '#ECF0F1', 'border': 1})
+		worksheet.write(row, 0, '计算参数', param_format)
+		row += 1
+		
+		for k, v in self.current_parameters.items():
+			value_str = ", ".join(v) if isinstance(v, list) and k == "selected_models" else str(v)
+			worksheet.write(row, 0, k, param_format)
+			worksheet.write(row, 1, value_str)
+			row += 1
+		
+		row += 1
+		
+		# 数据表头
+		col = 0
+		worksheet.write(row, col, f'{varying_elem} 摩尔分数', header_format)
+		col += 1
+		
+		for model_key in self.current_parameters.get("selected_models", []):
+			worksheet.write(row, col, f'{model_key}\n活度(原始)', header_format)
+			col += 1
+			worksheet.write(row, col, f'{model_key}\n活度(修正)', header_format)
+			col += 1
+			worksheet.write(row, col, f'{model_key}\n活度差异(%)', header_format)
+			col += 1
+			worksheet.write(row, col, f'{model_key}\n活度系数(原始)', header_format)
+			col += 1
+			worksheet.write(row, col, f'{model_key}\n活度系数(修正)', header_format)
+			col += 1
+			worksheet.write(row, col, f'{model_key}\n活度系数差异(%)', header_format)
+			col += 1
+		
+		row += 1
+		
+		# 收集组分点
+		all_comps = set()
+		for prop_data in self.calculation_results.values():
+			for model_key in self.current_parameters.get("selected_models", []):
+				if model_key in prop_data:
+					all_comps.update(prop_data[model_key]["compositions"])
+		
+		# 数据行
+		for comp_val in sorted(all_comps):
+			col = 0
+			worksheet.write(row, col, comp_val, data_format)
+			col += 1
+			
+			for model_key in self.current_parameters.get("selected_models", []):
+				# 获取数据
+				act_orig = self._get_value_at_composition(model_key, "activity", comp_val)
+				act_corr = self._get_value_at_composition(model_key, "activity_corrected", comp_val)
+				gamma_orig = self._get_value_at_composition(model_key, "activity_coefficient", comp_val)
+				gamma_corr = self._get_value_at_composition(model_key, "activity_coefficient_corrected", comp_val)
+				
+				# 计算差异
+				act_diff = abs((act_corr - act_orig) / act_orig) * 100 if not math.isnan(act_orig) and abs(
+					act_orig) > 1e-10 and not math.isnan(act_corr) else float('nan')
+				gamma_diff = abs((gamma_corr - gamma_orig) / gamma_orig) * 100 if not math.isnan(gamma_orig) and abs(
+					gamma_orig) > 1e-10 and not math.isnan(gamma_corr) else float('nan')
+				
+				# 写入数据
+				worksheet.write(row, col, act_orig if not math.isnan(act_orig) else "N/A", data_format)
+				col += 1
+				worksheet.write(row, col, act_corr if not math.isnan(act_corr) else "N/A", data_format)
+				col += 1
+				
+				# 活度差异（带颜色标识）
+				if not math.isnan(act_diff):
+					if act_diff > 5:
+						worksheet.write(row, col, act_diff, diff_large_format)
+					elif act_diff > 1:
+						worksheet.write(row, col, act_diff, diff_medium_format)
+					else:
+						worksheet.write(row, col, act_diff, diff_small_format)
+				else:
+					worksheet.write(row, col, "N/A", data_format)
+				col += 1
+				
+				worksheet.write(row, col, gamma_orig if not math.isnan(gamma_orig) else "N/A", data_format)
+				col += 1
+				worksheet.write(row, col, gamma_corr if not math.isnan(gamma_corr) else "N/A", data_format)
+				col += 1
+				
+				# 活度系数差异（带颜色标识）
+				if not math.isnan(gamma_diff):
+					if gamma_diff > 5:
+						worksheet.write(row, col, gamma_diff, diff_large_format)
+					elif gamma_diff > 1:
+						worksheet.write(row, col, gamma_diff, diff_medium_format)
+					else:
+						worksheet.write(row, col, gamma_diff, diff_small_format)
+				else:
+					worksheet.write(row, col, "N/A", data_format)
+				col += 1
+			
+			row += 1
+		
+		# 自动调整列宽
+		worksheet.autofit()
+		workbook.close()
+	
+	def _get_value_at_composition (self, model_key, property_type, composition):
+		"""获取指定组分点的属性值"""
+		if property_type not in self.calculation_results or model_key not in self.calculation_results[property_type]:
+			return float('nan')
+		
+		data = self.calculation_results[property_type][model_key]
+		comps = data["compositions"]
+		values = data["values"]
+		
+		# 查找最接近的组分点
+		idx = np.argmin(np.abs(comps - composition))
+		if abs(comps[idx] - composition) < 1e-6:  # 容差检查
+			return values[idx]
+		return float('nan')
 	
 	def _export_to_csv_internal (self, file_path):
 		"""导出到CSV文件"""
