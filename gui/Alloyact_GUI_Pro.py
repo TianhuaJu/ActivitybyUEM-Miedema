@@ -6,6 +6,9 @@ import matplotlib
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from datetime import datetime  # <--- 添加了 datetime 的全局导入
+
+from core.utils import *
 
 # Set matplotlib font settings
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'FangSong', 'SimSun', 'DejaVu Sans']
@@ -197,8 +200,8 @@ class AlloyActProGUI(QMainWindow):
 		title_layout.addWidget(title_label)
 		title_layout.addStretch()
 		title_layout.addWidget(version_label)
-		
-		#self.main_layout.addLayout(title_layout)
+	
+	# self.main_layout.addLayout(title_layout)
 	
 	def create_basic_calculation_tabs (self):
 		"""创建基础计算选项卡"""
@@ -472,10 +475,10 @@ class AlloyActProGUI(QMainWindow):
         <li>二阶相互作用系数计算</li>
         <li>温度变化分析</li>
         <li>浓度变化分析</li>
-        <li>多种外推模型支持 (UEM1, UEM2, GSM, Muggianu)</li>
+        <li>多种外推模型支持 (UEM1, UEM2, GSM, Muggianu, etc)</li>
         </ul>
-        <p><b>开发团队:</b> 材料科学实验室</p>
-        <p><b>技术支持:</b> alloyact@example.com</p>
+        <p><b>开发团队:</b> 合金热力学计算实验室</p>
+        <p><b>技术支持:</b> <a href="mailto:jutianhua@gxu.edu.cn">jutianhua@gxu.edu.cn</a></p>
         """
 		QMessageBox.about(self, "关于 AlloyAct Pro", about_text)
 	
@@ -632,7 +635,7 @@ class AlloyActProGUI(QMainWindow):
 	
 	def update_status (self, message):
 		"""更新状态栏消息"""
-		from datetime import datetime
+		# from datetime import datetime # datetime 已在模块顶部导入
 		timestamp = datetime.now().strftime("%H:%M:%S")
 		self.status_bar.showMessage(f"[{timestamp}] {message}")
 	
@@ -655,22 +658,7 @@ class AlloyActProGUI(QMainWindow):
 	
 	def parse_composition (self, alloy_str):
 		"""解析合金成分字符串为字典"""
-		comp_dict = {}
-		pattern = r"([A-Z][a-z]?)(\d+\.?\d*|\.\d+)"
-		matches = re.finditer(pattern, alloy_str)
-		
-		for match in matches:
-			element = match.group(1)
-			amount = float(match.group(2))
-			comp_dict[element] = amount
-		
-		# 归一化
-		if comp_dict:
-			total = sum(comp_dict.values())
-			for element in comp_dict:
-				comp_dict[element] /= total
-		
-		return comp_dict
+		return parse_composition_static(alloy_str)
 	
 	def get_model_function (self, model_name):
 		"""获取对应的模型函数"""
@@ -692,90 +680,86 @@ class AlloyActProGUI(QMainWindow):
 	def calculate_activity (self):
 		"""计算活度"""
 		try:
-			# 验证输入
 			fields = [
 				(self.activity_alloy, "合金成分"),
 				(self.activity_solvent, "基体元素"),
 				(self.activity_solute, "溶质元素"),
 				(self.activity_temp, "温度")
 			]
-			
 			if not self.validate_input(fields):
 				return
 			
-			# 获取输入值
-			alloy = self.activity_alloy.text()
-			solvent = self.activity_solvent.text()
-			solute = self.activity_solute.text()
+			alloy_composition_str = self.activity_alloy.text()
+			solvent = self.activity_solvent.text().strip()
+			solute = self.activity_solute.text().strip()
 			try:
 				temp = float(self.activity_temp.text())
 			except ValueError:
-				QMessageBox.critical(self, "输入错误", "温度必须是数值")
+				QMessageBox.critical(self, "输入错误", "温度必须是数值。")
 				return
 			
 			state = self.activity_state.currentText()
 			model_name = self.activity_model.currentText()
 			
-			# 更新状态栏
-			self.update_status(f"正在计算 {solute} 在 {solvent} 中的活度...")
+			self.update_status(f"正在解析合金成分并计算 {solute} 在 {solvent} 中的活度...")
 			
-			# 解析合金成分
-			comp_dict = self.parse_composition(f"{solvent}{alloy}")
+			comp_dict = self.parse_composition(alloy_composition_str)
+			if not comp_dict:
+				QMessageBox.critical(self, "输入错误", "无法解析合金成分，请检查格式是否正确，例如：Fe0.7C0.03Si0.27。")
+				self.update_status("合金成分解析失败")
+				return
 			
-			# 获取模型函数
+			if solvent not in comp_dict:
+				QMessageBox.critical(self, "输入错误",
+				                     f"指定的基体元素 '{solvent}' 不存在于您输入的合金成分 '{alloy_composition_str}' 中，或者其含量为零。\n"
+				                     f"请确保基体元素是合金成分的一部分。")
+				self.update_status(f"基体元素 '{solvent}' 无效或不在合金中")
+				return
+			
+			xi = comp_dict.get(solute)
+			if xi is None:
+				QMessageBox.critical(self, "输入错误",
+				                     f"指定的溶质元素 '{solute}' 不存在于您输入的合金成分 '{alloy_composition_str}' 中，或者其含量为零。\n"
+				                     f"请确保溶质元素是合金成分的一部分。")
+				self.update_status(f"溶质 '{solute}' 无效或不在合金中")
+				return
+			
 			model_func = self.get_model_function(model_name)
+			self.activity_coefficient.set_composition_dict(alloy_composition_str)
 			
-			# 实际计算
-			self.activity_coefficient.set_composition_dict(f"{solvent}{alloy}")
-			
-			# 计算活度系数
 			darken_acf = self.activity_coefficient.activity_coefficient_darken(
-					comp_dict, solute, solvent, temp, state, model_func, model_name,True,True)
-			
+					comp_dict, solute, solvent, temp, state, model_func, model_name, True, True)
 			wagner_acf = self.activity_coefficient.activity_coefficient_wagner(
 					comp_dict, solvent, solute, temp, state, model_func, model_name)
+			elliot_acf = self.activity_coefficient.activity_coefficient_elliott(
+					comp_dict, solute, solvent, temp, state, model_func, model_name)
 			
-			elliot_acf = self.activity_coefficient.activity_coefficient_elliott(comp_dict, solute, solvent, temp, state,
-			                                                                    model_func, model_name)
-			# 获取摩尔分数
-			xi = comp_dict.get(solute, 0.0)
+			darken_activity = math.exp(darken_acf) * xi
+			wagner_activity = math.exp(wagner_acf) * xi
+			elliot_activity = math.exp(elliot_acf) * xi
 			
-			# 计算活度
-			acf = math.exp(darken_acf) * xi
-			wagner_act = math.exp(wagner_acf) * xi
-			elliot_act = math.exp(elliot_acf) * xi
-			
-			
-			# 准备结果
 			results = {
-				"composition": alloy,
+				"composition": alloy_composition_str,
 				"solvent": solvent,
 				"solute": solute,
 				"temperature": temp,
 				"state": state,
 				"model": model_name,
-				"activity": round(acf, 3),
-				"activity_wagner": round(wagner_act, 3),
-				"activity_elliot": round(elliot_act, 3),
-				
+				"activity_darken": round(darken_activity, 3),
+				"activity_wagner": round(wagner_activity, 3),
+				"activity_elliot": round(elliot_activity, 3),
 				"mole_fraction": round(xi, 3),
 				"activity_coefficient_darken": round(math.exp(darken_acf), 3),
 				"activity_coefficient_wagner": round(math.exp(wagner_acf), 3),
-				"activity_coefficient_elliot": round(math.exp(elliot_acf), 3),
-				
+				"activity_coefficient_elliott": round(math.exp(elliot_acf), 3),
 			}
 			
-			# 显示结果
 			self.display_activity_results(results)
-			
-			# 更新图表
 			self.update_activity_chart(results)
-			
-			# 更新状态栏
 			self.update_status(f"已完成 {solute} 在 {solvent} 中的活度计算")
 		
 		except Exception as e:
-			QMessageBox.critical(self, "计算错误", f"发生错误: {str(e)}")
+			QMessageBox.critical(self, "计算错误", f"计算过程中发生未预料的错误: {str(e)}")
 			self.update_status("计算失败")
 	
 	def calculate_interaction (self):
@@ -951,33 +935,36 @@ class AlloyActProGUI(QMainWindow):
 	# ============================================================================
 	
 	def display_activity_results (self, results):
-		"""显示活度计算结果"""
-		current_text = self.activity_result.toPlainText()
-		if current_text:
-			result_text = f"\n{'-' * 50}\n\n"
+		"""显示活度计算结果并添加时间戳"""
+		current_timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # 获取并格式化当前时间戳
+		
+		# 构建当前这条计算结果的完整文本，以时间戳开头
+		entry_text = f"记录时间: {current_timestamp_str}\n"
+		entry_text += f"活度计算结果:\n\n"
+		entry_text += f"合金成分: {results['composition']}\n"
+		entry_text += f"基体元素: {results['solvent']}\n"
+		entry_text += f"溶质元素: {results['solute']}\n"
+		entry_text += f"温度: {results['temperature']} K\n"
+		entry_text += f"状态: {results['state']}\n"
+		entry_text += f"外推模型: {results['model']}\n\n"
+		entry_text += f"活度值 (Wagner模型): {results['activity_wagner']}\n"  # 顺序根据原代码调整
+		entry_text += f"活度值 (Darken模型): {results['activity_darken']}\n"
+		entry_text += f"活度值 (Elliot模型): {results['activity_elliot']}\n\n"
+		
+		entry_text += f"摩尔分数: {results['mole_fraction']}\n\n"
+		entry_text += f"活度系数 (Wagner模型): {results['activity_coefficient_wagner']}\n"
+		entry_text += f"活度系数 (Darken模型): {results['activity_coefficient_darken']}\n"
+		entry_text += f"活度系数 (Elliot模型): {results['activity_coefficient_elliott']}\n"
+		
+		current_qtextedit_content = self.activity_result.toPlainText()
+		
+		if current_qtextedit_content:
+			# 如果 QTextEdit 中已有内容，则在新条目的开头添加分隔符，然后追加
+			text_to_display = f"\n{'-' * 50}\n\n{entry_text}"
+			self.activity_result.append(text_to_display)
 		else:
-			result_text = ""
-		
-		result_text += f"活度计算结果:\n\n"
-		result_text += f"合金成分: {results['composition']}\n"
-		result_text += f"基体元素: {results['solvent']}\n"
-		result_text += f"溶质元素: {results['solute']}\n"
-		result_text += f"温度: {results['temperature']} K\n"
-		result_text += f"状态: {results['state']}\n"
-		result_text += f"外推模型: {results['model']}\n\n"
-		result_text += f"活度值 (Darken模型): {results['activity']}\n"
-		result_text += f"活度值 (Wagner模型): {results['activity_wagner']}\n"
-		result_text += f"活度值 (Elliot模型): {results['activity_elliot']}\n"
-		
-		result_text += f"摩尔分数: {results['mole_fraction']}\n\n"
-		result_text += f"活度系数 (Darken模型): {results['activity_coefficient_darken']}\n"
-		result_text += f"活度系数 (Wagner模型): {results['activity_coefficient_wagner']}\n"
-		result_text += f"活度系数 (Elliot模型): {results['activity_coefficient_elliot']}\n"
-		
-		if current_text:
-			self.activity_result.append(result_text)
-		else:
-			self.activity_result.setText(result_text)
+			# 如果是第一条结果，直接设置文本
+			self.activity_result.setText(entry_text)
 		
 		# 自动滚动到底部
 		self.activity_result.verticalScrollBar().setValue(
@@ -1039,7 +1026,6 @@ class AlloyActProGUI(QMainWindow):
 		result_text += f"ρi^jk: {results['ri_jk']}\n"
 		result_text += f"ρi^kk: {results['ri_kk']}\n"
 		
-		
 		if current_text:
 			self.second_result.append(result_text)
 		else:
@@ -1089,19 +1075,26 @@ class AlloyActProGUI(QMainWindow):
 		min_values = min(values)
 		
 		if max_values * min_values < 0:
-			y_max = max_values * 1.2
-			y_min = min_values * 1.2
-		elif max_values * min_values == 0:
-			y_max = y_max
-			y_min = y_min
-		elif max_values > 0:
-			y_max = max_values * 1.2
-			y_min = 0
-		else:
-			y_max = 0
-			y_min = min_values * 1.2
+			y_max_calc = max_values * 1.2
+			y_min_calc = min_values * 1.2
+		elif max_values == 0 and min_values == 0:  # 处理所有值都为0的情况
+			y_max_calc = y_max  # 使用预设值
+			y_min_calc = y_min  # 使用预设值
+		elif max_values * min_values == 0:  # 修正：应为 max_values >= 0 and min_values == 0 or min_values <= 0 and max_values == 0
+			if max_values > 0:
+				y_max_calc = max_values * 1.2
+				y_min_calc = y_min  # 使用预设的下限或0
+			else:  # min_values < 0
+				y_max_calc = y_max  # 使用预设的上限或0
+				y_min_calc = min_values * 1.2
+		elif max_values > 0:  # 所有值都为正
+			y_max_calc = max_values * 1.2
+			y_min_calc = 0
+		else:  # 所有值都为负
+			y_max_calc = 0
+			y_min_calc = min_values * 1.2
 		
-		axes.set_ylim(y_min, y_max)
+		axes.set_ylim(y_min_calc, y_max_calc)
 	
 	def clear_activity_result (self):
 		"""清除活度计算结果"""
@@ -1150,21 +1143,30 @@ class AlloyActProGUI(QMainWindow):
 		self.activity_canvas.axes.clear()
 		
 		# 数据
-		models = ['Darken', 'Wagner', 'Elliot','Corrected']
-		values = [results['activity'], results['activity_wagner'], results['activity_elliot'],results['activity_corrected']]
+		models = ['Wagner','Darken',  'Elliot']  # <--- 修改点：移除 'Corrected'
+		values = [results['activity_wagner'], results['activity_darken'],  results['activity_elliot']]
 		
 		# 创建柱状图
+		# colors 列表长度为3，与 models 和 values 匹配
 		bars = self.activity_canvas.axes.bar(models, values, color=['#3498db', '#2ecc71', '#e74c3c'])
 		
 		# 添加数值标签
 		self.setup_value_labels(self.activity_canvas.axes, bars, values, 0.01)
 		
 		mole_fraction = results["mole_fraction"]
-		max_value = max(values)
-		y_max = 1.0 if max(max_value, mole_fraction) > 0.84 and max(max_value, mole_fraction) < 1.01 else max(max_value,
-		                                                                                                      mole_fraction) * 1.2
+		max_value_plot = 0
+		if values:  # 确保values不为空
+			max_value_plot = max(values)
 		
-		self.activity_canvas.axes.set_ylim(0, y_max)
+		y_max = 1.0
+		if max(max_value_plot, mole_fraction) > 0.84 and max(max_value_plot, mole_fraction) < 1.01:
+			y_max = 1.0
+		elif values:  # 确保values不为空再计算
+			y_max = max(max_value_plot, mole_fraction) * 1.2
+		else:  # 如果values为空，提供一个默认的y_max
+			y_max = mole_fraction * 1.2 if mole_fraction > 0 else 1.0
+		
+		self.activity_canvas.axes.set_ylim(0, y_max if y_max > 0 else 1.0)  # 确保y_max不为0或负
 		
 		# 设置图表属性
 		solute = results["solute"]
@@ -1205,7 +1207,10 @@ class AlloyActProGUI(QMainWindow):
 		
 		# 添加数值标签
 		self.setup_value_labels(self.interact_canvas.axes, bars, values)
-		self.set_fixed_y_axis(self.interact_canvas.axes, values, -10.0, 10)
+		if values:  # 确保 values 不为空
+			self.set_fixed_y_axis(self.interact_canvas.axes, values, -10.0, 10.0)
+		else:  # 如果 values 为空，设置默认 y 轴范围
+			self.interact_canvas.axes.set_ylim(-10.0, 10.0)
 		
 		# 设置图表属性
 		solvent = results["solvent"]
@@ -1248,17 +1253,21 @@ class AlloyActProGUI(QMainWindow):
 		]
 		
 		# 创建柱状图
-		colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6']
-		bars = self.second_canvas.axes.bar(coefficients, values, color=colors)
+		# 确保 colors 列表长度至少与 coefficients 和 values 一致，或 Matplotlib 会循环使用颜色
+		colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#e67e22']
+		bars = self.second_canvas.axes.bar(coefficients, values, color=colors[:len(values)])  # 使用切片确保颜色数量匹配
 		
 		# 添加数值标签
 		self.setup_value_labels(self.second_canvas.axes, bars, values)
-		self.set_fixed_y_axis(self.second_canvas.axes, values, -20, 20)
+		if values:  # 确保 values 不为空
+			self.set_fixed_y_axis(self.second_canvas.axes, values, -20.0, 20.0)
+		else:  # 如果 values 为空，设置默认 y 轴范围
+			self.second_canvas.axes.set_ylim(-20.0, 20.0)
 		
 		# 设置图表属性
 		solvent = results["solvent"]
 		title = f'二阶相互作用系数 ({solvent}-{solute_i}-{solute_j}'
-		if solute_k:
+		if solute_k and solute_k.strip():  # 检查 solute_k 是否有效
 			title += f'-{solute_k}'
 		title += ')'
 		
@@ -1267,7 +1276,7 @@ class AlloyActProGUI(QMainWindow):
 		self.second_canvas.axes.grid(True, axis='y', linestyle='--', alpha=0.7)
 		
 		# 旋转x轴标签以避免重叠
-		self.second_canvas.axes.tick_params(axis='x', rotation=45)
+		self.second_canvas.axes.tick_params(axis='x', rotation=45, labelsize=10)  # 调整标签大小
 		
 		self.second_canvas.fig.tight_layout()
 		self.second_canvas.draw()
@@ -1282,9 +1291,11 @@ def main ():
 	app.setApplicationVersion("2.0")
 	app.setOrganizationName("Material Science Lab")
 	
-	# 设置高DPI缩放
-	app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-	app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+	# 设置高DPI缩放 (Qt 5.6+). AA_EnableHighDpiScaling 是推荐的方式
+	if hasattr(Qt, 'AA_EnableHighDpiScaling'):
+		QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+	if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
+		QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 	
 	# 创建并显示主窗口
 	window = AlloyActProGUI()
@@ -1294,4 +1305,6 @@ def main ():
 
 
 if __name__ == "__main__":
+	# 确保 core, models, calculations, gui 目录在 Python 路径中
+	# 或者将它们放在与此脚本相同的目录中
 	sys.exit(main())

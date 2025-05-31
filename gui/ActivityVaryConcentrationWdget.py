@@ -16,6 +16,7 @@ from PyQt5.QtCore import Qt, QDateTime, QPropertyAnimation, QEasingCurve, QRect,
 from PyQt5.QtGui import QFont, QPalette, QColor, QIcon, QPixmap, QPainter, QLinearGradient
 from models.extrapolation_models import BinaryModel
 from calculations.activity_calculator import ActivityCoefficient
+from core.utils import *
 
 # Matplotlib 全局设置
 matplotlib.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'FangSong', 'SimSun', 'DejaVu Sans']
@@ -316,13 +317,14 @@ class CompositionVariationWidget(QWidget):
 		self.binary_model = BinaryModel()
 		self.activity_calc_module = ActivityCoefficient()
 		
-		# 扩展数据结构以支持修正值
+		# 统一数据结构，支持Elliott和Darken两种方法
 		self.calculation_results = {
-			"activity": {},
-			"activity_coefficient": {},
-			"activity_corrected": {},  # 新增：修正活度
-			"activity_coefficient_corrected": {}  # 新增：修正活度系数
+			"activity": {},  # Elliott模型的活度
+			"activity_coefficient": {},  # Elliott模型的活度系数
+			"activity_darken": {},  # Darken模型的活度
+			"activity_coefficient_darken": {}  # Darken模型的活度系数
 		}
+		
 		self.current_parameters = {
 			"base_matrix": "", "target_element": "", "varying_element": "", "matrix_element": "",
 			"phase_state": "", "temperature": 0, "composition_range": [], "selected_models": []
@@ -331,11 +333,8 @@ class CompositionVariationWidget(QWidget):
 		self.has_calculated = False
 		self.legend_cids = []
 		
-		# 初始化显示模式（新增）
-		self.show_comparison_mode = False
-		
 		self.setWindowTitle("组分浓度变化计算器")
-		self.resize(1400, 800)  # 减少窗口高度
+		self.resize(1400, 800)
 		self.init_ui()
 		self.update_element_dropdowns()
 		self.apply_global_style()
@@ -441,16 +440,15 @@ class CompositionVariationWidget(QWidget):
 		left_panel.setMinimumWidth(420)
 		left_panel.setMaximumWidth(500)
 		
-		# 直接使用VBoxLayout，不使用滚动区域
 		layout = QVBoxLayout(left_panel)
-		layout.setSpacing(12)  # 减少组件间距
+		layout.setSpacing(12)
 		layout.setContentsMargins(0, 0, 10, 0)
 		
 		layout.addWidget(self.create_alloy_composition_group())
 		layout.addWidget(self.create_calculation_setup_group())
 		layout.addWidget(self.create_composition_range_group())
 		layout.addWidget(self.create_model_selection_group())
-		layout.addStretch(1)  # 弹性空间
+		layout.addStretch(1)
 		layout.addLayout(self.create_action_buttons())
 		
 		return left_panel
@@ -459,21 +457,21 @@ class CompositionVariationWidget(QWidget):
 		"""创建合金组成组"""
 		group = ModernGroupBox("🧪 合金基础组成")
 		layout = QFormLayout(group)
-		layout.setSpacing(10)  # 减少间距
-		layout.setContentsMargins(15, 20, 15, 15)  # 减少内边距
+		layout.setSpacing(10)
+		layout.setContentsMargins(15, 20, 15, 15)
 		layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 		layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
 		layout.setRowWrapPolicy(QFormLayout.WrapLongRows)
 		
 		# 合金组成输入
 		comp_layout = QHBoxLayout()
-		comp_layout.setSpacing(8)  # 减少间距
+		comp_layout.setSpacing(8)
 		self.matrix_input = ModernLineEdit("例如: Fe0.7Ni0.2C0.1")
-		self.matrix_input.setMinimumWidth(200)  # 稍微减少宽度
+		self.matrix_input.setMinimumWidth(200)
 		comp_layout.addWidget(self.matrix_input)
 		
 		update_btn = ModernButton("刷新", "secondary")
-		update_btn.setFixedWidth(60)  # 稍微减小按钮
+		update_btn.setFixedWidth(60)
 		update_btn.clicked.connect(self.update_element_dropdowns)
 		comp_layout.addWidget(update_btn)
 		
@@ -497,8 +495,8 @@ class CompositionVariationWidget(QWidget):
 		"""创建计算设置组"""
 		group = ModernGroupBox("⚙️ 计算设置")
 		layout = QFormLayout(group)
-		layout.setSpacing(10)  # 减少间距
-		layout.setContentsMargins(15, 20, 15, 15)  # 减少内边距
+		layout.setSpacing(10)
+		layout.setContentsMargins(15, 20, 15, 15)
 		layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 		layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
 		layout.setRowWrapPolicy(QFormLayout.WrapLongRows)
@@ -537,8 +535,8 @@ class CompositionVariationWidget(QWidget):
 		"""创建组分浓度范围组"""
 		group = ModernGroupBox("📊 组分浓度范围")
 		layout = QFormLayout(group)
-		layout.setSpacing(10)  # 减少间距
-		layout.setContentsMargins(15, 20, 15, 15)  # 减少内边距
+		layout.setSpacing(10)
+		layout.setContentsMargins(15, 20, 15, 15)
 		layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 		layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
 		layout.setRowWrapPolicy(QFormLayout.WrapLongRows)
@@ -576,8 +574,8 @@ class CompositionVariationWidget(QWidget):
 		"""创建模型选择组"""
 		group = ModernGroupBox("🔧 外推模型选择")
 		layout = QGridLayout(group)
-		layout.setSpacing(10)  # 减少间距
-		layout.setContentsMargins(15, 20, 15, 15)  # 减少内边距
+		layout.setSpacing(10)
+		layout.setContentsMargins(15, 20, 15, 15)
 		
 		self.model_checkboxes = {}
 		models = [
@@ -600,8 +598,8 @@ class CompositionVariationWidget(QWidget):
 	def create_action_buttons (self):
 		"""创建操作按钮"""
 		button_layout = QHBoxLayout()
-		button_layout.setSpacing(12)  # 减少间距
-		button_layout.setContentsMargins(0, 15, 0, 15)  # 减少上下边距
+		button_layout.setSpacing(12)
+		button_layout.setContentsMargins(0, 15, 0, 15)
 		
 		calculate_button = ModernButton("🚀 开始计算", "primary")
 		calculate_button.clicked.connect(self.run_calculation_thread)
@@ -609,14 +607,8 @@ class CompositionVariationWidget(QWidget):
 		export_button = ModernButton("📤 导出数据", "success")
 		export_button.clicked.connect(self.export_data)
 		
-		# 新增：导出对比数据按钮
-		export_comparison_button = ModernButton("📊 导出对比", "secondary")
-		export_comparison_button.clicked.connect(self.export_comparison_data)
-		export_comparison_button.setToolTip("导出原始值与修正值的对比数据")
-		
 		button_layout.addWidget(calculate_button)
 		button_layout.addWidget(export_button)
-		button_layout.addWidget(export_comparison_button)
 		
 		return button_layout
 	
@@ -688,7 +680,7 @@ class CompositionVariationWidget(QWidget):
 		chart_title.setStyleSheet("color: #2C3E50; padding: 5px;")
 		layout.addWidget(chart_title)
 		
-		# 新增：图表显示选项控制区域
+		# 图表显示选项控制区域
 		options_frame = QFrame()
 		options_frame.setStyleSheet("""
 			QFrame {
@@ -712,9 +704,15 @@ class CompositionVariationWidget(QWidget):
 		
 		# 仅显示Elliott方法结果
 		self.elliott_only_radio = QRadioButton("仅Elliott方法")
-		self.elliott_only_radio.setChecked(True)  # 默认选择
+		self.elliott_only_radio.setChecked(True)
 		self.elliott_only_radio.setToolTip("仅显示传统Elliott方法的计算结果")
-		self.elliott_only_radio.setStyleSheet("""
+		
+		# 对比显示Elliott和Darken方法
+		self.comparison_radio = QRadioButton("Elliott vs Darken对比")
+		self.comparison_radio.setToolTip("同时显示Elliott方法和Darken修正方法的对比结果")
+		
+		# 设置样式
+		radio_style = """
 			QRadioButton {
 				font-size: 10pt;
 				color: #2C3E50;
@@ -736,20 +734,9 @@ class CompositionVariationWidget(QWidget):
 				border-radius: 8px;
 				background-color: #3498DB;
 			}
-			QRadioButton::indicator:checked:before {
-				content: '';
-				width: 6px;
-				height: 6px;
-				border-radius: 3px;
-				background-color: white;
-				margin: 3px;
-			}
-		""")
-		
-		# 对比显示Elliott和Darken方法
-		self.comparison_radio = QRadioButton("Elliott vs Darken对比")
-		self.comparison_radio.setToolTip("同时显示Elliott方法和Darken修正方法的对比结果")
-		self.comparison_radio.setStyleSheet(self.elliott_only_radio.styleSheet())
+		"""
+		self.elliott_only_radio.setStyleSheet(radio_style)
+		self.comparison_radio.setStyleSheet(radio_style)
 		
 		# 添加到按钮组
 		self.display_mode_group.addButton(self.elliott_only_radio, 0)
@@ -764,7 +751,7 @@ class CompositionVariationWidget(QWidget):
 		options_layout.addStretch()
 		
 		# 添加图例说明
-		legend_label = QLabel("💡 实线=原始值, 虚线=修正值")
+		legend_label = QLabel("💡 实线=Elliott方法, 虚线=Darken方法")
 		legend_label.setFont(QFont("Microsoft YaHei", 9))
 		legend_label.setStyleSheet("color: #7F8C8D; background: transparent; border: none;")
 		options_layout.addWidget(legend_label)
@@ -857,7 +844,7 @@ class CompositionVariationWidget(QWidget):
                 border-radius: 6px;
                 background-color: #FAFAFA;
                 font-family: "Consolas", "Monaco", "Courier New", monospace;
-                font-size: 13pt;
+                font-size: 10pt;
                 padding: 12px;
                 line-height: 1.4;
             }
@@ -882,16 +869,14 @@ class CompositionVariationWidget(QWidget):
 	
 	def on_display_mode_changed (self):
 		"""显示模式改变时的处理函数"""
-		# 更新内部状态
-		self.show_comparison_mode = hasattr(self, 'comparison_radio') and self.comparison_radio.isChecked()
-		
 		if hasattr(self, 'has_calculated') and self.has_calculated:
 			self.update_plot_display_only()
-			# 更新状态栏
-			if self.show_comparison_mode:
-				self.status_bar.set_status("图表模式: Elliott vs Darken 对比显示")
-			else:
-				self.status_bar.set_status("图表模式: 仅Elliott方法显示")
+		
+		# 更新状态栏
+		if self.get_current_display_mode():
+			self.status_bar.set_status("图表模式: Elliott vs Darken")
+		else:
+			self.status_bar.set_status("图表模式: 默认Elliott")
 	
 	def get_current_display_mode (self):
 		"""获取当前显示模式"""
@@ -1006,40 +991,7 @@ class CompositionVariationWidget(QWidget):
 	@staticmethod
 	def _parse_composition_static (alloy_str):
 		"""解析合金组成的静态方法"""
-		comp_dict = {}
-		pattern = r"([A-Z][a-z]?)(\d*\.?\d+|\d+)"
-		matches = re.findall(pattern, alloy_str)
-		if not matches:
-			return None
-		
-		try:
-			for element, amount_str in matches:
-				amount = float(amount_str) if amount_str else 1.0
-				if amount < 0:
-					return None
-				comp_dict[element] = comp_dict.get(element, 0) + amount
-		except ValueError:
-			return None
-		
-		if not comp_dict:
-			return None
-		
-		total_fraction = sum(comp_dict.values())
-		if abs(total_fraction) < 1e-9:
-			return None
-		
-		# 归一化
-		if not (abs(total_fraction - 1.0) < 1e-6):
-			if abs(total_fraction - 100.0) < 1e-2:
-				for element in comp_dict:
-					comp_dict[element] /= 100.0
-				total_fraction /= 100.0
-			
-			if not (abs(total_fraction - 1.0) < 1e-6) and abs(total_fraction) > 1e-9:
-				for element in comp_dict:
-					comp_dict[element] /= total_fraction
-		
-		return comp_dict
+		return parse_composition_static(alloy_str)
 	
 	def get_model_function (self, model_name_str):
 		"""获取模型函数"""
@@ -1097,15 +1049,15 @@ class CompositionVariationWidget(QWidget):
 			self.progress_dialog.close()
 	
 	def calculate_all_properties (self):
-		"""计算所有属性 - 包含原始值和修正值"""
+		"""计算所有属性 - Elliott和Darken两种方法"""
 		try:
 			self.has_calculated = False
-			# 扩展数据结构以支持修正值
+			# 重置数据结构
 			self.calculation_results = {
 				"activity": {},
 				"activity_coefficient": {},
-				"activity_corrected": {},  # 新增：修正活度
-				"activity_coefficient_corrected": {}  # 新增：修正活度系数
+				"activity_darken": {},
+				"activity_coefficient_darken": {}
 			}
 			
 			# 获取参数
@@ -1162,7 +1114,7 @@ class CompositionVariationWidget(QWidget):
 				QMessageBox.warning(self, "模型未选择", "请至少选择一个外推模型。")
 				return
 			
-			# 创建结果HTML - 增强对比显示
+			# 创建结果HTML - 始终显示两种方法的对比结果
 			current_timestamp = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
 			new_results_html = f"<hr><b>🕐 计算时间: {current_timestamp}</b><br>"
 			new_results_html += f"<b>📋 计算参数:</b><br>"
@@ -1182,13 +1134,13 @@ class CompositionVariationWidget(QWidget):
 			for model_key_geo, geo_model_function in selected_models_to_run:
 				# 初始化数据数组
 				current_activities, current_coefficients = [], []
-				current_activities_corrected, current_coefficients_corrected = [], []
+				current_activities_darken, current_coefficients_darken = [], []
 				composition_values = []
 				
 				new_results_html += f"<br><b>⚙️ 外推模型: {model_key_geo}</b><br>"
-				# 更新表头，增加修正值和差异列
-				new_results_html += f"<font face='Courier New' color='#2C3E50'><b>X_{varying_elem}   | Act(原始) | ActCoef(原始) | Act(修正) | ActCoef(修正) | Δa(%)  | Δγ(%)</b></font><br>"
-				new_results_html += f"<font face='Courier New'>---------|-----------|-------------|-----------|-------------|--------|------</font><br>"
+				# 统一使用对比格式的表头
+				new_results_html += f"<font face='Courier New' color='#2C3E50'><b>X_{varying_elem}   | Elliott-Act | Elliott-γ   | Darken-Act  | Darken-γ    | Δa(%)  | Δγ(%)</b></font><br>"
+				new_results_html += f"<font face='Courier New'>---------|-------------|-------------|-------------|-------------|--------|------</font><br>"
 				
 				for comp_val in compositions:
 					if hasattr(self, 'progress_dialog') and self.progress_dialog.wasCanceled():
@@ -1200,55 +1152,58 @@ class CompositionVariationWidget(QWidget):
 					if current_comp is None:
 						current_activities.append(float('nan'))
 						current_coefficients.append(float('nan'))
-						current_activities_corrected.append(float('nan'))
-						current_coefficients_corrected.append(float('nan'))
-						new_results_html += f"<font face='Courier New'>{comp_val:<9.3f}|   N/A     |     N/A     |   N/A     |     N/A     |  N/A   |  N/A</font><br>"
+						current_activities_darken.append(float('nan'))
+						current_coefficients_darken.append(float('nan'))
+						new_results_html += f"<font face='Courier New'>{comp_val:<9.3f}|     N/A     |     N/A     |     N/A     |     N/A     |  N/A   |  N/A</font><br>"
 						calcs_done += 1
 						continue
 					
 					try:
-						# 计算原始活度系数
-						ln_gamma = self.activity_calc_module.activity_coefficient_elliott(current_comp, target_elem,
-						                                                                  matrix_elem, temperature,
-						                                                                  phase, geo_model_function,
-						                                                                  model_key_geo)
-						gamma_val = math.exp(ln_gamma) if not (math.isnan(ln_gamma) or math.isinf(ln_gamma)) else float(
-								'nan')
+						# 计算Elliott方法
+						ln_gamma_elliott = self.activity_calc_module.activity_coefficient_elliott(current_comp,
+						                                                                          target_elem,
+						                                                                          matrix_elem,
+						                                                                          temperature,
+						                                                                          phase,
+						                                                                          geo_model_function,
+						                                                                          model_key_geo)
+						gamma_elliott = math.exp(ln_gamma_elliott) if not (
+									math.isnan(ln_gamma_elliott) or math.isinf(ln_gamma_elliott)) else float('nan')
 						
-						# 计算修正活度系数
-						ln_gamma_corrc = self.activity_calc_module.activity_coefficient_darken(
+						# 计算Darken方法
+						ln_gamma_darken = self.activity_calc_module.activity_coefficient_darken(
 								current_comp, target_elem, matrix_elem, temperature, phase, geo_model_function,
 								model_key_geo, gd_verbose=True)
-						gamma_corr_val = math.exp(ln_gamma_corrc) if not (
-								math.isnan(ln_gamma_corrc) or math.isinf(ln_gamma_corrc)) else float('nan')
+						gamma_darken = math.exp(ln_gamma_darken) if not (
+									math.isnan(ln_gamma_darken) or math.isinf(ln_gamma_darken)) else float('nan')
 						
 						# 计算活度
 						xi_target = current_comp.get(target_elem, 0.0)
-						act_val = gamma_val * xi_target if not math.isnan(gamma_val) else float('nan')
-						act_val_corrc = gamma_corr_val * xi_target if not math.isnan(gamma_corr_val) else float('nan')
+						act_elliott = gamma_elliott * xi_target if not math.isnan(gamma_elliott) else float('nan')
+						act_darken = gamma_darken * xi_target if not math.isnan(gamma_darken) else float('nan')
 						
 						# 计算相对差异百分比
-						if not (math.isnan(act_val) or math.isnan(act_val_corrc)) and abs(act_val) > 1e-10:
-							delta_act_percent = abs((act_val_corrc - act_val) / act_val) * 100
+						if not (math.isnan(act_elliott) or math.isnan(act_darken)) and abs(act_elliott) > 1e-10:
+							delta_act_percent = abs((act_darken - act_elliott) / act_elliott) * 100
 						else:
 							delta_act_percent = float('nan')
 						
-						if not (math.isnan(gamma_val) or math.isnan(gamma_corr_val)) and abs(gamma_val) > 1e-10:
-							delta_gamma_percent = abs((gamma_corr_val - gamma_val) / gamma_val) * 100
+						if not (math.isnan(gamma_elliott) or math.isnan(gamma_darken)) and abs(gamma_elliott) > 1e-10:
+							delta_gamma_percent = abs((gamma_darken - gamma_elliott) / gamma_elliott) * 100
 						else:
 							delta_gamma_percent = float('nan')
 						
 						# 存储结果
-						current_activities.append(act_val)
-						current_coefficients.append(gamma_val)
-						current_activities_corrected.append(act_val_corrc)
-						current_coefficients_corrected.append(gamma_corr_val)
+						current_activities.append(act_elliott)
+						current_coefficients.append(gamma_elliott)
+						current_activities_darken.append(act_darken)
+						current_coefficients_darken.append(gamma_darken)
 						composition_values.append(comp_val)
 						
 						# 格式化显示 - 带颜色标识差异大小
 						delta_act_str = f"{delta_act_percent:6.2f}" if not math.isnan(delta_act_percent) else "  N/A"
 						delta_gamma_str = f"{delta_gamma_percent:6.2f}" if not math.isnan(
-								delta_gamma_percent) else "  N/A"
+							delta_gamma_percent) else "  N/A"
 						
 						# 根据差异大小设置颜色
 						if not math.isnan(delta_act_percent) and delta_act_percent > 5:
@@ -1266,8 +1221,8 @@ class CompositionVariationWidget(QWidget):
 							delta_gamma_color = "#27AE60"
 						
 						new_results_html += (
-							f"<font face='Courier New'>{comp_val:<9.3f}| {act_val:<10.4f}| {gamma_val:<12.4f}| "
-							f"{act_val_corrc:<10.4f}| {gamma_corr_val:<12.4f}| "
+							f"<font face='Courier New'>{comp_val:<9.3f}| {act_elliott:<12.4f}| {gamma_elliott:<12.4f}| "
+							f"{act_darken:<12.4f}| {gamma_darken:<12.4f}| "
 							f"<font color='{delta_act_color}'>{delta_act_str}</font>| "
 							f"<font color='{delta_gamma_color}'>{delta_gamma_str}</font></font><br>"
 						)
@@ -1276,10 +1231,10 @@ class CompositionVariationWidget(QWidget):
 						print(f"计算错误 (X={comp_val}, 模型={model_key_geo}): {e_calc}")
 						current_activities.append(float('nan'))
 						current_coefficients.append(float('nan'))
-						current_activities_corrected.append(float('nan'))
-						current_coefficients_corrected.append(float('nan'))
+						current_activities_darken.append(float('nan'))
+						current_coefficients_darken.append(float('nan'))
 						composition_values.append(comp_val)
-						new_results_html += f"<font face='Courier New'>{comp_val:<9.3f}|   N/A     |     N/A     |   N/A     |     N/A     |  N/A   |  N/A</font><br>"
+						new_results_html += f"<font face='Courier New'>{comp_val:<9.3f}|     N/A     |     N/A     |     N/A     |     N/A     |  N/A   |  N/A</font><br>"
 					
 					calcs_done += 1
 					if hasattr(self, 'progress_dialog'):
@@ -1289,7 +1244,7 @@ class CompositionVariationWidget(QWidget):
 				if hasattr(self, 'progress_dialog') and self.progress_dialog.wasCanceled():
 					break
 				
-				# 存储所有结果（原始值和修正值）
+				# 存储所有结果
 				self.calculation_results["activity"][model_key_geo] = {
 					"compositions": np.array(composition_values),
 					"values": np.array(current_activities)
@@ -1298,36 +1253,38 @@ class CompositionVariationWidget(QWidget):
 					"compositions": np.array(composition_values),
 					"values": np.array(current_coefficients)
 				}
-				self.calculation_results["activity_corrected"][model_key_geo] = {
+				self.calculation_results["activity_darken"][model_key_geo] = {
 					"compositions": np.array(composition_values),
-					"values": np.array(current_activities_corrected)
+					"values": np.array(current_activities_darken)
 				}
-				self.calculation_results["activity_coefficient_corrected"][model_key_geo] = {
+				self.calculation_results["activity_coefficient_darken"][model_key_geo] = {
 					"compositions": np.array(composition_values),
-					"values": np.array(current_coefficients_corrected)
+					"values": np.array(current_coefficients_darken)
 				}
 				
 				# 添加统计对比信息
-				if len(current_activities) > 0 and len(current_activities_corrected) > 0:
-					valid_orig_act = [x for x in current_activities if not math.isnan(x)]
-					valid_corr_act = [x for x in current_activities_corrected if not math.isnan(x)]
-					valid_orig_gamma = [x for x in current_coefficients if not math.isnan(x)]
-					valid_corr_gamma = [x for x in current_coefficients_corrected if not math.isnan(x)]
+				if len(current_activities) > 0 and len(current_activities_darken) > 0:
+					valid_elliott_act = [x for x in current_activities if not math.isnan(x)]
+					valid_darken_act = [x for x in current_activities_darken if not math.isnan(x)]
+					valid_elliott_gamma = [x for x in current_coefficients if not math.isnan(x)]
+					valid_darken_gamma = [x for x in current_coefficients_darken if not math.isnan(x)]
 					
-					if valid_orig_act and valid_corr_act and len(valid_orig_act) == len(valid_corr_act):
+					if valid_elliott_act and valid_darken_act and len(valid_elliott_act) == len(valid_darken_act):
 						avg_diff_act = np.mean(
-								[abs((c - o) / o) * 100 for o, c in zip(valid_orig_act, valid_corr_act) if
-								 abs(o) > 1e-10])
-						max_diff_act = np.max([abs((c - o) / o) * 100 for o, c in zip(valid_orig_act, valid_corr_act) if
-						                       abs(o) > 1e-10])
+								[abs((d - e) / e) * 100 for e, d in zip(valid_elliott_act, valid_darken_act) if
+								 abs(e) > 1e-10])
+						max_diff_act = np.max(
+								[abs((d - e) / e) * 100 for e, d in zip(valid_elliott_act, valid_darken_act) if
+								 abs(e) > 1e-10])
 						
-						if valid_orig_gamma and valid_corr_gamma and len(valid_orig_gamma) == len(valid_corr_gamma):
+						if valid_elliott_gamma and valid_darken_gamma and len(valid_elliott_gamma) == len(
+								valid_darken_gamma):
 							avg_diff_gamma = np.mean(
-									[abs((c - o) / o) * 100 for o, c in zip(valid_orig_gamma, valid_corr_gamma) if
-									 abs(o) > 1e-10])
+									[abs((d - e) / e) * 100 for e, d in zip(valid_elliott_gamma, valid_darken_gamma) if
+									 abs(e) > 1e-10])
 							max_diff_gamma = np.max(
-									[abs((c - o) / o) * 100 for o, c in zip(valid_orig_gamma, valid_corr_gamma) if
-									 abs(o) > 1e-10])
+									[abs((d - e) / e) * 100 for e, d in zip(valid_elliott_gamma, valid_darken_gamma) if
+									 abs(e) > 1e-10])
 							
 							new_results_html += f"<br><b>📊 模型 {model_key_geo} 对比统计:</b><br>"
 							new_results_html += f"<font color='#2980B9'>活度 - 平均差异: {avg_diff_act:.2f}%, 最大差异: {max_diff_act:.2f}%</font><br>"
@@ -1378,29 +1335,40 @@ class CompositionVariationWidget(QWidget):
 			return None
 	
 	def update_plot_display_only (self):
-		"""更新图表显示 - 支持对比模式"""
+		"""更新图表显示"""
 		if not self.has_calculated:
 			self.figure.clear()
 			self.canvas.draw()
 			return
 		
 		selected_prop_idx = self.property_combo.currentIndex()
-		prop_to_plot = "activity" if selected_prop_idx == 0 else "activity_coefficient"
-		data_for_plotting = self.calculation_results.get(prop_to_plot, {})
+		is_comparison_enabled = self.get_current_display_mode()
 		
-		if not data_for_plotting:
-			self.figure.clear()
-			ax = self.figure.add_subplot(111)
-			ax.text(0.5, 0.5, "无数据可显示", ha='center', va='center', transform=ax.transAxes,
-			        fontsize=14, color='#666666')
-			ax.set_facecolor('#F8F9FA')
-			self.canvas.draw()
-			return
-		
-		self.plot_property_variation(data_for_plotting, prop_to_plot)
+		if is_comparison_enabled:
+			# 对比模式：同时显示Elliott和Darken值
+			prop_to_plot = "activity" if selected_prop_idx == 0 else "activity_coefficient"
+			original_data = self.calculation_results.get(prop_to_plot, {})
+			darken_data = self.calculation_results.get(f"{prop_to_plot}_darken", {})
+			
+			self.plot_comparison_variation(original_data, darken_data, prop_to_plot)
+		else:
+			# 原始模式：只显示Elliott值
+			prop_to_plot = "activity" if selected_prop_idx == 0 else "activity_coefficient"
+			data_for_plotting = self.calculation_results.get(prop_to_plot, {})
+			
+			if not data_for_plotting:
+				self.figure.clear()
+				ax = self.figure.add_subplot(111)
+				ax.text(0.5, 0.5, "无数据可显示", ha='center', va='center', transform=ax.transAxes,
+				        fontsize=14, color='#666666')
+				ax.set_facecolor('#F8F9FA')
+				self.canvas.draw()
+				return
+			
+			self.plot_property_variation(data_for_plotting, prop_to_plot)
 	
 	def plot_property_variation (self, model_data_dict, property_type):
-		"""绘制属性变化图 - 支持选择性显示原始值和修正值对比"""
+		"""绘制属性变化图（仅Elliott方法）"""
 		self.figure.clear()
 		ax = self.figure.add_subplot(111)
 		
@@ -1411,13 +1379,6 @@ class CompositionVariationWidget(QWidget):
 		plot_handles, plot_labels = [], []
 		color_cycle = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6', '#1ABC9C']
 		marker_cycle = ['o', 's', '^', 'D', 'v', 'P']
-		
-		# 判断显示模式
-		show_comparison = hasattr(self, 'comparison_radio') and self.comparison_radio.isChecked()
-		
-		# 获取对应的修正值数据（仅在对比模式下使用）
-		corrected_property_type = f"{property_type}_corrected"
-		corrected_data_dict = self.calculation_results.get(corrected_property_type, {}) if show_comparison else {}
 		
 		# 收集所有组分数据以确定坐标轴范围
 		all_comps = []
@@ -1442,72 +1403,34 @@ class CompositionVariationWidget(QWidget):
 			if comps is None or vals is None or len(comps) == 0 or len(vals) == 0:
 				continue
 			
-			# 原始值数据处理
+			# 数据处理
 			valid_indices = ~np.isnan(vals) & ~np.isinf(vals)
-			comps_orig = comps[valid_indices]
-			vals_orig = vals[valid_indices]
+			comps_p = comps[valid_indices]
+			vals_p = vals[valid_indices]
 			
-			if len(comps_orig) > 0:
+			if len(comps_p) > 0:
 				# 对数据排序
-				sorted_indices = np.argsort(comps_orig)
-				comps_orig = comps_orig[sorted_indices]
-				vals_orig = vals_orig[sorted_indices]
+				sorted_indices = np.argsort(comps_p)
+				comps_p = comps_p[sorted_indices]
+				vals_p = vals_p[sorted_indices]
 				
-				# 绘制原始值曲线
+				# 绘制曲线
 				base_color = color_cycle[i % len(color_cycle)]
 				marker = marker_cycle[i % len(marker_cycle)]
 				
-				# 根据显示模式调整标签
-				if show_comparison:
-					line_label = f"{model_key} (Elliott)"
-				else:
-					line_label = f"{model_key}"
+				line, = ax.plot(comps_p, vals_p,
+				                label=model_key,
+				                color=base_color,
+				                marker=marker,
+				                markersize=5,
+				                linewidth=2.5,
+				                alpha=0.9,
+				                linestyle='-',
+				                markeredgewidth=0.5,
+				                markeredgecolor='white')
 				
-				line_orig, = ax.plot(comps_orig, vals_orig,
-				                     label=line_label,
-				                     color=base_color,
-				                     marker=marker,
-				                     markersize=5,
-				                     linewidth=2.5,
-				                     alpha=0.9,
-				                     linestyle='-',
-				                     markeredgewidth=0.5,
-				                     markeredgecolor='white')
-				
-				plot_handles.append(line_orig)
-				plot_labels.append(line_label)
-			
-			# 修正值数据处理（仅在对比模式下）
-			if show_comparison and model_key in corrected_data_dict:
-				corr_data = corrected_data_dict[model_key]
-				comps_corr, vals_corr = corr_data.get("compositions"), corr_data.get("values")
-				
-				if comps_corr is not None and vals_corr is not None and len(comps_corr) > 0:
-					valid_indices_corr = ~np.isnan(vals_corr) & ~np.isinf(vals_corr)
-					comps_corr = comps_corr[valid_indices_corr]
-					vals_corr = vals_corr[valid_indices_corr]
-					
-					if len(comps_corr) > 0:
-						# 对数据排序
-						sorted_indices_corr = np.argsort(comps_corr)
-						comps_corr = comps_corr[sorted_indices_corr]
-						vals_corr = vals_corr[sorted_indices_corr]
-						
-						# 绘制修正值曲线（使用虚线和不同标记）
-						line_corr, = ax.plot(comps_corr, vals_corr,
-						                     label=f"{model_key} (Darken)",
-						                     color=base_color,
-						                     marker=marker,
-						                     markersize=4,
-						                     linewidth=2,
-						                     alpha=0.7,
-						                     linestyle='--',  # 虚线区分
-						                     markerfacecolor='white',
-						                     markeredgecolor=base_color,
-						                     markeredgewidth=1.5)
-						
-						plot_handles.append(line_corr)
-						plot_labels.append(f"{model_key} (Darken)")
+				plot_handles.append(line)
+				plot_labels.append(model_key)
 		
 		# 设置标签和标题
 		varying_elem = self.current_parameters.get("varying_element", "?")
@@ -1515,16 +1438,10 @@ class CompositionVariationWidget(QWidget):
 		prop_name_cn = "活度" if property_type == "activity" else "活度系数"
 		y_label = f"{prop_name_cn} ($a_{{{target_elem}}}$)" if property_type == "activity" else f"{prop_name_cn} ($\\gamma_{{{target_elem}}}$)"
 		
-		# 根据显示模式调整标题
-		if show_comparison:
-			title_suffix = f"(Elliott vs Darken 对比)"
-		else:
-			title_suffix = f"(Elliott 方法)"
-		
 		title = (
 			f"{self.current_parameters.get('base_matrix', 'N/A')} 中 {target_elem} 的 {prop_name_cn} vs. {varying_elem} 浓度\n"
 			f"温度: {self.current_parameters.get('temperature', 'N/A')}K, "
-			f"相态: {self.current_parameters.get('phase_state', 'N/A')} {title_suffix}")
+			f"相态: {self.current_parameters.get('phase_state', 'N/A')} (Elliott 方法)")
 		
 		ax.set_xlabel(f"{varying_elem} 摩尔分数", fontsize=12, fontweight='bold')
 		ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
@@ -1537,12 +1454,10 @@ class CompositionVariationWidget(QWidget):
 		# 添加理想线
 		if all_comps:
 			if property_type == "activity_coefficient":
-				# 活度系数的理想线：γ = 1
-				ax.axhline(y=1.0, color='#34495E', linestyle='-.', linewidth=2, alpha=0.6,
+				ax.axhline(y=1.0, color='#7F8C8D', linestyle=':', linewidth=2, alpha=0.7,
 				           label="理想溶液 ($\\gamma=1$)", zorder=0)
 			
 			elif property_type == "activity":
-				# 活度的理想线
 				base_comp_dict = CompositionVariationWidget._parse_composition_static(
 						self.current_parameters.get("base_matrix", ""))
 				matrix_elem = self.current_parameters.get("matrix_element", "")
@@ -1561,17 +1476,14 @@ class CompositionVariationWidget(QWidget):
 					
 					if ideal_compositions and ideal_activities:
 						ax.plot(ideal_compositions, ideal_activities,
-						        color='#34495E', linestyle='-.', linewidth=2, alpha=0.6,
+						        color='#7F8C8D', linestyle=':', linewidth=2, alpha=0.7,
 						        label=f"理想溶液 ($a_{{{target_elem}}} = X_{{{target_elem}}}$)",
 						        zorder=0)
 		
 		# 图例设置
 		if plot_handles:
-			# 根据显示模式调整图例列数
-			ncol = 2 if show_comparison and len(plot_handles) > 4 else 1
-			legend = ax.legend(loc='best', fontsize=9, frameon=True, fancybox=True, shadow=True,
-			                   framealpha=0.95, facecolor='white', edgecolor='#CCCCCC',
-			                   ncol=ncol)
+			legend = ax.legend(loc='best', fontsize=10, frameon=True, fancybox=True, shadow=True,
+			                   framealpha=0.95, facecolor='white', edgecolor='#CCCCCC')
 			legend.get_frame().set_linewidth(0.5)
 		else:
 			ax.text(0.5, 0.5, "无有效数据", ha='center', va='center', transform=ax.transAxes,
@@ -1579,8 +1491,161 @@ class CompositionVariationWidget(QWidget):
 		
 		# 调整布局
 		self.figure.tight_layout(rect=[0, 0, 1, 0.96])
+		self.canvas.draw()
+	
+	def plot_comparison_variation (self, original_data, darken_data, property_type):
+		"""绘制对比图表：Elliott vs Darken方法"""
+		self.figure.clear()
+		ax = self.figure.add_subplot(111)
 		
-		# 绘制
+		# 设置图表样式
+		ax.set_facecolor('#FAFAFA')
+		self.figure.patch.set_facecolor('white')
+		
+		color_cycle = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6', '#1ABC9C']
+		marker_cycle = ['o', 's', '^', 'D', 'v', 'P']
+		
+		legend_handles = []
+		
+		# 收集所有组分数据
+		all_comps = []
+		for model_key, data in original_data.items():
+			comps = data.get("compositions")
+			if comps is not None and len(comps) > 0:
+				valid_indices = ~np.isnan(comps)
+				if np.any(valid_indices):
+					all_comps.extend(comps[valid_indices])
+		
+		# 绘制Elliott vs Darken对比曲线
+		for i, model_key in enumerate(original_data.keys()):
+			if model_key not in darken_data:
+				continue
+			
+			# Elliott数据
+			elliott_data = original_data[model_key]
+			elliott_comps, elliott_vals = elliott_data.get("compositions"), elliott_data.get("values")
+			
+			# Darken数据
+			darken_model_data = darken_data[model_key]
+			darken_comps, darken_vals = darken_model_data.get("compositions"), darken_model_data.get("values")
+			
+			if (elliott_comps is None or elliott_vals is None or len(elliott_comps) == 0 or
+					darken_comps is None or darken_vals is None or len(darken_comps) == 0):
+				continue
+			
+			# 处理Elliott数据
+			elliott_valid_indices = ~np.isnan(elliott_vals) & ~np.isinf(elliott_vals)
+			elliott_comps_p, elliott_vals_p = elliott_comps[elliott_valid_indices], elliott_vals[elliott_valid_indices]
+			
+			# 处理Darken数据
+			darken_valid_indices = ~np.isnan(darken_vals) & ~np.isinf(darken_vals)
+			darken_comps_p, darken_vals_p = darken_comps[darken_valid_indices], darken_vals[darken_valid_indices]
+			
+			if len(elliott_comps_p) == 0 and len(darken_comps_p) == 0:
+				continue
+			
+			color = color_cycle[i % len(color_cycle)]
+			marker = marker_cycle[i % len(marker_cycle)]
+			
+			# 绘制Elliott曲线
+			if len(elliott_comps_p) > 0:
+				# 对数据排序
+				sorted_indices = np.argsort(elliott_comps_p)
+				elliott_comps_p = elliott_comps_p[sorted_indices]
+				elliott_vals_p = elliott_vals_p[sorted_indices]
+				
+				line_elliott, = ax.plot(elliott_comps_p, elliott_vals_p,
+				                        color=color,
+				                        marker=marker,
+				                        markersize=6,
+				                        linewidth=2.5,
+				                        linestyle='-',
+				                        alpha=0.8,
+				                        markeredgewidth=0.5,
+				                        markeredgecolor='white',
+				                        label=f'{model_key} (Elliott)')
+				legend_handles.append(line_elliott)
+			
+			# 绘制Darken曲线
+			if len(darken_comps_p) > 0:
+				# 对数据排序
+				sorted_indices = np.argsort(darken_comps_p)
+				darken_comps_p = darken_comps_p[sorted_indices]
+				darken_vals_p = darken_vals_p[sorted_indices]
+				
+				line_darken, = ax.plot(darken_comps_p, darken_vals_p,
+				                       color=color,
+				                       marker=marker,
+				                       markersize=5,
+				                       linewidth=2,
+				                       linestyle='--',  # 虚线区分
+				                       alpha=0.7,
+				                       markerfacecolor='white',
+				                       markeredgecolor=color,
+				                       markeredgewidth=1.5,
+				                       label=f'{model_key} (Darken)')
+				legend_handles.append(line_darken)
+		
+		# 设置标签和标题
+		varying_elem = self.current_parameters.get("varying_element", "?")
+		target_elem = self.current_parameters.get("target_element", "?")
+		prop_name_cn = "活度" if property_type == "activity" else "活度系数"
+		y_label = f"{prop_name_cn} ($a_{{{target_elem}}}$)" if property_type == "activity" else f"{prop_name_cn} ($\\gamma_{{{target_elem}}}$)"
+		
+		title = (
+			f"{self.current_parameters.get('base_matrix', 'N/A')} 中 {target_elem} 的 {prop_name_cn} vs. {varying_elem} 浓度\n"
+			f"Elliott方法 vs Darken二次项 | 温度: {self.current_parameters.get('temperature', 'N/A')}K, "
+			f"相态: {self.current_parameters.get('phase_state', 'N/A')}")
+		
+		ax.set_xlabel(f"{varying_elem} 摩尔分数", fontsize=12, fontweight='bold')
+		ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
+		ax.set_title(title, fontsize=11, fontweight='bold', pad=20, color='#2C3E50')
+		
+		# 网格设置
+		ax.grid(True, linestyle='--', alpha=0.3, color='#BDC3C7', linewidth=0.5)
+		ax.tick_params(axis='both', which='major', labelsize=10)
+		
+		# 添加理想线
+		if all_comps:
+			if property_type == "activity_coefficient":
+				ax.axhline(y=1.0, color='#7F8C8D', linestyle=':', linewidth=2, alpha=0.7,
+				           label="理想溶液 ($\\gamma=1$)", zorder=0)
+			
+			elif property_type == "activity":
+				base_comp_dict = CompositionVariationWidget._parse_composition_static(
+						self.current_parameters.get("base_matrix", ""))
+				matrix_elem = self.current_parameters.get("matrix_element", "")
+				
+				if base_comp_dict and matrix_elem:
+					ideal_compositions = []
+					ideal_activities = []
+					
+					for comp_val in sorted(all_comps):
+						current_comp = self.build_composition_at_point(base_comp_dict, varying_elem, matrix_elem,
+						                                               comp_val)
+						if current_comp:
+							target_fraction = current_comp.get(target_elem, 0.0)
+							ideal_compositions.append(comp_val)
+							ideal_activities.append(target_fraction)
+					
+					if ideal_compositions and ideal_activities:
+						ax.plot(ideal_compositions, ideal_activities,
+						        color='#7F8C8D', linestyle=':', linewidth=2, alpha=0.7,
+						        label=f"理想溶液 ($a_{{{target_elem}}} = X_{{{target_elem}}}$)",
+						        zorder=0)
+		
+		# 简化的图例设置
+		if legend_handles:
+			ncol = 2 if len(legend_handles) > 4 else 1
+			legend = ax.legend(loc='best', fontsize=9, frameon=True, fancybox=True, shadow=True,
+			                   framealpha=0.95, facecolor='white', edgecolor='#CCCCCC', ncol=ncol)
+			legend.get_frame().set_linewidth(0.5)
+		else:
+			ax.text(0.5, 0.5, "无有效数据", ha='center', va='center', transform=ax.transAxes,
+			        fontsize=14, color='#E74C3C', fontweight='bold')
+		
+		# 调整布局
+		self.figure.tight_layout(rect=[0, 0, 1, 0.96])
 		self.canvas.draw()
 	
 	def export_data (self):
@@ -1610,240 +1675,6 @@ class CompositionVariationWidget(QWidget):
 		except Exception as e:
 			QMessageBox.critical(self, "导出失败", f"导出时发生错误:\n{e}\n\n{traceback.format_exc()}")
 			self.status_bar.set_status("❌ 数据导出失败")
-	
-	def export_comparison_data (self):
-		"""导出原始值与修正值对比数据"""
-		if not self.has_calculated or not any(self.calculation_results.values()):
-			QMessageBox.warning(self, "导出错误", "请先计算数据。")
-			return
-		
-		file_path, _ = QFileDialog.getSaveFileName(
-				self, "导出对比数据",
-				f"活度对比数据_{QDateTime.currentDateTime().toString('yyyyMMdd_hhmmss')}",
-				"Excel 文件 (*.xlsx);;CSV 文件 (*.csv)"
-		)
-		
-		if not file_path:
-			return
-		
-		try:
-			self.status_bar.set_status("正在导出对比数据...")
-			if file_path.lower().endswith('.xlsx'):
-				self._export_comparison_to_excel(file_path)
-			else:
-				self._export_comparison_to_csv(file_path if file_path.lower().endswith('.csv') else file_path + ".csv")
-			
-			QMessageBox.information(self, "导出成功", f"对比数据已成功导出至:\n{file_path}")
-			self.status_bar.set_status("✅ 对比数据导出完成")
-		
-		except Exception as e:
-			QMessageBox.critical(self, "导出失败", f"导出时发生错误:\n{e}")
-			self.status_bar.set_status("❌ 对比数据导出失败")
-	
-	def _export_comparison_to_csv (self, file_path):
-		"""导出对比数据到CSV"""
-		import csv
-		
-		varying_elem = self.current_parameters.get("varying_element", "X")
-		target_elem = self.current_parameters.get("target_element", "Y")
-		
-		with open(file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
-			writer = csv.writer(csvfile)
-			
-			# 写入标题
-			writer.writerow(['# 活度/活度系数原始值与修正值对比数据'])
-			writer.writerow(['# 计算参数'])
-			for key, val in self.current_parameters.items():
-				value_str = ", ".join(val) if isinstance(val, list) and key == "selected_models" else str(val)
-				writer.writerow([f"# {key}", value_str])
-			writer.writerow([])
-			
-			# 写入表头
-			header = [f'{varying_elem} 摩尔分数']
-			for model_key in self.current_parameters.get("selected_models", []):
-				header.extend([
-					f'{model_key}-活度(原始)', f'{model_key}-活度(修正)', f'{model_key}-活度差异(%)',
-					f'{model_key}-活度系数(原始)', f'{model_key}-活度系数(修正)', f'{model_key}-活度系数差异(%)'
-				])
-			writer.writerow(header)
-			
-			# 收集所有组分点
-			all_comps = set()
-			for prop_data in self.calculation_results.values():
-				for model_key in self.current_parameters.get("selected_models", []):
-					if model_key in prop_data:
-						all_comps.update(prop_data[model_key]["compositions"])
-			
-			# 写入数据
-			for comp_val in sorted(all_comps):
-				row = [comp_val]
-				for model_key in self.current_parameters.get("selected_models", []):
-					# 获取各种数据
-					act_orig = self._get_value_at_composition(model_key, "activity", comp_val)
-					act_corr = self._get_value_at_composition(model_key, "activity_corrected", comp_val)
-					gamma_orig = self._get_value_at_composition(model_key, "activity_coefficient", comp_val)
-					gamma_corr = self._get_value_at_composition(model_key, "activity_coefficient_corrected", comp_val)
-					
-					# 计算差异
-					act_diff = abs((act_corr - act_orig) / act_orig) * 100 if not math.isnan(act_orig) and abs(
-							act_orig) > 1e-10 and not math.isnan(act_corr) else float('nan')
-					gamma_diff = abs((gamma_corr - gamma_orig) / gamma_orig) * 100 if not math.isnan(
-							gamma_orig) and abs(gamma_orig) > 1e-10 and not math.isnan(gamma_corr) else float('nan')
-					
-					row.extend([
-						f"{act_orig:.6f}" if not math.isnan(act_orig) else "N/A",
-						f"{act_corr:.6f}" if not math.isnan(act_corr) else "N/A",
-						f"{act_diff:.2f}" if not math.isnan(act_diff) else "N/A",
-						f"{gamma_orig:.6f}" if not math.isnan(gamma_orig) else "N/A",
-						f"{gamma_corr:.6f}" if not math.isnan(gamma_corr) else "N/A",
-						f"{gamma_diff:.2f}" if not math.isnan(gamma_diff) else "N/A"
-					])
-				
-				writer.writerow(row)
-	
-	def _export_comparison_to_excel (self, file_path):
-		"""导出对比数据到Excel"""
-		try:
-			import xlsxwriter
-		except ImportError:
-			QMessageBox.warning(self, "依赖缺失", "导出Excel需要安装 xlsxwriter 库。\n请使用: pip install xlsxwriter")
-			return
-		
-		workbook = xlsxwriter.Workbook(file_path)
-		worksheet = workbook.add_worksheet('对比数据')
-		
-		# 定义格式
-		title_format = workbook.add_format({
-			'bold': True, 'font_size': 16, 'align': 'center',
-			'bg_color': '#8E44AD', 'font_color': 'white'
-		})
-		header_format = workbook.add_format({
-			'bold': True, 'align': 'center', 'bg_color': '#3498DB',
-			'font_color': 'white', 'border': 1, 'text_wrap': True
-		})
-		data_format = workbook.add_format({
-			'num_format': '0.000000', 'align': 'center', 'border': 1
-		})
-		diff_small_format = workbook.add_format({
-			'num_format': '0.00', 'align': 'center', 'border': 1,
-			'bg_color': '#D5EFDF', 'font_color': '#27AE60'  # 绿色：差异小
-		})
-		diff_medium_format = workbook.add_format({
-			'num_format': '0.00', 'align': 'center', 'border': 1,
-			'bg_color': '#FCF3E3', 'font_color': '#F39C12'  # 橙色：差异中等
-		})
-		diff_large_format = workbook.add_format({
-			'num_format': '0.00', 'align': 'center', 'border': 1,
-			'bg_color': '#F5D6D6', 'font_color': '#E74C3C'  # 红色：差异大
-		})
-		
-		row = 0
-		varying_elem = self.current_parameters.get("varying_element", "X")
-		
-		# 标题
-		worksheet.merge_range(row, 0, row, 12, '活度/活度系数原始值与修正值对比数据', title_format)
-		row += 2
-		
-		# 参数信息
-		param_format = workbook.add_format({'bold': True, 'bg_color': '#ECF0F1', 'border': 1})
-		worksheet.write(row, 0, '计算参数', param_format)
-		row += 1
-		
-		for k, v in self.current_parameters.items():
-			value_str = ", ".join(v) if isinstance(v, list) and k == "selected_models" else str(v)
-			worksheet.write(row, 0, k, param_format)
-			worksheet.write(row, 1, value_str)
-			row += 1
-		
-		row += 1
-		
-		# 数据表头
-		col = 0
-		worksheet.write(row, col, f'{varying_elem} 摩尔分数', header_format)
-		col += 1
-		
-		for model_key in self.current_parameters.get("selected_models", []):
-			worksheet.write(row, col, f'{model_key}\n活度(原始)', header_format)
-			col += 1
-			worksheet.write(row, col, f'{model_key}\n活度(修正)', header_format)
-			col += 1
-			worksheet.write(row, col, f'{model_key}\n活度差异(%)', header_format)
-			col += 1
-			worksheet.write(row, col, f'{model_key}\n活度系数(原始)', header_format)
-			col += 1
-			worksheet.write(row, col, f'{model_key}\n活度系数(修正)', header_format)
-			col += 1
-			worksheet.write(row, col, f'{model_key}\n活度系数差异(%)', header_format)
-			col += 1
-		
-		row += 1
-		
-		# 收集组分点
-		all_comps = set()
-		for prop_data in self.calculation_results.values():
-			for model_key in self.current_parameters.get("selected_models", []):
-				if model_key in prop_data:
-					all_comps.update(prop_data[model_key]["compositions"])
-		
-		# 数据行
-		for comp_val in sorted(all_comps):
-			col = 0
-			worksheet.write(row, col, comp_val, data_format)
-			col += 1
-			
-			for model_key in self.current_parameters.get("selected_models", []):
-				# 获取数据
-				act_orig = self._get_value_at_composition(model_key, "activity", comp_val)
-				act_corr = self._get_value_at_composition(model_key, "activity_corrected", comp_val)
-				gamma_orig = self._get_value_at_composition(model_key, "activity_coefficient", comp_val)
-				gamma_corr = self._get_value_at_composition(model_key, "activity_coefficient_corrected", comp_val)
-				
-				# 计算差异
-				act_diff = abs((act_corr - act_orig) / act_orig) * 100 if not math.isnan(act_orig) and abs(
-						act_orig) > 1e-10 and not math.isnan(act_corr) else float('nan')
-				gamma_diff = abs((gamma_corr - gamma_orig) / gamma_orig) * 100 if not math.isnan(gamma_orig) and abs(
-						gamma_orig) > 1e-10 and not math.isnan(gamma_corr) else float('nan')
-				
-				# 写入数据
-				worksheet.write(row, col, act_orig if not math.isnan(act_orig) else "N/A", data_format)
-				col += 1
-				worksheet.write(row, col, act_corr if not math.isnan(act_corr) else "N/A", data_format)
-				col += 1
-				
-				# 活度差异（带颜色标识）
-				if not math.isnan(act_diff):
-					if act_diff > 5:
-						worksheet.write(row, col, act_diff, diff_large_format)
-					elif act_diff > 1:
-						worksheet.write(row, col, act_diff, diff_medium_format)
-					else:
-						worksheet.write(row, col, act_diff, diff_small_format)
-				else:
-					worksheet.write(row, col, "N/A", data_format)
-				col += 1
-				
-				worksheet.write(row, col, gamma_orig if not math.isnan(gamma_orig) else "N/A", data_format)
-				col += 1
-				worksheet.write(row, col, gamma_corr if not math.isnan(gamma_corr) else "N/A", data_format)
-				col += 1
-				
-				# 活度系数差异（带颜色标识）
-				if not math.isnan(gamma_diff):
-					if gamma_diff > 5:
-						worksheet.write(row, col, gamma_diff, diff_large_format)
-					elif gamma_diff > 1:
-						worksheet.write(row, col, gamma_diff, diff_medium_format)
-					else:
-						worksheet.write(row, col, gamma_diff, diff_small_format)
-				else:
-					worksheet.write(row, col, "N/A", data_format)
-				col += 1
-			
-			row += 1
-		
-		# 自动调整列宽
-		worksheet.autofit()
-		workbook.close()
 	
 	def _get_value_at_composition (self, model_key, property_type, composition):
 		"""获取指定组分点的属性值"""
@@ -1887,45 +1718,38 @@ class CompositionVariationWidget(QWidget):
 			writer = csv.writer(csvfile)
 			
 			# 写入参数信息
-			writer.writerow(['# 组分浓度变化计算结果'])
+			writer.writerow(['# 组分浓度变化计算结果 (Elliott vs Darken 对比)'])
 			writer.writerow(['# 计算参数'])
 			for key, val in self.current_parameters.items():
 				value_str = ", ".join(val) if isinstance(val, list) and key == "selected_models" else str(val)
 				writer.writerow([f"# {key}", value_str])
 			writer.writerow([])
 			
-			# 写入数据表头
+			# 统一使用对比格式的表头
 			header = [f'{varying_elem} 摩尔分数']
 			for mk in sel_models:
-				header.extend([f'{mk}-活度(a)', f'{mk}-活度系数(γ)'])
+				header.extend([
+					f'{mk}-Elliott-活度', f'{mk}-Elliott-活度系数',
+					f'{mk}-Darken-活度', f'{mk}-Darken-活度系数'
+				])
 			writer.writerow(header)
 			
 			# 写入数据
 			for comp_val in sorted_comps:
 				row = [comp_val]
 				for model_key in sel_models:
-					act_v, coef_v = "N/A", "N/A"
+					# 获取各种数据
+					act_elliott = self._get_value_at_composition(model_key, "activity", comp_val)
+					act_darken = self._get_value_at_composition(model_key, "activity_darken", comp_val)
+					gamma_elliott = self._get_value_at_composition(model_key, "activity_coefficient", comp_val)
+					gamma_darken = self._get_value_at_composition(model_key, "activity_coefficient_darken", comp_val)
 					
-					# 活度数据
-					if model_key in self.calculation_results["activity"]:
-						comps_list_act = list(self.calculation_results["activity"][model_key]["compositions"])
-						if comp_val in comps_list_act:
-							idx_act = comps_list_act.index(comp_val)
-							val_act = self.calculation_results["activity"][model_key]["values"][idx_act]
-							if not (math.isnan(val_act) or math.isinf(val_act)):
-								act_v = f"{val_act:.6f}"
-					
-					# 活度系数数据
-					if model_key in self.calculation_results["activity_coefficient"]:
-						comps_list_coef = list(
-								self.calculation_results["activity_coefficient"][model_key]["compositions"])
-						if comp_val in comps_list_coef:
-							idx_coef = comps_list_coef.index(comp_val)
-							val_coef = self.calculation_results["activity_coefficient"][model_key]["values"][idx_coef]
-							if not (math.isnan(val_coef) or math.isinf(val_coef)):
-								coef_v = f"{val_coef:.6f}"
-					
-					row.extend([act_v, coef_v])
+					row.extend([
+						f"{act_elliott:.6f}" if not math.isnan(act_elliott) else "N/A",
+						f"{gamma_elliott:.6f}" if not math.isnan(gamma_elliott) else "N/A",
+						f"{act_darken:.6f}" if not math.isnan(act_darken) else "N/A",
+						f"{gamma_darken:.6f}" if not math.isnan(gamma_darken) else "N/A"
+					])
 				
 				writer.writerow(row)
 	
@@ -1956,12 +1780,23 @@ class CompositionVariationWidget(QWidget):
 			'bold': True, 'bg_color': '#ECF0F1', 'border': 1
 		})
 		
+		# 对比格式
+		elliott_format = workbook.add_format({
+			'num_format': '0.000000', 'align': 'center', 'border': 1,
+			'bg_color': '#E8F4FD'  # 浅蓝色背景 - Elliott
+		})
+		darken_format = workbook.add_format({
+			'num_format': '0.000000', 'align': 'center', 'border': 1,
+			'bg_color': '#E8F6F3'  # 浅绿色背景 - Darken
+		})
+		
 		row = 0
 		varying_elem = self.current_parameters.get("varying_element", "X")
 		
 		# 标题
-		worksheet.write(row, 0, '组分浓度变化计算结果', title_format)
-		worksheet.merge_range(row, 0, row, 5, '组分浓度变化计算结果', title_format)
+		title_text = '组分浓度变化计算结果 (Elliott vs Darken 对比)'
+		worksheet.write(row, 0, title_text, title_format)
+		worksheet.merge_range(row, 0, row, 8, title_text, title_format)
 		row += 2
 		
 		# 参数信息
@@ -2007,15 +1842,19 @@ class CompositionVariationWidget(QWidget):
 			workbook.close()
 			return
 		
-		# 表头
+		# 统一使用对比格式的表头
 		col = 0
 		worksheet.write(row, col, f'{varying_elem} 摩尔分数', header_format)
 		col += 1
 		
 		for mk in sel_models:
-			worksheet.write(row, col, f'{mk}-活度(a)', header_format)
+			worksheet.write(row, col, f'{mk}-Elliott-活度', header_format)
 			col += 1
-			worksheet.write(row, col, f'{mk}-活度系数(γ)', header_format)
+			worksheet.write(row, col, f'{mk}-Elliott-γ', header_format)
+			col += 1
+			worksheet.write(row, col, f'{mk}-Darken-活度', header_format)
+			col += 1
+			worksheet.write(row, col, f'{mk}-Darken-γ', header_format)
 			col += 1
 		
 		row += 1
@@ -2027,27 +1866,27 @@ class CompositionVariationWidget(QWidget):
 			col += 1
 			
 			for mk in sel_models:
-				# 活度
-				act_v = np.nan
-				if mk in self.calculation_results["activity"]:
-					comps_list_act = list(self.calculation_results["activity"][mk]["compositions"])
-					if comp_val in comps_list_act:
-						idx_act = comps_list_act.index(comp_val)
-						act_v = self.calculation_results["activity"][mk]["values"][idx_act]
+				# 获取各种数据
+				act_elliott = self._get_value_at_composition(mk, "activity", comp_val)
+				act_darken = self._get_value_at_composition(mk, "activity_darken", comp_val)
+				gamma_elliott = self._get_value_at_composition(mk, "activity_coefficient", comp_val)
+				gamma_darken = self._get_value_at_composition(mk, "activity_coefficient_darken", comp_val)
 				
-				# 活度系数
-				coef_v = np.nan
-				if mk in self.calculation_results["activity_coefficient"]:
-					comps_list_coef = list(self.calculation_results["activity_coefficient"][mk]["compositions"])
-					if comp_val in comps_list_coef:
-						idx_coef = comps_list_coef.index(comp_val)
-						coef_v = self.calculation_results["activity_coefficient"][mk]["values"][idx_coef]
-				
-				# 写入数据
-				worksheet.write(row, col, act_v if not (math.isnan(act_v) or math.isinf(act_v)) else "N/A", data_format)
+				# 写入数据，使用不同颜色格式
+				worksheet.write(row, col,
+				                act_elliott if not (math.isnan(act_elliott) or math.isinf(act_elliott)) else "N/A",
+				                elliott_format)
 				col += 1
-				worksheet.write(row, col, coef_v if not (math.isnan(coef_v) or math.isinf(coef_v)) else "N/A",
-				                data_format)
+				worksheet.write(row, col,
+				                gamma_elliott if not (
+							                math.isnan(gamma_elliott) or math.isinf(gamma_elliott)) else "N/A",
+				                elliott_format)
+				col += 1
+				worksheet.write(row, col, act_darken if not (
+						math.isnan(act_darken) or math.isinf(act_darken)) else "N/A", darken_format)
+				col += 1
+				worksheet.write(row, col, gamma_darken if not (
+						math.isnan(gamma_darken) or math.isinf(gamma_darken)) else "N/A", darken_format)
 				col += 1
 			
 			row += 1
@@ -2055,7 +1894,6 @@ class CompositionVariationWidget(QWidget):
 		# 自动调整列宽
 		worksheet.autofit()
 		workbook.close()
-
 
 if __name__ == "__main__":
 	app = QApplication(sys.argv)
