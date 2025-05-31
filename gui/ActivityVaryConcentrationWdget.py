@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QG
                              QLabel, QLineEdit, QComboBox, QPushButton, QSplitter,
                              QFrame, QGroupBox, QTextEdit, QMessageBox, QSizePolicy,
                              QDoubleSpinBox, QCheckBox, QFileDialog, QFormLayout,
-                             QProgressDialog, QScrollArea, QTabWidget, QSpacerItem)
+                             QProgressDialog, QScrollArea, QTabWidget, QSpacerItem, QButtonGroup, QRadioButton)
 from PyQt5.QtCore import Qt, QDateTime, QPropertyAnimation, QEasingCurve, QRect, QTimer
 from PyQt5.QtGui import QFont, QPalette, QColor, QIcon, QPixmap, QPainter, QLinearGradient
 from models.extrapolation_models import BinaryModel
@@ -330,6 +330,9 @@ class CompositionVariationWidget(QWidget):
 		self.historical_results_html = ""
 		self.has_calculated = False
 		self.legend_cids = []
+		
+		# 初始化显示模式（新增）
+		self.show_comparison_mode = False
 		
 		self.setWindowTitle("组分浓度变化计算器")
 		self.resize(1400, 800)  # 减少窗口高度
@@ -685,6 +688,89 @@ class CompositionVariationWidget(QWidget):
 		chart_title.setStyleSheet("color: #2C3E50; padding: 5px;")
 		layout.addWidget(chart_title)
 		
+		# 新增：图表显示选项控制区域
+		options_frame = QFrame()
+		options_frame.setStyleSheet("""
+			QFrame {
+				background-color: #F8F9FA;
+				border: 1px solid #E0E0E0;
+				border-radius: 6px;
+				padding: 8px;
+			}
+		""")
+		options_layout = QHBoxLayout(options_frame)
+		options_layout.setContentsMargins(10, 8, 10, 8)
+		
+		# 显示模式选择
+		mode_label = QLabel("📊 显示模式:")
+		mode_label.setFont(QFont("Microsoft YaHei", 10, QFont.Bold))
+		mode_label.setStyleSheet("color: #2C3E50; background: transparent; border: none;")
+		options_layout.addWidget(mode_label)
+		
+		# 创建单选按钮组
+		self.display_mode_group = QButtonGroup(self)
+		
+		# 仅显示Elliott方法结果
+		self.elliott_only_radio = QRadioButton("仅Elliott方法")
+		self.elliott_only_radio.setChecked(True)  # 默认选择
+		self.elliott_only_radio.setToolTip("仅显示传统Elliott方法的计算结果")
+		self.elliott_only_radio.setStyleSheet("""
+			QRadioButton {
+				font-size: 10pt;
+				color: #2C3E50;
+				background: transparent;
+				border: none;
+				spacing: 5px;
+			}
+			QRadioButton::indicator {
+				width: 16px;
+				height: 16px;
+			}
+			QRadioButton::indicator:unchecked {
+				border: 2px solid #BDC3C7;
+				border-radius: 8px;
+				background-color: white;
+			}
+			QRadioButton::indicator:checked {
+				border: 2px solid #3498DB;
+				border-radius: 8px;
+				background-color: #3498DB;
+			}
+			QRadioButton::indicator:checked:before {
+				content: '';
+				width: 6px;
+				height: 6px;
+				border-radius: 3px;
+				background-color: white;
+				margin: 3px;
+			}
+		""")
+		
+		# 对比显示Elliott和Darken方法
+		self.comparison_radio = QRadioButton("Elliott vs Darken对比")
+		self.comparison_radio.setToolTip("同时显示Elliott方法和Darken修正方法的对比结果")
+		self.comparison_radio.setStyleSheet(self.elliott_only_radio.styleSheet())
+		
+		# 添加到按钮组
+		self.display_mode_group.addButton(self.elliott_only_radio, 0)
+		self.display_mode_group.addButton(self.comparison_radio, 1)
+		
+		# 连接信号
+		self.elliott_only_radio.toggled.connect(self.on_display_mode_changed)
+		self.comparison_radio.toggled.connect(self.on_display_mode_changed)
+		
+		options_layout.addWidget(self.elliott_only_radio)
+		options_layout.addWidget(self.comparison_radio)
+		options_layout.addStretch()
+		
+		# 添加图例说明
+		legend_label = QLabel("💡 实线=原始值, 虚线=修正值")
+		legend_label.setFont(QFont("Microsoft YaHei", 9))
+		legend_label.setStyleSheet("color: #7F8C8D; background: transparent; border: none;")
+		options_layout.addWidget(legend_label)
+		
+		layout.addWidget(options_frame)
+		
 		# 分隔线
 		separator = QFrame()
 		separator.setFrameShape(QFrame.HLine)
@@ -701,21 +787,21 @@ class CompositionVariationWidget(QWidget):
 		toolbar_layout.setContentsMargins(0, 5, 0, 5)
 		self.toolbar = NavigationToolbar(self.canvas, toolbar_frame)
 		self.toolbar.setStyleSheet("""
-            QToolBar {
-                border: none;
-                background: transparent;
-            }
-            QToolButton {
-                background: transparent;
-                border: 1px solid transparent;
-                border-radius: 3px;
-                padding: 2px;
-            }
-            QToolButton:hover {
-                background: #F0F0F0;
-                border-color: #CCCCCC;
-            }
-        """)
+			QToolBar {
+				border: none;
+				background: transparent;
+			}
+			QToolButton {
+				background: transparent;
+				border: 1px solid transparent;
+				border-radius: 3px;
+				padding: 2px;
+			}
+			QToolButton:hover {
+				background: #F0F0F0;
+				border-color: #CCCCCC;
+			}
+		""")
 		toolbar_layout.addWidget(self.toolbar)
 		toolbar_layout.addStretch()
 		
@@ -793,6 +879,31 @@ class CompositionVariationWidget(QWidget):
 		layout.addLayout(stats_layout)
 		
 		return results_widget
+	
+	def on_display_mode_changed (self):
+		"""显示模式改变时的处理函数"""
+		# 更新内部状态
+		self.show_comparison_mode = hasattr(self, 'comparison_radio') and self.comparison_radio.isChecked()
+		
+		if hasattr(self, 'has_calculated') and self.has_calculated:
+			self.update_plot_display_only()
+			# 更新状态栏
+			if self.show_comparison_mode:
+				self.status_bar.set_status("图表模式: Elliott vs Darken 对比显示")
+			else:
+				self.status_bar.set_status("图表模式: 仅Elliott方法显示")
+	
+	def get_current_display_mode (self):
+		"""获取当前显示模式"""
+		return hasattr(self, 'comparison_radio') and self.comparison_radio.isChecked()
+	
+	def set_display_mode (self, show_comparison):
+		"""设置显示模式"""
+		if hasattr(self, 'comparison_radio') and hasattr(self, 'elliott_only_radio'):
+			if show_comparison:
+				self.comparison_radio.setChecked(True)
+			else:
+				self.elliott_only_radio.setChecked(True)
 	
 	def refresh_results_display (self):
 		"""刷新结果显示"""
@@ -1100,16 +1211,16 @@ class CompositionVariationWidget(QWidget):
 						ln_gamma = self.activity_calc_module.activity_coefficient_elliott(current_comp, target_elem,
 						                                                                  matrix_elem, temperature,
 						                                                                  phase, geo_model_function,
-						                                                                  model_key_geo,verify_gd= True,gd_verbose=True)
+						                                                                  model_key_geo)
 						gamma_val = math.exp(ln_gamma) if not (math.isnan(ln_gamma) or math.isinf(ln_gamma)) else float(
-							'nan')
+								'nan')
 						
 						# 计算修正活度系数
-						ln_gamma_corrc = self.activity_calc_module.activity_coefficient_corrected(
+						ln_gamma_corrc = self.activity_calc_module.activity_coefficient_darken(
 								current_comp, target_elem, matrix_elem, temperature, phase, geo_model_function,
-								model_key_geo,verify_gd= True,gd_verbose=True)
+								model_key_geo, gd_verbose=True)
 						gamma_corr_val = math.exp(ln_gamma_corrc) if not (
-									math.isnan(ln_gamma_corrc) or math.isinf(ln_gamma_corrc)) else float('nan')
+								math.isnan(ln_gamma_corrc) or math.isinf(ln_gamma_corrc)) else float('nan')
 						
 						# 计算活度
 						xi_target = current_comp.get(target_elem, 0.0)
@@ -1137,7 +1248,7 @@ class CompositionVariationWidget(QWidget):
 						# 格式化显示 - 带颜色标识差异大小
 						delta_act_str = f"{delta_act_percent:6.2f}" if not math.isnan(delta_act_percent) else "  N/A"
 						delta_gamma_str = f"{delta_gamma_percent:6.2f}" if not math.isnan(
-							delta_gamma_percent) else "  N/A"
+								delta_gamma_percent) else "  N/A"
 						
 						# 根据差异大小设置颜色
 						if not math.isnan(delta_act_percent) and delta_act_percent > 5:
@@ -1289,7 +1400,7 @@ class CompositionVariationWidget(QWidget):
 		self.plot_property_variation(data_for_plotting, prop_to_plot)
 	
 	def plot_property_variation (self, model_data_dict, property_type):
-		"""绘制属性变化图 - 支持原始值和修正值对比"""
+		"""绘制属性变化图 - 支持选择性显示原始值和修正值对比"""
 		self.figure.clear()
 		ax = self.figure.add_subplot(111)
 		
@@ -1301,9 +1412,12 @@ class CompositionVariationWidget(QWidget):
 		color_cycle = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6', '#1ABC9C']
 		marker_cycle = ['o', 's', '^', 'D', 'v', 'P']
 		
-		# 获取对应的修正值数据
+		# 判断显示模式
+		show_comparison = hasattr(self, 'comparison_radio') and self.comparison_radio.isChecked()
+		
+		# 获取对应的修正值数据（仅在对比模式下使用）
 		corrected_property_type = f"{property_type}_corrected"
-		corrected_data_dict = self.calculation_results.get(corrected_property_type, {})
+		corrected_data_dict = self.calculation_results.get(corrected_property_type, {}) if show_comparison else {}
 		
 		# 收集所有组分数据以确定坐标轴范围
 		all_comps = []
@@ -1322,7 +1436,7 @@ class CompositionVariationWidget(QWidget):
 		else:
 			x_min_ext, x_max_ext = 0, 1
 		
-		# 绘制每个模型的原始值和修正值
+		# 绘制每个模型的结果
 		for i, (model_key, data) in enumerate(model_data_dict.items()):
 			comps, vals = data.get("compositions"), data.get("values")
 			if comps is None or vals is None or len(comps) == 0 or len(vals) == 0:
@@ -1343,8 +1457,14 @@ class CompositionVariationWidget(QWidget):
 				base_color = color_cycle[i % len(color_cycle)]
 				marker = marker_cycle[i % len(marker_cycle)]
 				
+				# 根据显示模式调整标签
+				if show_comparison:
+					line_label = f"{model_key} (Elliott)"
+				else:
+					line_label = f"{model_key}"
+				
 				line_orig, = ax.plot(comps_orig, vals_orig,
-				                     label=f"{model_key} (原始)",
+				                     label=line_label,
 				                     color=base_color,
 				                     marker=marker,
 				                     markersize=5,
@@ -1355,10 +1475,10 @@ class CompositionVariationWidget(QWidget):
 				                     markeredgecolor='white')
 				
 				plot_handles.append(line_orig)
-				plot_labels.append(f"{model_key} (原始)")
+				plot_labels.append(line_label)
 			
-			# 修正值数据处理
-			if model_key in corrected_data_dict:
+			# 修正值数据处理（仅在对比模式下）
+			if show_comparison and model_key in corrected_data_dict:
 				corr_data = corrected_data_dict[model_key]
 				comps_corr, vals_corr = corr_data.get("compositions"), corr_data.get("values")
 				
@@ -1375,7 +1495,7 @@ class CompositionVariationWidget(QWidget):
 						
 						# 绘制修正值曲线（使用虚线和不同标记）
 						line_corr, = ax.plot(comps_corr, vals_corr,
-						                     label=f"{model_key} (修正)",
+						                     label=f"{model_key} (Darken)",
 						                     color=base_color,
 						                     marker=marker,
 						                     markersize=4,
@@ -1387,7 +1507,7 @@ class CompositionVariationWidget(QWidget):
 						                     markeredgewidth=1.5)
 						
 						plot_handles.append(line_corr)
-						plot_labels.append(f"{model_key} (修正)")
+						plot_labels.append(f"{model_key} (Darken)")
 		
 		# 设置标签和标题
 		varying_elem = self.current_parameters.get("varying_element", "?")
@@ -1395,10 +1515,16 @@ class CompositionVariationWidget(QWidget):
 		prop_name_cn = "活度" if property_type == "activity" else "活度系数"
 		y_label = f"{prop_name_cn} ($a_{{{target_elem}}}$)" if property_type == "activity" else f"{prop_name_cn} ($\\gamma_{{{target_elem}}}$)"
 		
+		# 根据显示模式调整标题
+		if show_comparison:
+			title_suffix = f"(Elliott vs Darken 对比)"
+		else:
+			title_suffix = f"(Elliott 方法)"
+		
 		title = (
 			f"{self.current_parameters.get('base_matrix', 'N/A')} 中 {target_elem} 的 {prop_name_cn} vs. {varying_elem} 浓度\n"
 			f"温度: {self.current_parameters.get('temperature', 'N/A')}K, "
-			f"相态: {self.current_parameters.get('phase_state', 'N/A')} (原始值 vs 修正值对比)")
+			f"相态: {self.current_parameters.get('phase_state', 'N/A')} {title_suffix}")
 		
 		ax.set_xlabel(f"{varying_elem} 摩尔分数", fontsize=12, fontweight='bold')
 		ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
@@ -1439,12 +1565,13 @@ class CompositionVariationWidget(QWidget):
 						        label=f"理想溶液 ($a_{{{target_elem}}} = X_{{{target_elem}}}$)",
 						        zorder=0)
 		
-		# 图例设置 - 分组显示
+		# 图例设置
 		if plot_handles:
-			# 创建自定义图例，将原始值和修正值分组
+			# 根据显示模式调整图例列数
+			ncol = 2 if show_comparison and len(plot_handles) > 4 else 1
 			legend = ax.legend(loc='best', fontsize=9, frameon=True, fancybox=True, shadow=True,
 			                   framealpha=0.95, facecolor='white', edgecolor='#CCCCCC',
-			                   ncol=2 if len(plot_handles) > 6 else 1)  # 如果项目太多就分两列
+			                   ncol=ncol)
 			legend.get_frame().set_linewidth(0.5)
 		else:
 			ax.text(0.5, 0.5, "无有效数据", ha='center', va='center', transform=ax.transAxes,
@@ -1559,9 +1686,9 @@ class CompositionVariationWidget(QWidget):
 					
 					# 计算差异
 					act_diff = abs((act_corr - act_orig) / act_orig) * 100 if not math.isnan(act_orig) and abs(
-						act_orig) > 1e-10 and not math.isnan(act_corr) else float('nan')
+							act_orig) > 1e-10 and not math.isnan(act_corr) else float('nan')
 					gamma_diff = abs((gamma_corr - gamma_orig) / gamma_orig) * 100 if not math.isnan(
-						gamma_orig) and abs(gamma_orig) > 1e-10 and not math.isnan(gamma_corr) else float('nan')
+							gamma_orig) and abs(gamma_orig) > 1e-10 and not math.isnan(gamma_corr) else float('nan')
 					
 					row.extend([
 						f"{act_orig:.6f}" if not math.isnan(act_orig) else "N/A",
@@ -1673,9 +1800,9 @@ class CompositionVariationWidget(QWidget):
 				
 				# 计算差异
 				act_diff = abs((act_corr - act_orig) / act_orig) * 100 if not math.isnan(act_orig) and abs(
-					act_orig) > 1e-10 and not math.isnan(act_corr) else float('nan')
+						act_orig) > 1e-10 and not math.isnan(act_corr) else float('nan')
 				gamma_diff = abs((gamma_corr - gamma_orig) / gamma_orig) * 100 if not math.isnan(gamma_orig) and abs(
-					gamma_orig) > 1e-10 and not math.isnan(gamma_corr) else float('nan')
+						gamma_orig) > 1e-10 and not math.isnan(gamma_corr) else float('nan')
 				
 				# 写入数据
 				worksheet.write(row, col, act_orig if not math.isnan(act_orig) else "N/A", data_format)

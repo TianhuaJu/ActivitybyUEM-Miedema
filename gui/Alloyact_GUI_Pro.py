@@ -730,15 +730,13 @@ class AlloyActProGUI(QMainWindow):
 			
 			# 计算活度系数
 			darken_acf = self.activity_coefficient.activity_coefficient_darken(
-					comp_dict, solute, solvent, temp, state, model_func, model_name)
+					comp_dict, solute, solvent, temp, state, model_func, model_name,True,True)
 			
 			wagner_acf = self.activity_coefficient.activity_coefficient_wagner(
 					comp_dict, solvent, solute, temp, state, model_func, model_name)
 			
 			elliot_acf = self.activity_coefficient.activity_coefficient_elliott(comp_dict, solute, solvent, temp, state,
 			                                                                    model_func, model_name)
-			corrected_acf = self.activity_coefficient.activity_coefficient_corrected(comp_dict, solute, solvent, temp,
-			                                                                         state, model_func, model_name)
 			# 获取摩尔分数
 			xi = comp_dict.get(solute, 0.0)
 			
@@ -746,7 +744,7 @@ class AlloyActProGUI(QMainWindow):
 			acf = math.exp(darken_acf) * xi
 			wagner_act = math.exp(wagner_acf) * xi
 			elliot_act = math.exp(elliot_acf) * xi
-			corrected_act = math.exp(corrected_acf) * xi
+			
 			
 			# 准备结果
 			results = {
@@ -759,12 +757,12 @@ class AlloyActProGUI(QMainWindow):
 				"activity": round(acf, 3),
 				"activity_wagner": round(wagner_act, 3),
 				"activity_elliot": round(elliot_act, 3),
-				"activity_corrected": round(corrected_act, 3),
+				
 				"mole_fraction": round(xi, 3),
 				"activity_coefficient_darken": round(math.exp(darken_acf), 3),
 				"activity_coefficient_wagner": round(math.exp(wagner_acf), 3),
 				"activity_coefficient_elliot": round(math.exp(elliot_acf), 3),
-				"activity_coefficient_corrected": round(math.exp(corrected_acf), 3),
+				
 			}
 			
 			# 显示结果
@@ -970,12 +968,11 @@ class AlloyActProGUI(QMainWindow):
 		result_text += f"活度值 (Darken模型): {results['activity']}\n"
 		result_text += f"活度值 (Wagner模型): {results['activity_wagner']}\n"
 		result_text += f"活度值 (Elliot模型): {results['activity_elliot']}\n"
-		result_text += f"活度值 (Corrected by G-D): {results['activity_corrected']}\n"
+		
 		result_text += f"摩尔分数: {results['mole_fraction']}\n\n"
 		result_text += f"活度系数 (Darken模型): {results['activity_coefficient_darken']}\n"
 		result_text += f"活度系数 (Wagner模型): {results['activity_coefficient_wagner']}\n"
 		result_text += f"活度系数 (Elliot模型): {results['activity_coefficient_elliot']}\n"
-		result_text += f"活度系数 (Corrected by G-D): {results['activity_coefficient_corrected']}\n"
 		
 		if current_text:
 			self.activity_result.append(result_text)

@@ -107,8 +107,12 @@ class ActivityCoefficient:
                     solup = Element(p_name)
                     epsilon_j_k = ternary_melts.activity_interact_coefficient_1st(
                             solv, Element(j_name), Element(k_name), Tem, state, geo_model, geo_model_name)
-                    rho_p_jk = ternary_melts.roui_jk(solv, solup, soluj, soluk, Tem, state, geo_model, geo_model_name)
-                    corrected_term_sum +=  xp * xj * xk * (rho_p_jk + epsilon_j_k)
+                    epislon_j_p = ternary_melts.activity_interact_coefficient_1st(
+                            solv, Element(j_name), Element(p_name), Tem, state, geo_model, geo_model_name)
+                    epislon_p_k = ternary_melts.activity_interact_coefficient_1st(
+                            solv, Element(p_name), Element(k_name), Tem, state, geo_model, geo_model_name)
+                    rho_p_jk = ternary_melts.roui_jk(solv, soluk, solup, soluj, Tem, state, geo_model, geo_model_name)
+                    corrected_term_sum +=  xp * xj * xk * (rho_p_jk + epislon_j_p)
         if model_type == "corrected":
             # 仿照Darken修正项：添加三次修正项
             return ln_yi_0 + linear_sum + quadratic_sum_elliot  - 1.0/3*corrected_term_sum
@@ -445,31 +449,7 @@ class ActivityCoefficient:
         return self._calculate_ln_yi(comp_dict, matrix, solute_i, Tem, phase_state, geo_model, geo_model_name,
                                      "Elliot")
     
-    def activity_coefficient_corrected (self, comp_dict, solute_i, matrix, Tem, phase_state: str,
-                                        geo_model: extrap_func, geo_model_name: str,
-                                        verify_gd: bool = False, gd_verbose: bool = False):
-        """修正模型"""
-        if verify_gd:
-            if gd_verbose:
-                print("=" * 50)
-                print("Corrected模型 G-D方程验证")
-                print("=" * 50)
-            
-            gd_result = self.verify_gibbs_duhem(
-                    comp_dict, matrix, Tem, phase_state, geo_model, geo_model_name, "corrected",
-                    verbose=gd_verbose
-            )
-            
-            if gd_verbose:
-                self._print_gd_summary(gd_result)
-            else:
-                print(f"Corrected G-D验证: {gd_result['summary']['status']}")
-                if gd_result['gd_violations']:
-                    print(f"  最大违背: {gd_result['max_violation']:.6e}")
-        
-        return self._calculate_ln_yi(comp_dict, matrix, solute_i, Tem, phase_state, geo_model, geo_model_name,
-                                     "corrected")
-    
+   
     # 📍 修改点7: 新增辅助函数
     def _print_gd_summary (self, gd_result: dict):
         """打印G-D验证摘要的辅助函数"""
