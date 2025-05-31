@@ -749,8 +749,8 @@ class AlloyActGUI(QMainWindow):
 		self.activity_canvas.axes.clear()
 		
 		# 数据
-		models = ['Darken', 'Wagner', 'Elliot']
-		values = [results['activity_darken'], results['activity_wagner'], results['activity_elliot']]
+		models = ['Wagner','Darken',  'Elliot']
+		values = [results['activity_wagner'], results['activity_darken'],  results['activity_elliot']]
 		
 		# 创建柱状图
 		bars = self.activity_canvas.axes.bar(models, values, color=['#3498db', '#2ecc71', '#e74c3c'])
