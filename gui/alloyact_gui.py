@@ -906,14 +906,19 @@ class AlloyActGUI(QMainWindow):
 		coefficients = [
 			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_i']},{results['solute_i']}}}$',
 			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_i']},{results['solute_j']}}}$',
+			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_i']},{results['solute_k']}}}$',
 			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_j']},{results['solute_j']}}}$',
-			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_j']},{results['solute_k']}}}$'
+			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_j']},{results['solute_k']}}}$',
+			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_k']},{results['solute_k']}}}$'
+			
 		]
 		values = [
 			results['ri_ii'],
 			results['ri_ij'],
+			results['ri_ik'],
 			results['ri_jj'],
-			results['ri_jk']
+			results['ri_jk'],
+			results['ri_kk']
 		]
 		
 		# 创建柱状图

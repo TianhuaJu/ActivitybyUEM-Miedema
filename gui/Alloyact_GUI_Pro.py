@@ -728,7 +728,7 @@ class AlloyActProGUI(QMainWindow):
 			self.activity_coefficient.set_composition_dict(alloy_composition_str)
 			
 			darken_acf = self.activity_coefficient.activity_coefficient_darken(
-					comp_dict, solute, solvent, temp, state, model_func, model_name, True, True)
+					comp_dict, solute, solvent, temp, state, model_func, model_name)
 			wagner_acf = self.activity_coefficient.activity_coefficient_wagner(
 					comp_dict, solvent, solute, temp, state, model_func, model_name)
 			elliot_acf = self.activity_coefficient.activity_coefficient_elliott(
@@ -1235,12 +1235,12 @@ class AlloyActProGUI(QMainWindow):
 		
 		# 创建更具数学意义的标签
 		coefficients = [
-			f'ρ_{solute_i}^{solute_i},{solute_i}',
-			f'ρ_{solute_i}^{solute_i},{solute_j}',
-			f'ρ_{solute_i}^{solute_i},{solute_k}',
-			f'ρ_{solute_i}^{solute_j},{solute_j}',
-			f'ρ_{solute_i}^{solute_j},{solute_k}',
-			f'ρ_{solute_i}^{solute_k},{solute_k}',
+			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_i']},{results['solute_i']}}}$',
+			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_i']},{results['solute_j']}}}$',
+			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_i']},{results['solute_k']}}}$',
+			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_j']},{results['solute_j']}}}$',
+			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_j']},{results['solute_k']}}}$',
+			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_k']},{results['solute_k']}}}$'
 		]
 		
 		values = [
