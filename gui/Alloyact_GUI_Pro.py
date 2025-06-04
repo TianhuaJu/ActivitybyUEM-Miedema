@@ -263,7 +263,7 @@ class AlloyActProGUI(QMainWindow):
 				
 				# 如果主界面有输入数据，自动填充
 				if hasattr(self, 'activity_alloy') and self.activity_alloy.text().strip():
-					self.conc_variation_widget.matrix_input.setText(self.activity_alloy.text())
+					self.conc_variation_widget.alloy_compositions.setText(self.activity_alloy.text())
 					self.conc_variation_widget.update_element_dropdowns()
 				break
 	
@@ -310,7 +310,7 @@ class AlloyActProGUI(QMainWindow):
 		interact_layout.addWidget(splitter)
 		
 		# 左侧输入面板
-		left_widget = self.create_input_panel("相互作用系数计算", [
+		left_widget = self.create_input_panel("计算", [
 			("基体元素:", "interact_solvent", "Fe", "e.g.: Fe"),
 			("溶质 i:", "interact_solute_i", "C", "e.g.: C"),
 			("溶质 j:", "interact_solute_j", "Si", "e.g.: Si"),
@@ -343,7 +343,7 @@ class AlloyActProGUI(QMainWindow):
 		second_layout.addWidget(splitter)
 		
 		# 左侧输入面板
-		left_widget = self.create_input_panel("二阶相互作用系数计算", [
+		left_widget = self.create_input_panel("计算", [
 			("基体元素:", "second_solvent", "Al", "e.g.: Al"),
 			("溶质 i:", "second_solute_i", "Si", "e.g.: Si"),
 			("溶质 j:", "second_solute_j", "Cu", "e.g.: Cu"),

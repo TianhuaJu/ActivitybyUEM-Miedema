@@ -466,9 +466,9 @@ class CompositionVariationWidget(QWidget):
 		# 合金组成输入
 		comp_layout = QHBoxLayout()
 		comp_layout.setSpacing(8)
-		self.matrix_input = ModernLineEdit("例如: Fe0.7Ni0.2C0.1")
-		self.matrix_input.setMinimumWidth(200)
-		comp_layout.addWidget(self.matrix_input)
+		self.alloy_compositions = ModernLineEdit("例如: Fe0.7Ni0.2C0.1")
+		self.alloy_compositions.setMinimumWidth(200)
+		comp_layout.addWidget(self.alloy_compositions)
 		
 		update_btn = ModernButton("刷新", "secondary")
 		update_btn.setFixedWidth(60)
@@ -919,7 +919,7 @@ class CompositionVariationWidget(QWidget):
 	
 	def update_element_dropdowns (self):
 		"""更新元素下拉列表"""
-		comp_input = self.matrix_input.text().strip()
+		comp_input = self.alloy_compositions.text().strip()
 		
 		# 阻止信号
 		for combo in [self.matrix_element_combo, self.varying_element_combo, self.target_element_combo]:
@@ -932,25 +932,40 @@ class CompositionVariationWidget(QWidget):
 			return
 		
 		try:
-			# 按照在合金组成中出现的顺序提取元素，保持顺序
-			pattern = r"([A-Z][a-z]?)(\d*\.?\d+|\d+)"
-			matches = re.findall(pattern, comp_input)
-			if not matches:
+			# 调用静态解析函数获取合金组成信息
+			composition_data = self._parse_composition_static(comp_input)
+			
+			if not composition_data:
 				for combo in [self.matrix_element_combo, self.varying_element_combo, self.target_element_combo]:
 					combo.blockSignals(False)
+				self.status_bar.set_status("无法解析合金组成")
 				return
 			
-			# 提取元素并保持出现顺序，去重但保持第一次出现的位置
-			elements = []
+			# 从解析结果中提取元素列表
+			
+			if isinstance(composition_data, dict):
+				elements = list(composition_data.keys())
+			elif isinstance(composition_data, list):
+				# 如果返回的是元素列表
+				elements = composition_data
+			else:
+				# 如果返回其他格式，尝试转换
+				elements = list(composition_data) if composition_data else []
+			
+			# 去重并保持顺序
 			seen = set()
-			for element, _ in matches:
+			unique_elements = []
+			for element in elements:
 				if element not in seen:
-					elements.append(element)
+					unique_elements.append(element)
 					seen.add(element)
+			
+			elements = unique_elements
 			
 			if not elements:
 				for combo in [self.matrix_element_combo, self.varying_element_combo, self.target_element_combo]:
 					combo.blockSignals(False)
+				self.status_bar.set_status("未检测到有效元素")
 				return
 			
 			# 填充下拉框
@@ -1016,7 +1031,7 @@ class CompositionVariationWidget(QWidget):
 	def run_calculation_thread (self):
 		"""运行计算线程"""
 		# 验证输入
-		if not self.matrix_input.text().strip():
+		if not self.alloy_compositions.text().strip():
 			QMessageBox.warning(self, "输入缺失", "请输入合金基础组成。")
 			return
 		
@@ -1061,7 +1076,7 @@ class CompositionVariationWidget(QWidget):
 			}
 			
 			# 获取参数
-			base_matrix_str = self.matrix_input.text().strip()
+			base_matrix_str = self.alloy_compositions.text().strip()
 			matrix_elem = self.matrix_element_combo.currentText()
 			varying_elem = self.varying_element_combo.currentText()
 			target_elem = self.target_element_combo.currentText()
