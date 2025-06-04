@@ -1,3 +1,4 @@
+import os
 import sys
 import math
 import re
@@ -21,7 +22,7 @@ matplotlib.rcParams['mathtext.default'] = 'regular'
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QGridLayout, QLabel, QLineEdit, QComboBox, QPushButton,
                              QTabWidget, QSplitter, QFrame, QGroupBox, QTextEdit, QMessageBox,
-                             QStatusBar, QDoubleSpinBox, QMenuBar, QAction)
+                             QStatusBar, QDoubleSpinBox, QMenuBar, QAction, QSystemTrayIcon, QMenu)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QGuiApplication, QIcon
 
@@ -69,6 +70,8 @@ class AlloyActProGUI(QMainWindow):
 		self.setup_ui()
 		self.setup_menu_bar()
 		self.set_global_styles()
+		self.setup_icon()
+		self.setup_tray_icon()
 	
 	def center_window (self):
 		"""窗口居中"""
@@ -1280,6 +1283,53 @@ class AlloyActProGUI(QMainWindow):
 		
 		self.second_canvas.fig.tight_layout()
 		self.second_canvas.draw()
+	
+	def setup_icon (self):
+		icon_path = self.get_resource_path('resources/app_ico_Alloyact_Pro.png')
+		if os.path.exists(icon_path):
+			
+			self.setWindowIcon(QIcon(icon_path))
+	
+	def setup_tray_icon (self):
+		"""设置系统托盘图标"""
+		if QSystemTrayIcon.isSystemTrayAvailable():
+			self.tray_icon = QSystemTrayIcon(self)
+			
+			# 设置托盘图标
+			icon_path = self.get_resource_path('resources/app_ico_Alloyact_Pro.png')
+			if os.path.exists(icon_path):
+				self.tray_icon.setIcon(QIcon(icon_path))
+			
+			# 创建托盘菜单
+			tray_menu = QMenu()
+			
+			# 显示主窗口动作
+			show_action = QAction("显示主窗口", self)
+			show_action.triggered.connect(self.show)
+			tray_menu.addAction(show_action)
+			
+			# 退出动作
+			quit_action = QAction("退出", self)
+			quit_action.triggered.connect(QApplication.instance().quit)
+			tray_menu.addAction(quit_action)
+			
+			# 设置托盘菜单
+			self.tray_icon.setContextMenu(tray_menu)
+			
+			# 显示托盘图标
+			self.tray_icon.show()
+			
+			# 设置托盘图标提示
+			self.tray_icon.setToolTip("AlloyAct Pro")
+	
+	def get_resource_path (self, relative_path):
+		"""获取资源文件路径"""
+		try:
+			base_path = sys._MEIPASS
+		except AttributeError:
+			base_path = os.path.abspath(".")
+		return os.path.join(base_path, relative_path)
+		
 
 
 def main ():
