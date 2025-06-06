@@ -361,8 +361,12 @@ class Melt:
 		# 处理无限稀释活度系数
 		self._yi0 = self._process_temp_data(self.str_yi0, self._tem)
 		self._ln_yi0 = self._process_temp_data(self.str_ln_yi0, self._tem)
+		
+		# 处理二阶活度相互作用系数
 		self._ri_ij = self._process_temp_data((self.ri_ij_str,self.second_order_t_str),self._tem)
 		self._ri_jk = self._process_temp_data((self.ri_jk_str,self.second_order_t_str),self._tem)
+		self._pi_ij = self._second_order_w2m(self._ri_ij, Element(self.solui), Element(self.solui), Element(self.soluj),
+		                                     matrix=Element(self.solv), temp=self._tem)
 		
 	
 	def _process_temp_data (self, text_info, t):
@@ -438,8 +442,7 @@ class Melt:
 		sij = 230 * eji * element_j.m / matrix.m + (1 - element_j.m / matrix.m)
 		return round(sij, 2)
 	
-	def _second_order_w2m (self, r_ijk, solu_i, solu_j, solu_k, solv, temp, state, model_func,
-	                                model_name):
+	def _second_order_w2m (self, r_ijk, solu_i, solu_j, solu_k, matrix, temp):
 		"""
 		根据公式(8)将质量分数二阶相互作用系数转换为摩尔分数
 
@@ -465,13 +468,13 @@ class Melt:
 			Mi = solu_i.m  # 溶质i的原子质量
 			Mj = solu_j.m  # 溶质j的原子质量
 			Mk = solu_k.m  # 溶质k的原子质量
-			M1 = solv.m  # 基体元素的原子质量
+			M1 = matrix.m  # 基体元素的原子质量
 			
 			
 			
 			# 获取一阶相互作用系数 eᵢʲ 和 eᵢᵏ
-			eij = self._get_or_calculate_eij(solu_i, solu_j, solv, temp, state, model_func, model_name)
-			eik = self._get_or_calculate_eij(solu_i, solu_k, solv, temp, state, model_func, model_name)
+			eij = self._get_or_calculate_eij(solu_i, solu_j, matrix, temp)
+			eik = self._get_or_calculate_eij(solu_i, solu_k, matrix, temp)
 			
 			
 			# 应用公式Lupis给出的公式进行转换
@@ -496,8 +499,10 @@ class Melt:
 			print(f"  错误: 二阶系数转换失败: {e}")
 			return float('nan')
 		
-	def _get_or_calculate_eij(self, solu_i, solu_j, solv, temp, state, model_func, model_name):
-		'''获取质量分数表示的j对i的一阶活度相互作用系数'''
+	def _get_or_calculate_eij(self, solu_i, solu_j, solv, temp):
+		'''获取质量分数表示的j对i的一阶活度相互作用系数
+		没有实验值，则采用计算值，默认采用UEM1计算
+		'''
 		melts = self.__init__(solv,solu_i,solu_j,temp)
 		if melts._eji:
 			return melts._eji
