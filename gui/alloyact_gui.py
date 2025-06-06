@@ -910,7 +910,7 @@ class AlloyActGUI(QMainWindow):
 			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_j']},{results['solute_j']}}}$',
 			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_j']},{results['solute_k']}}}$',
 			f'$\\rho_{{{results['solute_i']}}}^{{{results['solute_k']},{results['solute_k']}}}$'
-			
+		
 		]
 		values = [
 			results['ri_ii'],
@@ -1372,11 +1372,12 @@ class AlloyActGUI(QMainWindow):
 			ternary = TernaryMelts(temp, state, is_entropy)
 			
 			# 计算二阶系数
-			rii = ternary.roui_ii(solv, solui, temp, state, model_func, model_name)
-			rij = ternary.roui_ij(solv, solui, soluj, temp, state, model_func, model_name)
-			rjj = ternary.roui_jj(solv, solui, soluj, temp, state, model_func, model_name)
-			rjk = ternary.roui_jk(solv, solui, soluj, soluk, temp, state, model_func, model_name)
-			
+			ri_ii = ternary.roui_ii(solv, solui, temp, state, model_func, model_name)
+			ri_ij = ternary.roui_ij(solv, solui, soluj, temp, state, model_func, model_name)
+			ri_ik = ternary.roui_jk(solv, solui, solui, soluk, temp, state, model_func, model_name)
+			ri_jj = ternary.roui_jj(solv, solui, soluj, temp, state, model_func, model_name)
+			ri_jk = ternary.roui_jk(solv, solui, soluj, soluk, temp, state, model_func, model_name)
+			ri_kk = ternary.roui_jk(solv, solui, soluk, soluk, temp, state, model_func, model_name)
 			# 准备结果
 			results = {
 				"solvent": solvent,
@@ -1386,10 +1387,12 @@ class AlloyActGUI(QMainWindow):
 				"temperature": temp,
 				"state": state,
 				"model": model_name,
-				"ri_ii": round(rii, 3),
-				"ri_ij": round(rij, 3),
-				"ri_jj": round(rjj, 3),
-				"ri_jk": round(rjk, 3)
+				"ri_ii": round(ri_ii, 3),
+				"ri_ij": round(ri_ij, 3),
+				"ri_jj": round(ri_jj, 3),
+				"ri_jk": round(ri_jk, 3),
+				"ri_kk": round(ri_kk, 3),
+				"ri_ik": round(ri_ik, 3),
 			}
 			
 			# 显示结果 - 添加到当前结果而不是清空
@@ -1409,9 +1412,11 @@ class AlloyActGUI(QMainWindow):
 			result_text += f"状态: {results['state']}\n"
 			result_text += f"外推模型: {results['model']}\n\n"
 			result_text += f"ρi^ii: {results['ri_ii']}\n"
+			result_text += f"ρi^ik: {results['ri_ik']}\n"
 			result_text += f"ρi^ij: {results['ri_ij']}\n"
 			result_text += f"ρi^jj: {results['ri_jj']}\n"
 			result_text += f"ρi^jk: {results['ri_jk']}\n"
+			result_text += f"ρi^kk: {results['ri_kk']}\n"
 			
 			if current_text:
 				self.second_result.append(result_text)
