@@ -801,7 +801,7 @@ class AlloyActProGUI(QMainWindow):
 			soluj = Element(solute_j)
 			
 			# 创建 Melt 对象获取实验值
-			melt = Melt(solvent, solute_i, solute_j, temp)
+			melt = Melt(solvent, solute_i, solute_j, t = temp)
 			
 			# 获取模型函数
 			model_func = self.get_model_function(model_name)
@@ -1175,7 +1175,7 @@ class AlloyActProGUI(QMainWindow):
 		solute = results["solute"]
 		solvent = results["solvent"]
 		self.activity_canvas.axes.set_title(f'{solute} 在 {solvent} 中的活度比较', fontsize=14)
-		self.activity_canvas.axes.set_ylabel(f'Activity(a_{solute})', fontsize=13)
+		self.activity_canvas.axes.set_ylabel(rf'Activity($\mathbf{{a}}_{{{solute}}}$)', fontsize=13)
 		self.activity_canvas.axes.grid(True, axis='y', linestyle='--', alpha=0.7)
 		
 		# 添加摩尔分数参考线
@@ -1221,7 +1221,8 @@ class AlloyActProGUI(QMainWindow):
 		solute_j = results["solute_j"]
 		self.interact_canvas.axes.set_title(
 				f'{solute_j} 对 {solute_i} 在 {solvent} 中的相互作用系数', fontsize=14)
-		self.interact_canvas.axes.set_ylabel(f'ε^{solute_j}_{solute_i}', fontsize=14)
+		self.interact_canvas.axes.set_ylabel(rf'$\boldsymbol{{\varepsilon}}^{{{solute_j}}}_{{{solute_i}}}$',
+		                                     fontsize=14)
 		self.interact_canvas.axes.grid(True, axis='y', linestyle='--', alpha=0.7)
 		
 		self.interact_canvas.fig.tight_layout()

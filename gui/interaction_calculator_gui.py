@@ -542,7 +542,7 @@ class InteractionCalculatorGUI(QMainWindow):
 			sij_exp = float('nan')
 			try:
 				if state == "liquid":
-					melt = Melt(solvent, solute_i, solute_j, temp)
+					melt = Melt(solvent, solute_i, solute_j, t = temp)
 					sij_exp = melt.sji # Assuming Melt class and sji attribute exist
 					if sij_exp is None: # Explicitly check for None if Melt might return it
 						sij_exp = float('nan')
