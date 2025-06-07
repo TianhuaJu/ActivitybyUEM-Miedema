@@ -1249,8 +1249,6 @@ class AlloyActGUI(QMainWindow):
 			model_func = self.get_model_function(model_name)
 			
 			# 创建 TernaryMelts 实例
-			# 在实际实现中需要导入 entropy_judge 函数
-			# 这里简化处理，假设 entropy_judge 返回 False
 			
 			ternary = TernaryMelts(temp, state)
 			
@@ -1367,9 +1365,8 @@ class AlloyActGUI(QMainWindow):
 			model_func = self.get_model_function(model_name)
 			
 			# 创建 TernaryMelts 实例
-			# 在实际实现中需要导入 entropy_judge 函数
-			is_entropy = False  # 实际中应该调用 entropy_judge(solvent, solute_i, solute_j, solute_k)
-			ternary = TernaryMelts(temp, state, is_entropy)
+			
+			ternary = TernaryMelts(temp, state)
 			
 			# 计算二阶系数
 			ri_ii = ternary.roui_ii(solv, solui, temp, state, model_func, model_name)
@@ -1378,6 +1375,7 @@ class AlloyActGUI(QMainWindow):
 			ri_jj = ternary.roui_jj(solv, solui, soluj, temp, state, model_func, model_name)
 			ri_jk = ternary.roui_jk(solv, solui, soluj, soluk, temp, state, model_func, model_name)
 			ri_kk = ternary.roui_jk(solv, solui, soluk, soluk, temp, state, model_func, model_name)
+			
 			# 准备结果
 			results = {
 				"solvent": solvent,

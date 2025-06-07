@@ -1,12 +1,11 @@
 # activity_calculator.py
 
 import re
-import math
 from copy import deepcopy
+from typing import Callable, Dict
 
 from core.element import Element
 from models.activity_interaction_parameters import TernaryMelts
-from typing import Callable, Dict
 
 extrap_func = Callable[[str, str, str, float, str], float]
 
@@ -53,6 +52,7 @@ class ActivityCoefficient:
         solv = Element(solvent)
         solui = Element(solute_i)
         solute_keys = [k for k in comp_dict.keys() if k != solvent]
+        
         ternary_melts = TernaryMelts(Tem, state)
         ln_yi_0 = ternary_melts.ln_y0(solv, solui)
 

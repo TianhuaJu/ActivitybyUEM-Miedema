@@ -1,11 +1,12 @@
 # ternary_model.py
 
-import math
+from typing import Callable
+
 from core.constants import Constants
 from core.element import Element
 from core.utils import entropy_judge
-from typing import Callable
 from .extrapolation_models import BinaryModel
+
 extrap_func = Callable[[str, str, str, float, str], float]
 
 
@@ -122,7 +123,7 @@ class TernaryMelts:
         
         dfx = (dnx * dx - ddx * nx) / (dx * dx)
         
-        return dfx
+        return dfx * fij
     
     def second_derivative_q0 (self, i_element: Element, j_element: Element, xi=0):
         """Calculate second derivative of Q(x) at x=0"""

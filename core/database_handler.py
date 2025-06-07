@@ -1,9 +1,9 @@
 # database_handler.py
-import os
-import sys
-import sqlite3
 import math
+import os
 import re
+import sqlite3
+import sys
 
 import models.extrapolation_models
 
@@ -226,8 +226,12 @@ class Melt:
 		
 		self.ri_ij_str = None
 		self.ri_jk_str = None
+		self._ri_ii_str = None
+		self._ri_ik_str = None
 		self.pi_ij_str = None
 		self.pi_jk_str = None
+		self.ri_jj_str = None
+		self._ri_kk_str = None
 		
 		self.first_order_str_t = None
 		self.second_order_str_t = None
