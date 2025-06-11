@@ -1,23 +1,22 @@
-import sys
 import math
-import re
+import sys
 import traceback
-import numpy as np
+
 import matplotlib
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+import numpy as np
+from PyQt5.QtCore import Qt, QDateTime
+from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QLabel, QLineEdit, QComboBox, QPushButton, QSplitter,
-                             QFrame, QGroupBox, QTextEdit, QMessageBox, QSizePolicy,
-                             QDoubleSpinBox, QCheckBox, QFileDialog, QFormLayout,
-                             QProgressDialog, QScrollArea, QTabWidget, QSpacerItem, QButtonGroup, QRadioButton)
-from PyQt5.QtCore import Qt, QDateTime, QPropertyAnimation, QEasingCurve, QRect, QTimer
-from PyQt5.QtGui import QFont, QPalette, QColor, QIcon, QPixmap, QPainter, QLinearGradient
+                             QFrame, QGroupBox, QTextEdit, QDoubleSpinBox, QCheckBox, QFileDialog, QFormLayout,
+                             QProgressDialog, QTabWidget, QButtonGroup, QRadioButton)
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.figure import Figure
 
-from models.extrapolation_models import BinaryModel
 from calculations.activity_calculator import ActivityCoefficient
 from core.utils import *
+from models.extrapolation_models import BinaryModel
 
 # Matplotlib 全局设置
 matplotlib.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'FangSong', 'SimSun', 'DejaVu Sans']
@@ -796,12 +795,14 @@ class ActivityTemperatureVariationWidget(QWidget):
 		button_layout.setSpacing(10)
 		
 		refresh_results_btn = ModernButton("🔄 刷新显示", "secondary")
-		refresh_results_btn.setMaximumWidth(120)
+		refresh_results_btn.setMaximumWidth(140)
+		refresh_results_btn.setFont(QFont("Microsoft YaHei", 8, QFont.Bold))
 		refresh_results_btn.clicked.connect(self.refresh_results_display)
 		button_layout.addWidget(refresh_results_btn)
 		
 		clear_results_btn = ModernButton("🗑️ 清除历史", "secondary")
-		clear_results_btn.setMaximumWidth(120)
+		clear_results_btn.setMaximumWidth(140)
+		clear_results_btn.setFont(QFont("Microsoft YaHei", 8, QFont.Bold))
 		clear_results_btn.clicked.connect(self.clear_history)
 		button_layout.addWidget(clear_results_btn)
 		
