@@ -105,15 +105,15 @@ class ActivityCoefficient:
                 for p_name in solute_keys:
                     xp = comp_dict[p_name]
                     solup = Element(p_name)
-                    epsilon_j_k = ternary_melts.activity_interact_coefficient_1st(
+                    epislon_j_k = ternary_melts.activity_interact_coefficient_1st(
                             solv, Element(j_name), Element(k_name), Tem, state, geo_model, geo_model_name)
                     epislon_j_p = ternary_melts.activity_interact_coefficient_1st(
                             solv, Element(j_name), Element(p_name), Tem, state, geo_model, geo_model_name)
                     epislon_p_k = ternary_melts.activity_interact_coefficient_1st(
                             solv, Element(p_name), Element(k_name), Tem, state, geo_model, geo_model_name)
                     rho_p_jk = ternary_melts.roui_jk(solv, soluk, solup, soluj, Tem, state, geo_model, geo_model_name)
-                    corrected_term_sum +=  xp * xj * xk * (rho_p_jk + epislon_j_p)
-        if model_type == "corrected":
+                    corrected_term_sum +=  xp * xj * xk * (rho_p_jk + epislon_j_k)
+        if model_type == "Elliot1":
             # 仿照Darken修正项：添加三次修正项
             return ln_yi_0 + linear_sum + quadratic_sum_elliot  - 1.0/3*corrected_term_sum
             

@@ -36,6 +36,7 @@ from core.database_handler import Melt
 # 导入新的界面组件
 from gui.ActivityVaryTemperatureWdget import ActivityTemperatureVariationWidget
 from gui.ActivityVaryConcentrationWdget import CompositionVariationWidget
+from gui.data_ui import DatabaseManagerTab
 
 
 class MplCanvas(FigureCanvas):
@@ -104,7 +105,7 @@ class AlloyActProGUI(QMainWindow):
 		
 		# 创建高级分析选项卡
 		self.create_advanced_analysis_tabs()
-		
+		self.create_database_mangner_tabs()
 		# 创建状态栏
 		self.status_bar = QStatusBar()
 		self.setStatusBar(self.status_bar)
@@ -232,7 +233,9 @@ class AlloyActProGUI(QMainWindow):
 		
 		# 添加到选项卡
 		self.tabs.addTab(self.temp_variation_widget, "温度变化分析")
-	
+	def create_database_mangner_tabs (self):
+		self.database_widget = DatabaseManagerTab(self)
+		self.tabs.addTab(self.database_widget, "数据管理")
 	def create_concentration_variation_tab (self):
 		"""创建浓度变化分析选项卡"""
 		# 创建浓度变化分析组件实例

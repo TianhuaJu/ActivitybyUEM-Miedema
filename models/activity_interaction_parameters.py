@@ -98,9 +98,13 @@ class TernaryMelts:
         return lny0
     
     def first_derivative_qx (self, i_element: Element, j_element: Element, xi: float = 0) -> float:
-        """Calculate first derivative of Q(x)"""
+        """Calculate first derivative of Q(x)
+        Q(x)=A(x)B(x)/(xA(x)+(1-X)B(x))
+        D(x) = xA(x)+(1-X)B(x)
+        """
         
         fij = self.fab_func_contain_s(i_element, j_element, entropy_judge(i_element.name, j_element.name))
+        
         
         vi = i_element.v
         vj = j_element.v
@@ -110,20 +114,20 @@ class TernaryMelts:
         phi_j = j_element.phi
         delta_phi = phi_i - phi_j
         
-        ax = vi * (1 + ui * delta_phi * (1 - xi))
-        bx = vj * (1 - uj * delta_phi * xi)
+        ax = vi * (1 + ui * delta_phi * (1 - xi)*vj/(xi*vi+(1-xi)*vj))
+        bx = vj * (1 - uj * delta_phi * xi*vi/(xi*vi+(1-xi)*vj))
         dx = xi * ax + (1 - xi) * bx
         nx = ax * bx
         
-        dax = -ui * delta_phi * vi
-        dbx = -uj * delta_phi * vj
+        dax = ui * delta_phi * vi*(-vj*(xi*vi+(1-xi)*vj)-(1-xi)*vj*(vi-vj))/((xi*vi+(1-xi)*vj)**2)
+        dbx = -uj * delta_phi * vj*(vi*(xi*vi+(1-xi)*vj)-xi*vi*(vi-vj))/((xi*vi+(1-xi)*vj)**2)
         
         ddx = ax + xi * dax - bx + (1 - xi) * dbx
         dnx = dax * bx + ax * dbx
         
         dfx = (dnx * dx - ddx * nx) / (dx * dx)
         
-        return dfx * fij
+        return dfx
     
     def second_derivative_q0 (self, i_element: Element, j_element: Element, xi=0):
         """Calculate second derivative of Q(x) at x=0"""
@@ -280,39 +284,39 @@ class TernaryMelts:
         
         return (-sji + 1000 * (qij + qik + qjk) / (Constants.R * Tem))
     
-    def roui_jk (self, m, i, j, k, Tem: float, state: str, geo_model: extrap_func, geo_model_name="UEM1"):
+    def roui_jk (self, matrix, i, j, k, Tem: float, state: str, geo_model: extrap_func, geo_model_name="UEM1"):
         """Calculate cross-interaction parameter, the influence of components j,k on i"""
-        skj = self.activity_interact_coefficient_1st(m, j, k, Tem, state, geo_model, geo_model_name)
+        skj = self.activity_interact_coefficient_1st(matrix, j, k, Tem, state, geo_model, geo_model_name)
         
-        amj_ij = geo_model(m.name, j.name, i.name, Tem, state)
-        ami_ij = geo_model(m.name, i.name, j.name, Tem, state)
+        amj_ij = geo_model(matrix.name, j.name, i.name, Tem, state)
+        ami_ij = geo_model(matrix.name, i.name, j.name, Tem, state)
         aki_ij = geo_model(k.name, i.name, j.name, Tem, state)
         akj_ij = geo_model(k.name, j.name, i.name, Tem, state)
         
-        amk_ik = geo_model(m.name, k.name, i.name, Tem, state)
-        ami_ik = geo_model(m.name, i.name, k.name, Tem, state)
+        amk_ik = geo_model(matrix.name, k.name, i.name, Tem, state)
+        ami_ik = geo_model(matrix.name, i.name, k.name, Tem, state)
         aji_ik = geo_model(j.name, i.name, k.name, Tem, state)
         ajk_ik = geo_model(j.name, k.name, i.name, Tem, state)
         
-        aji_im = geo_model(j.name, i.name, m.name, Tem, state)
-        ajm_im = geo_model(j.name, m.name, i.name, Tem, state)
-        aki_im = geo_model(k.name, i.name, m.name, Tem, state)
-        akm_im = geo_model(k.name, m.name, i.name, Tem, state)
+        aji_im = geo_model(j.name, i.name, matrix.name, Tem, state)
+        ajm_im = geo_model(j.name, matrix.name, i.name, Tem, state)
+        aki_im = geo_model(k.name, i.name, matrix.name, Tem, state)
+        akm_im = geo_model(k.name, matrix.name, i.name, Tem, state)
         
-        amk_jk = geo_model(m.name, k.name, j.name, Tem, state)
-        amj_jk = geo_model(m.name, j.name, k.name, Tem, state)
+        amk_jk = geo_model(matrix.name, k.name, j.name, Tem, state)
+        amj_jk = geo_model(matrix.name, j.name, k.name, Tem, state)
         aik_jk = geo_model(i.name, k.name, j.name, Tem, state)
         aij_jk = geo_model(i.name, j.name, k.name, Tem, state)
         
-        aij_jm = geo_model(i.name, j.name, m.name, Tem, state)
-        aim_jm = geo_model(i.name, m.name, j.name, Tem, state)
-        akj_jm = geo_model(k.name, j.name, m.name, Tem, state)
-        akm_jm = geo_model(k.name, m.name, j.name, Tem, state)
+        aij_jm = geo_model(i.name, j.name, matrix.name, Tem, state)
+        aim_jm = geo_model(i.name, matrix.name, j.name, Tem, state)
+        akj_jm = geo_model(k.name, j.name, matrix.name, Tem, state)
+        akm_jm = geo_model(k.name, matrix.name, j.name, Tem, state)
         
-        aik_km = geo_model(i.name, k.name, m.name, Tem, state)
-        aim_km = geo_model(i.name, m.name, k.name, Tem, state)
-        ajk_km = geo_model(j.name, k.name, m.name, Tem, state)
-        ajm_km = geo_model(j.name, m.name, k.name, Tem, state)
+        aik_km = geo_model(i.name, k.name, matrix.name, Tem, state)
+        aim_km = geo_model(i.name, matrix.name, k.name, Tem, state)
+        ajk_km = geo_model(j.name, k.name, matrix.name, Tem, state)
+        ajm_km = geo_model(j.name, matrix.name, k.name, Tem, state)
         
         dfij = self.first_derivative_qx(i, j, ami_ij / (ami_ij + amj_ij))
         dfik = self.first_derivative_qx(i, k, ami_ik / (ami_ik + amk_ik))
@@ -320,8 +324,8 @@ class TernaryMelts:
         qij = (amj_ij * aki_ij - ami_ij * akj_ij) / (ami_ij + amj_ij) ** 2 * dfij
         qik = (amk_ik * aji_ik - ami_ik * ajk_ik) / (ami_ik + amk_ik) ** 2 * dfik
         
-        dfim = self.first_derivative_qx(i, m, 0)
-        ddfim = self.second_derivative_q0(i, m, 0)
+        dfim = self.first_derivative_qx(i, matrix, 0)
+        ddfim = self.second_derivative_q0(i, matrix, 0)
         
         qim = aji_im * aki_im * ddfim - (aji_im * akm_im + aki_im * ajm_im + 2 * aji_im * aki_im) * dfim
         
@@ -329,12 +333,12 @@ class TernaryMelts:
         
         qjk = (amk_jk * aij_jk - amj_jk * aik_jk) / (amj_jk + amk_jk) ** 2 * dfjk
         
-        dfjm = self.first_derivative_qx(j, m, 0)
-        ddfjm = self.second_derivative_q0(j, m, 0)
+        dfjm = self.first_derivative_qx(j, matrix, 0)
+        ddfjm = self.second_derivative_q0(j, matrix, 0)
         qjm = aij_jm * akj_jm * ddfjm - (aij_jm * akm_jm + akj_jm * aim_jm + 2 * aij_jm * akj_jm) * dfjm
         
-        dfkm = self.first_derivative_qx(k, m, 0)
-        ddfkm = self.second_derivative_q0(k, m, 0)
+        dfkm = self.first_derivative_qx(k, matrix, 0)
+        ddfkm = self.second_derivative_q0(k, matrix, 0)
         qkm = aik_km * ajk_km * ddfkm - (aik_km * ajm_km + ajk_km * aim_km + 2 * aik_km * ajk_km) * dfkm
         
         return 1000 * (qij + qik + qim + qjk + qjm + qkm) / (Constants.R * Tem) - skj

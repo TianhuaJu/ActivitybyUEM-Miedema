@@ -61,7 +61,7 @@ class BinaryModel:
 		return 0.0 if ea.hybrid_factor == eb.hybrid_factor else alpha * ea.hybrid_value * eb.hybrid_value
 	
 	def v_in_alloy (self, ea, eb, xa, xb):
-		"""计算合金中的体积。"""
+		"""计算合金中的体积。xa+xb=1"""
 		ya = xa / (xa + xb)
 		yb = xb / (xa + xb)
 		
@@ -125,9 +125,9 @@ class BinaryModel:
 		"""计算 GSM 的相似系数。"""
 		m1 = BinaryModel()
 		m2 = BinaryModel()
-		m1.set_state(state);
+		m1.set_state(state)
 		m2.set_state(state)
-		m1.set_temperature(temp);
+		m1.set_temperature(temp)
 		m2.set_temperature(temp)
 		
 		key = k + a + b + str(temp) + state
@@ -141,15 +141,15 @@ class BinaryModel:
 	
 	def deviation_func (self, k, i, j, t):
 		"""计算 UEM2 的偏差函数。"""
-		mij = BinaryModel();
+		mij = BinaryModel()
 		mkj = BinaryModel()
-		mij.set_entropy(True);
+		mij.set_entropy(True)
 		mkj.set_entropy(True)
-		mij.set_pair_element(i, j);
+		mij.set_pair_element(i, j)
 		mkj.set_pair_element(k, j)
-		mij.set_state("liquid");
+		mij.set_state("liquid")
 		mkj.set_state("liquid")
-		mij.set_temperature(t);
+		mij.set_temperature(t)
 		mkj.set_temperature(t)
 		
 		key_ij = i + j + str(self._lambda) + "liquid" + str(t)

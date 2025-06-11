@@ -543,17 +543,17 @@ class InteractionCalculatorGUI(QMainWindow):
 			try:
 				if state == "liquid":
 					melt = Melt(solvent, solute_i, solute_j, t = temp)
-					sij_exp = melt.sji # Assuming Melt class and sji attribute exist
-					if sij_exp is None: # Explicitly check for None if Melt might return it
+					sij_exp = melt.sji
+					if sij_exp is None:
 						sij_exp = float('nan')
 			except Exception as e:
-				print(f"无法获取实验值: {e}") # Log the error, don't stop calculation
+				print(f"无法获取实验值: {e}")
 				sij_exp = float('nan')
 
 
 			# 获取模型函数
 			model_func = self.get_model_function(model_name)
-			if model_func is None: # Check if get_model_function indicated an error
+			if model_func is None:
 			    self.update_status("计算失败 - 无效的模型")
 			    return
 

@@ -683,13 +683,13 @@ class CompositionVariationWidget(QWidget):
 		# 图表显示选项控制区域
 		options_frame = QFrame()
 		options_frame.setStyleSheet("""
-			QFrame {
-				background-color: #F8F9FA;
-				border: 1px solid #E0E0E0;
-				border-radius: 6px;
-				padding: 8px;
-			}
-		""")
+	        QFrame {
+	            background-color: #F8F9FA;
+	            border: 1px solid #E0E0E0;
+	            border-radius: 6px;
+	            padding: 8px;
+	        }
+	    """)
 		options_layout = QHBoxLayout(options_frame)
 		options_layout.setContentsMargins(10, 8, 10, 8)
 		
@@ -702,56 +702,56 @@ class CompositionVariationWidget(QWidget):
 		# 创建单选按钮组
 		self.display_mode_group = QButtonGroup(self)
 		
-		# 仅显示Elliott方法结果
-		self.elliott_only_radio = QRadioButton("仅Elliott方法")
-		self.elliott_only_radio.setChecked(True)
-		self.elliott_only_radio.setToolTip("仅显示传统Elliott方法的计算结果")
+		# 仅显示Darken方法结果 (修改为默认)
+		self.darken_only_radio = QRadioButton("仅Darken方法")
+		self.darken_only_radio.setChecked(True)  # 设置为默认选中
+		self.darken_only_radio.setToolTip("仅显示Darken修正方法的计算结果")
 		
-		# 对比显示Elliott和Darken方法
-		self.comparison_radio = QRadioButton("Elliott vs Darken对比")
-		self.comparison_radio.setToolTip("同时显示Elliott方法和Darken修正方法的对比结果")
+		# 对比显示Darken和Elliott方法
+		self.comparison_radio = QRadioButton("Darken vs Elliott对比")
+		self.comparison_radio.setToolTip("同时显示Darken修正方法和传统Elliott方法的对比结果")
 		
 		# 设置样式
 		radio_style = """
-			QRadioButton {
-				font-size: 10pt;
-				color: #2C3E50;
-				background: transparent;
-				border: none;
-				spacing: 5px;
-			}
-			QRadioButton::indicator {
-				width: 16px;
-				height: 16px;
-			}
-			QRadioButton::indicator:unchecked {
-				border: 2px solid #BDC3C7;
-				border-radius: 8px;
-				background-color: white;
-			}
-			QRadioButton::indicator:checked {
-				border: 2px solid #3498DB;
-				border-radius: 8px;
-				background-color: #3498DB;
-			}
-		"""
-		self.elliott_only_radio.setStyleSheet(radio_style)
+	        QRadioButton {
+	            font-size: 10pt;
+	            color: #2C3E50;
+	            background: transparent;
+	            border: none;
+	            spacing: 5px;
+	        }
+	        QRadioButton::indicator {
+	            width: 16px;
+	            height: 16px;
+	        }
+	        QRadioButton::indicator:unchecked {
+	            border: 2px solid #BDC3C7;
+	            border-radius: 8px;
+	            background-color: white;
+	        }
+	        QRadioButton::indicator:checked {
+	            border: 2px solid #3498DB;
+	            border-radius: 8px;
+	            background-color: #3498DB;
+	        }
+	    """
+		self.darken_only_radio.setStyleSheet(radio_style)
 		self.comparison_radio.setStyleSheet(radio_style)
 		
 		# 添加到按钮组
-		self.display_mode_group.addButton(self.elliott_only_radio, 0)
+		self.display_mode_group.addButton(self.darken_only_radio, 0)
 		self.display_mode_group.addButton(self.comparison_radio, 1)
 		
 		# 连接信号
-		self.elliott_only_radio.toggled.connect(self.on_display_mode_changed)
+		self.darken_only_radio.toggled.connect(self.on_display_mode_changed)
 		self.comparison_radio.toggled.connect(self.on_display_mode_changed)
 		
-		options_layout.addWidget(self.elliott_only_radio)
+		options_layout.addWidget(self.darken_only_radio)
 		options_layout.addWidget(self.comparison_radio)
 		options_layout.addStretch()
 		
 		# 添加图例说明
-		legend_label = QLabel("💡 实线=Elliott方法, 虚线=Darken方法")
+		legend_label = QLabel("💡 实线=Darken方法, 虚线=Elliott方法")
 		legend_label.setFont(QFont("Microsoft YaHei", 9))
 		legend_label.setStyleSheet("color: #7F8C8D; background: transparent; border: none;")
 		options_layout.addWidget(legend_label)
@@ -774,21 +774,21 @@ class CompositionVariationWidget(QWidget):
 		toolbar_layout.setContentsMargins(0, 5, 0, 5)
 		self.toolbar = NavigationToolbar(self.canvas, toolbar_frame)
 		self.toolbar.setStyleSheet("""
-			QToolBar {
-				border: none;
-				background: transparent;
-			}
-			QToolButton {
-				background: transparent;
-				border: 1px solid transparent;
-				border-radius: 3px;
-				padding: 2px;
-			}
-			QToolButton:hover {
-				background: #F0F0F0;
-				border-color: #CCCCCC;
-			}
-		""")
+	        QToolBar {
+	            border: none;
+	            background: transparent;
+	        }
+	        QToolButton {
+	            background: transparent;
+	            border: 1px solid transparent;
+	            border-radius: 3px;
+	            padding: 2px;
+	        }
+	        QToolButton:hover {
+	            background: #F0F0F0;
+	            border-color: #CCCCCC;
+	        }
+	    """)
 		toolbar_layout.addWidget(self.toolbar)
 		toolbar_layout.addStretch()
 		
@@ -874,9 +874,9 @@ class CompositionVariationWidget(QWidget):
 		
 		# 更新状态栏
 		if self.get_current_display_mode():
-			self.status_bar.set_status("图表模式: Elliott vs Darken")
+			self.status_bar.set_status("图表模式: Darken vs Elliott对比")
 		else:
-			self.status_bar.set_status("图表模式: 默认Elliott")
+			self.status_bar.set_status("图表模式: 默认Darken")
 	
 	def get_current_display_mode (self):
 		"""获取当前显示模式"""
@@ -884,11 +884,11 @@ class CompositionVariationWidget(QWidget):
 	
 	def set_display_mode (self, show_comparison):
 		"""设置显示模式"""
-		if hasattr(self, 'comparison_radio') and hasattr(self, 'elliott_only_radio'):
+		if hasattr(self, 'comparison_radio') and hasattr(self, 'darken_only_radio'):
 			if show_comparison:
 				self.comparison_radio.setChecked(True)
 			else:
-				self.elliott_only_radio.setChecked(True)
+				self.darken_only_radio.setChecked(True)
 	
 	def refresh_results_display (self):
 		"""刷新结果显示"""
@@ -1360,16 +1360,16 @@ class CompositionVariationWidget(QWidget):
 		is_comparison_enabled = self.get_current_display_mode()
 		
 		if is_comparison_enabled:
-			# 对比模式：同时显示Elliott和Darken值
+			# 对比模式：同时显示Darken和Elliott值
 			prop_to_plot = "activity" if selected_prop_idx == 0 else "activity_coefficient"
-			original_data = self.calculation_results.get(prop_to_plot, {})
 			darken_data = self.calculation_results.get(f"{prop_to_plot}_darken", {})
+			elliott_data = self.calculation_results.get(prop_to_plot, {})
 			
-			self.plot_comparison_variation(original_data, darken_data, prop_to_plot)
+			self.plot_comparison_variation(darken_data, elliott_data, prop_to_plot)
 		else:
-			# 原始模式：只显示Elliott值
+			# 默认模式：只显示Darken值
 			prop_to_plot = "activity" if selected_prop_idx == 0 else "activity_coefficient"
-			data_for_plotting = self.calculation_results.get(prop_to_plot, {})
+			data_for_plotting = self.calculation_results.get(f"{prop_to_plot}_darken", {})
 			
 			if not data_for_plotting:
 				self.figure.clear()
@@ -1380,10 +1380,10 @@ class CompositionVariationWidget(QWidget):
 				self.canvas.draw()
 				return
 			
-			self.plot_property_variation(data_for_plotting, prop_to_plot)
+			self.plot_property_variation(data_for_plotting, prop_to_plot, method_name="Darken")
 	
-	def plot_property_variation (self, model_data_dict, property_type):
-		"""绘制属性变化图（仅Elliott方法）"""
+	def plot_property_variation (self, model_data_dict, property_type, method_name="Darken"):
+		"""绘制属性变化图（仅Darken方法）"""
 		self.figure.clear()
 		ax = self.figure.add_subplot(111)
 		
@@ -1456,7 +1456,7 @@ class CompositionVariationWidget(QWidget):
 		title = (
 			f"{self.current_parameters.get('base_matrix', 'N/A')} 中 {target_elem} 的 {prop_name_cn} vs. {varying_elem} 浓度\n"
 			f"温度: {self.current_parameters.get('temperature', 'N/A')}K, "
-			f"相态: {self.current_parameters.get('phase_state', 'N/A')} (Elliott 方法)")
+			f"相态: {self.current_parameters.get('phase_state', 'N/A')} ({method_name} 方法)")
 		
 		ax.set_xlabel(f"{varying_elem} 摩尔分数", fontsize=12, fontweight='bold')
 		ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
@@ -1508,8 +1508,8 @@ class CompositionVariationWidget(QWidget):
 		self.figure.tight_layout(rect=[0, 0, 1, 0.96])
 		self.canvas.draw()
 	
-	def plot_comparison_variation (self, original_data, darken_data, property_type):
-		"""绘制对比图表：Elliott vs Darken方法"""
+	def plot_comparison_variation (self, darken_data, elliott_data, property_type):
+		"""绘制对比图表：Darken vs Elliott方法"""
 		self.figure.clear()
 		ax = self.figure.add_subplot(111)
 		
@@ -1524,64 +1524,45 @@ class CompositionVariationWidget(QWidget):
 		
 		# 收集所有组分数据
 		all_comps = []
-		for model_key, data in original_data.items():
+		for model_key, data in darken_data.items():
 			comps = data.get("compositions")
 			if comps is not None and len(comps) > 0:
 				valid_indices = ~np.isnan(comps)
 				if np.any(valid_indices):
 					all_comps.extend(comps[valid_indices])
 		
-		# 绘制Elliott vs Darken对比曲线
-		for i, model_key in enumerate(original_data.keys()):
-			if model_key not in darken_data:
+		# 绘制Darken vs Elliott对比曲线
+		for i, model_key in enumerate(darken_data.keys()):
+			if model_key not in elliott_data:
 				continue
-			
-			# Elliott数据
-			elliott_data = original_data[model_key]
-			elliott_comps, elliott_vals = elliott_data.get("compositions"), elliott_data.get("values")
 			
 			# Darken数据
 			darken_model_data = darken_data[model_key]
 			darken_comps, darken_vals = darken_model_data.get("compositions"), darken_model_data.get("values")
 			
-			if (elliott_comps is None or elliott_vals is None or len(elliott_comps) == 0 or
-					darken_comps is None or darken_vals is None or len(darken_comps) == 0):
-				continue
+			# Elliott数据
+			elliott_data_model = elliott_data[model_key]
+			elliott_comps, elliott_vals = elliott_data_model.get("compositions"), elliott_data_model.get("values")
 			
-			# 处理Elliott数据
-			elliott_valid_indices = ~np.isnan(elliott_vals) & ~np.isinf(elliott_vals)
-			elliott_comps_p, elliott_vals_p = elliott_comps[elliott_valid_indices], elliott_vals[elliott_valid_indices]
+			if (darken_comps is None or darken_vals is None or len(darken_comps) == 0 or
+					elliott_comps is None or elliott_vals is None or len(elliott_comps) == 0):
+				continue
 			
 			# 处理Darken数据
 			darken_valid_indices = ~np.isnan(darken_vals) & ~np.isinf(darken_vals)
 			darken_comps_p, darken_vals_p = darken_comps[darken_valid_indices], darken_vals[darken_valid_indices]
 			
-			if len(elliott_comps_p) == 0 and len(darken_comps_p) == 0:
+			# 处理Elliott数据
+			elliott_valid_indices = ~np.isnan(elliott_vals) & ~np.isinf(elliott_vals)
+			elliott_comps_p, elliott_vals_p = elliott_comps[elliott_valid_indices], elliott_vals[elliott_valid_indices]
+			
+			if len(darken_comps_p) == 0 and len(elliott_comps_p) == 0:
 				continue
 			
 			color = color_cycle[i % len(color_cycle)]
 			marker = marker_cycle[i % len(marker_cycle)]
 			
-			# 绘制Elliott曲线
-			if len(elliott_comps_p) > 0:
-				# 对数据排序
-				sorted_indices = np.argsort(elliott_comps_p)
-				elliott_comps_p = elliott_comps_p[sorted_indices]
-				elliott_vals_p = elliott_vals_p[sorted_indices]
-				
-				line_elliott, = ax.plot(elliott_comps_p, elliott_vals_p,
-				                        color=color,
-				                        marker=marker,
-				                        markersize=6,
-				                        linewidth=2.5,
-				                        linestyle='-',
-				                        alpha=0.8,
-				                        markeredgewidth=0.5,
-				                        markeredgecolor='white',
-				                        label=f'{model_key} (Elliott)')
-				legend_handles.append(line_elliott)
-			
-			# 绘制Darken曲线
+			# 绘制Darken曲线（主要）
 			if len(darken_comps_p) > 0:
 				# 对数据排序
 				sorted_indices = np.argsort(darken_comps_p)
@@ -1591,15 +1572,34 @@ class CompositionVariationWidget(QWidget):
 				line_darken, = ax.plot(darken_comps_p, darken_vals_p,
 				                       color=color,
 				                       marker=marker,
-				                       markersize=5,
-				                       linewidth=2,
-				                       linestyle='--',  # 虚线区分
-				                       alpha=0.7,
-				                       markerfacecolor='white',
-				                       markeredgecolor=color,
-				                       markeredgewidth=1.5,
+				                       markersize=6,
+				                       linewidth=2.5,
+				                       linestyle='-',  # 实线 - Darken作为主要方法
+				                       alpha=0.8,
+				                       markeredgewidth=0.5,
+				                       markeredgecolor='white',
 				                       label=f'{model_key} (Darken)')
 				legend_handles.append(line_darken)
+			
+			# 绘制Elliott曲线（对比）
+			if len(elliott_comps_p) > 0:
+				# 对数据排序
+				sorted_indices = np.argsort(elliott_comps_p)
+				elliott_comps_p = elliott_comps_p[sorted_indices]
+				elliott_vals_p = elliott_vals_p[sorted_indices]
+				
+				line_elliott, = ax.plot(elliott_comps_p, elliott_vals_p,
+				                        color=color,
+				                        marker=marker,
+				                        markersize=5,
+				                        linewidth=2,
+				                        linestyle='--',  # 虚线区分 - Elliott作为对比
+				                        alpha=0.7,
+				                        markerfacecolor='white',
+				                        markeredgecolor=color,
+				                        markeredgewidth=1.5,
+				                        label=f'{model_key} (Elliott)')
+				legend_handles.append(line_elliott)
 		
 		# 设置标签和标题
 		varying_elem = self.current_parameters.get("varying_element", "?")
@@ -1609,7 +1609,7 @@ class CompositionVariationWidget(QWidget):
 		
 		title = (
 			f"{self.current_parameters.get('base_matrix', 'N/A')} 中 {target_elem} 的 {prop_name_cn} vs. {varying_elem} 浓度\n"
-			f"Elliott方法 vs Darken二次项 | 温度: {self.current_parameters.get('temperature', 'N/A')}K, "
+			f"Darken修正方法 vs Elliott传统方法 | 温度: {self.current_parameters.get('temperature', 'N/A')}K, "
 			f"相态: {self.current_parameters.get('phase_state', 'N/A')}")
 		
 		ax.set_xlabel(f"{varying_elem} 摩尔分数", fontsize=12, fontweight='bold')

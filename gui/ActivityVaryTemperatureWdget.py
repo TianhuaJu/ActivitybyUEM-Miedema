@@ -19,7 +19,6 @@ from models.extrapolation_models import BinaryModel
 from calculations.activity_calculator import ActivityCoefficient
 from core.utils import *
 
-
 # Matplotlib 全局设置
 matplotlib.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'FangSong', 'SimSun', 'DejaVu Sans']
 matplotlib.rcParams['axes.unicode_minus'] = False
@@ -307,9 +306,6 @@ class StatusBar(QWidget):
 	def set_status (self, text):
 		self.status_label.setText(text)
 
-
-# 需要在文件顶部添加的导入语句（如果还没有的话）：
-# from PyQt5.QtWidgets import QButtonGroup, QRadioButton
 
 class ActivityTemperatureVariationWidget(QWidget):
 	"""
@@ -680,11 +676,17 @@ class ActivityTemperatureVariationWidget(QWidget):
 		# 创建单选按钮组
 		self.display_mode_group = QButtonGroup(self)
 		
-		# 仅显示Elliott方法结果
-		self.elliott_only_radio = QRadioButton("仅Elliott方法")
-		self.elliott_only_radio.setChecked(True)
-		self.elliott_only_radio.setToolTip("仅显示传统Elliott方法的计算结果")
-		self.elliott_only_radio.setStyleSheet("""
+		# 仅显示Darken方法结果 (修改为默认)
+		self.darken_only_radio = QRadioButton("仅Darken方法")
+		self.darken_only_radio.setChecked(True)  # 设置为默认选中
+		self.darken_only_radio.setToolTip("仅显示Darken修正方法的计算结果")
+		
+		# 对比显示Darken和Elliott方法
+		self.comparison_radio = QRadioButton("Darken vs Elliott对比")
+		self.comparison_radio.setToolTip("同时显示Darken修正方法和传统Elliott方法的对比结果")
+		
+		# 设置样式
+		radio_style = """
 			QRadioButton {
 				font-size: 10pt;
 				color: #2C3E50;
@@ -706,26 +708,24 @@ class ActivityTemperatureVariationWidget(QWidget):
 				border-radius: 8px;
 				background-color: #3498DB;
 			}
-		""")
-		
-		# 对比显示Elliott和Darken方法
-		self.comparison_radio = QRadioButton("Elliott vs Darken对比")
-		self.comparison_radio.setToolTip("同时显示Elliott方法和Darken修正方法的对比结果")
-		self.comparison_radio.setStyleSheet(self.elliott_only_radio.styleSheet())
+		"""
+		self.darken_only_radio.setStyleSheet(radio_style)
+		self.comparison_radio.setStyleSheet(radio_style)
 		
 		# 添加到按钮组
-		self.display_mode_group.addButton(self.elliott_only_radio, 0)
+		self.display_mode_group.addButton(self.darken_only_radio, 0)
 		self.display_mode_group.addButton(self.comparison_radio, 1)
 		
 		# 连接信号
-		self.elliott_only_radio.toggled.connect(self.on_display_mode_changed)
+		self.darken_only_radio.toggled.connect(self.on_display_mode_changed)
+		self.comparison_radio.toggled.connect(self.on_display_mode_changed)
 		
-		options_layout.addWidget(self.elliott_only_radio)
+		options_layout.addWidget(self.darken_only_radio)
 		options_layout.addWidget(self.comparison_radio)
 		options_layout.addStretch()
 		
 		# 添加图例说明
-		legend_label = QLabel("💡 实线=Elliott方法, 虚线=Darken修正")
+		legend_label = QLabel("💡 实线=Darken方法, 虚线=Elliott方法")
 		legend_label.setFont(QFont("Microsoft YaHei", 9))
 		legend_label.setStyleSheet("color: #7F8C8D; background: transparent; border: none;")
 		options_layout.addWidget(legend_label)
@@ -1048,8 +1048,8 @@ class ActivityTemperatureVariationWidget(QWidget):
 				current_coefficients_darken = []
 				
 				new_results_html += f"<br><b>⚙️ 外推模型: {model_key_geo}</b><br>"
-				new_results_html += f"<font face='Courier New' color='#2C3E50'><b>Temp(K)  | Elliott-Act | Elliott-γ  | Darken-Act | Darken-γ  | Δa(%)  | Δγ(%)</b></font><br>"
-				new_results_html += f"<font face='Courier New'>---------|------------|-----------|------------|-----------|--------|------</font><br>"
+				new_results_html += f"<font face='Courier New' color='#2C3E50'><b>Temp(K)  | Darken-Act | Darken-γ  | Elliott-Act | Elliott-γ  | Δa(%)  | Δγ(%)</b></font><br>"
+				new_results_html += f"<font face='Courier New'>---------|------------|-----------|-------------|-----------|--------|------</font><br>"
 				
 				for temp_k in temperatures:
 					if hasattr(self, 'progress_dialog') and self.progress_dialog.wasCanceled():
@@ -1079,13 +1079,13 @@ class ActivityTemperatureVariationWidget(QWidget):
 						act_darken = gamma_darken * xi_solute if not math.isnan(gamma_darken) else float('nan')
 						
 						# 计算相对差异百分比
-						if not (math.isnan(act_elliott) or math.isnan(act_darken)) and abs(act_elliott) > 1e-10:
-							delta_act_percent = abs((act_darken - act_elliott) / act_elliott) * 100
+						if not (math.isnan(act_elliott) or math.isnan(act_darken)) and abs(act_darken) > 1e-10:
+							delta_act_percent = abs((act_elliott - act_darken) / act_darken) * 100
 						else:
 							delta_act_percent = float('nan')
 						
-						if not (math.isnan(gamma_elliott) or math.isnan(gamma_darken)) and abs(gamma_elliott) > 1e-10:
-							delta_gamma_percent = abs((gamma_darken - gamma_elliott) / gamma_elliott) * 100
+						if not (math.isnan(gamma_elliott) or math.isnan(gamma_darken)) and abs(gamma_darken) > 1e-10:
+							delta_gamma_percent = abs((gamma_elliott - gamma_darken) / gamma_darken) * 100
 						else:
 							delta_gamma_percent = float('nan')
 						
@@ -1095,10 +1095,10 @@ class ActivityTemperatureVariationWidget(QWidget):
 						current_activities_darken.append(act_darken)
 						current_coefficients_darken.append(gamma_darken)
 						
-						# 格式化差异显示 - 带颜色标识
+						# 格式化差异显示 - 带颜色标识 (现在以Darken为基准)
 						delta_act_str = f"{delta_act_percent:6.2f}" if not math.isnan(delta_act_percent) else "  N/A"
 						delta_gamma_str = f"{delta_gamma_percent:6.2f}" if not math.isnan(
-							delta_gamma_percent) else "  N/A"
+								delta_gamma_percent) else "  N/A"
 						
 						# 根据差异大小设置颜色
 						if not math.isnan(delta_act_percent) and delta_act_percent > 5:
@@ -1115,9 +1115,10 @@ class ActivityTemperatureVariationWidget(QWidget):
 						else:
 							delta_gamma_color = "#27AE60"
 						
+						# 调整显示顺序：Darken在前，Elliott在后
 						new_results_html += (
-							f"<font face='Courier New'>{temp_k:<9.1f}| {act_elliott:<11.4f}| {gamma_elliott:<10.4f}| "
-							f"{act_darken:<11.4f}| {gamma_darken:<10.4f}| "
+							f"<font face='Courier New'>{temp_k:<9.1f}| {act_darken:<11.4f}| {gamma_darken:<10.4f}| "
+							f"{act_elliott:<12.4f}| {gamma_elliott:<10.4f}| "
 							f"<font color='{delta_act_color}'>{delta_act_str}</font>| "
 							f"<font color='{delta_gamma_color}'>{delta_gamma_str}</font></font><br>"
 						)
@@ -1129,7 +1130,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 						current_activities_darken.append(float('nan'))
 						current_coefficients_darken.append(float('nan'))
 						
-						new_results_html += f"<font face='Courier New'>{temp_k:<9.1f}|     N/A    |    N/A    |     N/A    |    N/A    |  N/A   |  N/A</font><br>"
+						new_results_html += f"<font face='Courier New'>{temp_k:<9.1f}|     N/A    |    N/A    |      N/A    |    N/A    |  N/A   |  N/A</font><br>"
 					
 					calcs_done += 1
 					if hasattr(self, 'progress_dialog'):
@@ -1157,7 +1158,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 					"values": np.array(current_coefficients_darken)
 				}
 				
-				# 添加统计对比信息
+				# 添加统计对比信息 (以Darken为基准)
 				if len(current_activities) > 0 and len(current_activities_darken) > 0:
 					valid_elliott_act = [x for x in current_activities if not math.isnan(x)]
 					valid_darken_act = [x for x in current_activities_darken if not math.isnan(x)]
@@ -1166,24 +1167,24 @@ class ActivityTemperatureVariationWidget(QWidget):
 					
 					if valid_elliott_act and valid_darken_act and len(valid_elliott_act) == len(valid_darken_act):
 						avg_diff_act = np.mean(
-								[abs((d - e) / e) * 100 for e, d in zip(valid_elliott_act, valid_darken_act) if
-								 abs(e) > 1e-10])
+								[abs((e - d) / d) * 100 for d, e in zip(valid_darken_act, valid_elliott_act) if
+								 abs(d) > 1e-10])
 						max_diff_act = np.max(
-								[abs((d - e) / e) * 100 for e, d in zip(valid_elliott_act, valid_darken_act) if
-								 abs(e) > 1e-10])
+								[abs((e - d) / d) * 100 for d, e in zip(valid_darken_act, valid_elliott_act) if
+								 abs(d) > 1e-10])
 						
 						if valid_elliott_gamma and valid_darken_gamma and len(valid_elliott_gamma) == len(
 								valid_darken_gamma):
 							avg_diff_gamma = np.mean(
-									[abs((d - e) / e) * 100 for e, d in zip(valid_elliott_gamma, valid_darken_gamma) if
-									 abs(e) > 1e-10])
+									[abs((e - d) / d) * 100 for d, e in zip(valid_darken_gamma, valid_elliott_gamma) if
+									 abs(d) > 1e-10])
 							max_diff_gamma = np.max(
-									[abs((d - e) / e) * 100 for e, d in zip(valid_elliott_gamma, valid_darken_gamma) if
-									 abs(e) > 1e-10])
+									[abs((e - d) / d) * 100 for d, e in zip(valid_darken_gamma, valid_elliott_gamma) if
+									 abs(d) > 1e-10])
 							
-							new_results_html += f"<br><b>📊 模型 {model_key_geo} 对比统计:</b><br>"
-							new_results_html += f"<font color='#2980B9'>活度 - 平均差异: {avg_diff_act:.2f}%, 最大差异: {max_diff_act:.2f}%</font><br>"
-							new_results_html += f"<font color='#8E44AD'>活度系数 - 平均差异: {avg_diff_gamma:.2f}%, 最大差异: {max_diff_gamma:.2f}%</font><br>"
+							new_results_html += f"<br><b>📊 模型 {model_key_geo} 对比统计 (以Darken为基准):</b><br>"
+							new_results_html += f"<font color='#2980B9'>活度 - Elliott与Darken平均差异: {avg_diff_act:.2f}%, 最大差异: {max_diff_act:.2f}%</font><br>"
+							new_results_html += f"<font color='#8E44AD'>活度系数 - Elliott与Darken平均差异: {avg_diff_gamma:.2f}%, 最大差异: {max_diff_gamma:.2f}%</font><br>"
 			
 			# 更新界面
 			self.historical_results_html = new_results_html + self.historical_results_html
@@ -1201,6 +1202,29 @@ class ActivityTemperatureVariationWidget(QWidget):
 			if hasattr(self, 'progress_dialog') and self.progress_dialog:
 				self.progress_dialog.close()
 	
+	def on_display_mode_changed (self):
+		"""显示模式改变时的处理函数"""
+		if hasattr(self, 'has_calculated') and self.has_calculated:
+			self.update_plot_display_only()
+		
+		# 更新状态栏
+		if self.get_current_display_mode():
+			self.status_bar.set_status("图表模式: Darken vs Elliott对比")
+		else:
+			self.status_bar.set_status("图表模式: 默认Darken")
+	
+	def get_current_display_mode (self):
+		"""获取当前显示模式"""
+		return hasattr(self, 'comparison_radio') and self.comparison_radio.isChecked()
+	
+	def set_display_mode (self, show_comparison):
+		"""设置显示模式"""
+		if hasattr(self, 'comparison_radio') and hasattr(self, 'darken_only_radio'):
+			if show_comparison:
+				self.comparison_radio.setChecked(True)
+			else:
+				self.darken_only_radio.setChecked(True)
+	
 	def update_plot_display_only (self):
 		"""仅更新图表显示"""
 		if not self.has_calculated:
@@ -1212,16 +1236,16 @@ class ActivityTemperatureVariationWidget(QWidget):
 		is_comparison_enabled = self.get_current_display_mode()
 		
 		if is_comparison_enabled:
-			# 对比模式：同时显示Elliott和Darken值
+			# 对比模式：同时显示Darken和Elliott值
 			prop_to_plot = "activity" if selected_prop_idx == 0 else "activity_coefficient"
-			original_data = self.calculation_results.get(prop_to_plot, {})
 			darken_data = self.calculation_results.get(f"{prop_to_plot}_darken", {})
+			elliott_data = self.calculation_results.get(prop_to_plot, {})
 			
-			self.plot_comparison_variation(original_data, darken_data, prop_to_plot)
+			self.plot_comparison_variation(darken_data, elliott_data, prop_to_plot)
 		else:
-			# 原始模式：只显示Elliott原始值
+			# 默认模式：只显示Darken值
 			prop_to_plot = "activity" if selected_prop_idx == 0 else "activity_coefficient"
-			data_for_plotting = self.calculation_results.get(prop_to_plot, {})
+			data_for_plotting = self.calculation_results.get(f"{prop_to_plot}_darken", {})
 			
 			if not data_for_plotting:
 				self.figure.clear()
@@ -1232,10 +1256,10 @@ class ActivityTemperatureVariationWidget(QWidget):
 				self.canvas.draw()
 				return
 			
-			self.plot_property_variation(data_for_plotting, prop_to_plot)
+			self.plot_property_variation(data_for_plotting, prop_to_plot, method_name="Darken")
 	
-	def plot_property_variation (self, model_data_dict, property_type):
-		"""绘制属性变化图（仅Elliott方法）"""
+	def plot_property_variation (self, model_data_dict, property_type, method_name="Darken"):
+		"""绘制属性变化图（仅Darken方法）"""
 		self.figure.clear()
 		ax = self.figure.add_subplot(111)
 		
@@ -1280,7 +1304,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 		
 		title = (f"{self.current_parameters.get('base_matrix', 'N/A')} 中 {solute} 的 {prop_name_cn} vs. 温度\n"
 		         f"溶剂: {self.current_parameters.get('solvent', 'N/A')}, "
-		         f"相态: {self.current_parameters.get('phase_state', 'N/A')} (Elliott 方法)")
+		         f"相态: {self.current_parameters.get('phase_state', 'N/A')} ({method_name} 方法)")
 		
 		ax.set_xlabel("温度 (K)", fontsize=12, fontweight='bold')
 		ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
@@ -1315,31 +1339,8 @@ class ActivityTemperatureVariationWidget(QWidget):
 		self.figure.tight_layout(rect=[0, 0, 1, 0.96])
 		self.canvas.draw()
 	
-	def on_display_mode_changed (self):
-		"""处理显示模式改变"""
-		if self.has_calculated:
-			# 如果已经有计算结果，重新绘制图表
-			self.update_plot_display_only()
-		
-		if self.get_current_display_mode():
-			self.status_bar.set_status("图表模式: Elliott vs Darken")
-		else:
-			self.status_bar.set_status("图表模式: 默认Elliott方法")
-	
-	def get_current_display_mode (self):
-		"""获取当前显示模式"""
-		return hasattr(self, 'comparison_radio') and self.comparison_radio.isChecked()
-	
-	def set_display_mode (self, show_comparison):
-		"""设置显示模式"""
-		if hasattr(self, 'comparison_radio') and hasattr(self, 'elliott_only_radio'):
-			if show_comparison:
-				self.comparison_radio.setChecked(True)
-			else:
-				self.elliott_only_radio.setChecked(True)
-	
-	def plot_comparison_variation (self, original_data, darken_data, property_type):
-		"""绘制对比图表：Elliott原始 vs Darken修正方法"""
+	def plot_comparison_variation (self, darken_data, elliott_data, property_type):
+		"""绘制对比图表：Darken修正 vs Elliott原始方法"""
 		self.figure.clear()
 		ax = self.figure.add_subplot(111)
 		
@@ -1354,73 +1355,73 @@ class ActivityTemperatureVariationWidget(QWidget):
 		
 		legend_elements = []
 		
-		# 绘制Elliott vs Darken对比曲线
-		for i, model_key in enumerate(original_data.keys()):
-			if model_key not in darken_data:
+		# 绘制Darken vs Elliott对比曲线
+		for i, model_key in enumerate(darken_data.keys()):
+			if model_key not in elliott_data:
 				continue
-			
-			# Elliott原始数据
-			elliott_data_dict = original_data[model_key]
-			elliott_temps, elliott_vals = elliott_data_dict.get("temperatures"), elliott_data_dict.get("values")
 			
 			# Darken修正数据
 			darken_data_dict = darken_data[model_key]
 			darken_temps, darken_vals = darken_data_dict.get("temperatures"), darken_data_dict.get("values")
 			
-			if (elliott_temps is None or elliott_vals is None or len(elliott_temps) == 0 or
-					darken_temps is None or darken_vals is None or len(darken_temps) == 0):
-				continue
+			# Elliott原始数据
+			elliott_data_dict = elliott_data[model_key]
+			elliott_temps, elliott_vals = elliott_data_dict.get("temperatures"), elliott_data_dict.get("values")
 			
-			# 处理Elliott数据
-			elliott_valid_indices = ~np.isnan(elliott_vals) & ~np.isinf(elliott_vals)
-			elliott_temps_p, elliott_vals_p = elliott_temps[elliott_valid_indices], elliott_vals[elliott_valid_indices]
+			if (darken_temps is None or darken_vals is None or len(darken_temps) == 0 or
+					elliott_temps is None or elliott_vals is None or len(elliott_temps) == 0):
+				continue
 			
 			# 处理Darken数据
 			darken_valid_indices = ~np.isnan(darken_vals) & ~np.isinf(darken_vals)
 			darken_temps_p, darken_vals_p = darken_temps[darken_valid_indices], darken_vals[darken_valid_indices]
 			
-			if len(elliott_temps_p) == 0 and len(darken_temps_p) == 0:
+			# 处理Elliott数据
+			elliott_valid_indices = ~np.isnan(elliott_vals) & ~np.isinf(elliott_vals)
+			elliott_temps_p, elliott_vals_p = elliott_temps[elliott_valid_indices], elliott_vals[elliott_valid_indices]
+			
+			if len(darken_temps_p) == 0 and len(elliott_temps_p) == 0:
 				continue
 			
 			# 更新温度范围
-			if len(elliott_temps_p) > 0:
-				min_T_overall = min(min_T_overall, elliott_temps_p.min())
-				max_T_overall = max(max_T_overall, elliott_temps_p.max())
 			if len(darken_temps_p) > 0:
 				min_T_overall = min(min_T_overall, darken_temps_p.min())
 				max_T_overall = max(max_T_overall, darken_temps_p.max())
+			if len(elliott_temps_p) > 0:
+				min_T_overall = min(min_T_overall, elliott_temps_p.min())
+				max_T_overall = max(max_T_overall, elliott_temps_p.max())
 			
 			color = color_cycle[i % len(color_cycle)]
 			marker = marker_cycle[i % len(marker_cycle)]
 			
-			# 绘制Elliott原始曲线
-			if len(elliott_temps_p) > 0:
-				line_elliott, = ax.plot(elliott_temps_p, elliott_vals_p,
-				                        color=color,
-				                        marker=marker,
-				                        markersize=6,
-				                        linewidth=2.5,
-				                        linestyle='-',
-				                        alpha=0.8,
-				                        markeredgewidth=0.5,
-				                        markeredgecolor='white',
-				                        label=f'{model_key} (Elliott)')
-				legend_elements.append(line_elliott)
-			
-			# 绘制Darken修正曲线
+			# 绘制Darken修正曲线（主要）
 			if len(darken_temps_p) > 0:
 				line_darken, = ax.plot(darken_temps_p, darken_vals_p,
 				                       color=color,
 				                       marker=marker,
-				                       markersize=5,
-				                       linewidth=2,
-				                       linestyle='--',  # 虚线区分
-				                       alpha=0.7,
-				                       markerfacecolor='white',
-				                       markeredgecolor=color,
-				                       markeredgewidth=1.5,
+				                       markersize=6,
+				                       linewidth=2.5,
+				                       linestyle='-',  # 实线 - Darken作为主要方法
+				                       alpha=0.8,
+				                       markeredgewidth=0.5,
+				                       markeredgecolor='white',
 				                       label=f'{model_key} (Darken)')
 				legend_elements.append(line_darken)
+			
+			# 绘制Elliott原始曲线（对比）
+			if len(elliott_temps_p) > 0:
+				line_elliott, = ax.plot(elliott_temps_p, elliott_vals_p,
+				                        color=color,
+				                        marker=marker,
+				                        markersize=5,
+				                        linewidth=2,
+				                        linestyle='--',  # 虚线区分 - Elliott作为对比
+				                        alpha=0.7,
+				                        markerfacecolor='white',
+				                        markeredgecolor=color,
+				                        markeredgewidth=1.5,
+				                        label=f'{model_key} (Elliott)')
+				legend_elements.append(line_elliott)
 		
 		# 设置标签和标题
 		solute = self.current_parameters.get("solute", "?")
@@ -1428,7 +1429,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 		y_label = f"{prop_name_cn} ($a_{{{solute}}}$)" if property_type == "activity" else f"{prop_name_cn} ($\\gamma_{{{solute}}}$)"
 		
 		title = (f"{self.current_parameters.get('base_matrix', 'N/A')} 中 {solute} 的 {prop_name_cn} vs. 温度\n"
-		         f"Elliott方法 vs Darken二次项 | 溶剂: {self.current_parameters.get('solvent', 'N/A')}, "
+		         f"Darken修正方法 vs Elliott传统方法 | 溶剂: {self.current_parameters.get('solvent', 'N/A')}, "
 		         f"相态: {self.current_parameters.get('phase_state', 'N/A')}")
 		
 		ax.set_xlabel("温度 (K)", fontsize=12, fontweight='bold')
@@ -1535,19 +1536,19 @@ class ActivityTemperatureVariationWidget(QWidget):
 			writer = csv.writer(csvfile)
 			
 			# 写入参数信息
-			writer.writerow(['# 热力学性质计算结果 (Elliott vs Darken 对比)'])
+			writer.writerow(['# 热力学性质计算结果 (Darken vs Elliott 对比)'])
 			writer.writerow(['# 计算参数'])
 			for key, val in self.current_parameters.items():
 				value_str = ", ".join(val) if isinstance(val, list) and key == "selected_models" else str(val)
 				writer.writerow([f"# {key}", value_str])
 			writer.writerow([])
 			
-			# 表头：始终显示两种方法的对比结果
+			# 表头：调整为以Darken为主
 			header = ['温度 (K)']
 			for mk in sel_models:
 				header.extend([
-					f'{mk}-Elliott-活度', f'{mk}-Elliott-活度系数',
-					f'{mk}-Darken-活度', f'{mk}-Darken-活度系数'
+					f'{mk}-Darken-活度', f'{mk}-Darken-活度系数',
+					f'{mk}-Elliott-活度', f'{mk}-Elliott-活度系数'
 				])
 			
 			writer.writerow(header)
@@ -1556,14 +1557,6 @@ class ActivityTemperatureVariationWidget(QWidget):
 			for temp_k in sorted_temps:
 				row = [temp_k]
 				for model_key in sel_models:
-					# Elliott原始活度
-					act_elliott = self._get_value_at_temperature(model_key, "activity", temp_k)
-					act_elliott_str = f"{act_elliott:.6f}" if not math.isnan(act_elliott) else "N/A"
-					
-					# Elliott原始活度系数
-					coef_elliott = self._get_value_at_temperature(model_key, "activity_coefficient", temp_k)
-					coef_elliott_str = f"{coef_elliott:.6f}" if not math.isnan(coef_elliott) else "N/A"
-					
 					# Darken修正活度
 					act_darken = self._get_value_at_temperature(model_key, "activity_darken", temp_k)
 					act_darken_str = f"{act_darken:.6f}" if not math.isnan(act_darken) else "N/A"
@@ -1572,7 +1565,15 @@ class ActivityTemperatureVariationWidget(QWidget):
 					coef_darken = self._get_value_at_temperature(model_key, "activity_coefficient_darken", temp_k)
 					coef_darken_str = f"{coef_darken:.6f}" if not math.isnan(coef_darken) else "N/A"
 					
-					row.extend([act_elliott_str, coef_elliott_str, act_darken_str, coef_darken_str])
+					# Elliott原始活度
+					act_elliott = self._get_value_at_temperature(model_key, "activity", temp_k)
+					act_elliott_str = f"{act_elliott:.6f}" if not math.isnan(act_elliott) else "N/A"
+					
+					# Elliott原始活度系数
+					coef_elliott = self._get_value_at_temperature(model_key, "activity_coefficient", temp_k)
+					coef_elliott_str = f"{coef_elliott:.6f}" if not math.isnan(coef_elliott) else "N/A"
+					
+					row.extend([act_darken_str, coef_darken_str, act_elliott_str, coef_elliott_str])
 				
 				writer.writerow(row)
 	
@@ -1585,7 +1586,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 			return
 		
 		workbook = xlsxwriter.Workbook(file_path)
-		worksheet = workbook.add_worksheet('Elliott_vs_Darken对比')
+		worksheet = workbook.add_worksheet('Darken_vs_Elliott对比')
 		
 		# 定义格式
 		title_format = workbook.add_format({
@@ -1599,13 +1600,13 @@ class ActivityTemperatureVariationWidget(QWidget):
 		data_format = workbook.add_format({
 			'num_format': '0.000000', 'align': 'center', 'border': 1
 		})
-		elliott_format = workbook.add_format({
-			'num_format': '0.000000', 'align': 'center', 'border': 1,
-			'bg_color': '#E8F4FD'  # 浅蓝色背景 - Elliott
-		})
 		darken_format = workbook.add_format({
 			'num_format': '0.000000', 'align': 'center', 'border': 1,
 			'bg_color': '#E8F6F3'  # 浅绿色背景 - Darken
+		})
+		elliott_format = workbook.add_format({
+			'num_format': '0.000000', 'align': 'center', 'border': 1,
+			'bg_color': '#E8F4FD'  # 浅蓝色背景 - Elliott
 		})
 		param_format = workbook.add_format({
 			'bold': True, 'bg_color': '#ECF0F1', 'border': 1
@@ -1614,7 +1615,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 		row = 0
 		
 		# 标题
-		worksheet.merge_range(row, 0, row, 12, 'Elliott vs Darken 方法对比数据', title_format)
+		worksheet.merge_range(row, 0, row, 12, 'Darken vs Elliott 方法对比数据', title_format)
 		row += 2
 		
 		# 参数信息
@@ -1635,13 +1636,13 @@ class ActivityTemperatureVariationWidget(QWidget):
 		col += 1
 		
 		for model_key in self.current_parameters.get("selected_models", []):
-			worksheet.write(row, col, f'{model_key}\nElliott-活度', header_format)
-			col += 1
-			worksheet.write(row, col, f'{model_key}\nElliott-活度系数', header_format)
-			col += 1
 			worksheet.write(row, col, f'{model_key}\nDarken-活度', header_format)
 			col += 1
 			worksheet.write(row, col, f'{model_key}\nDarken-活度系数', header_format)
+			col += 1
+			worksheet.write(row, col, f'{model_key}\nElliott-活度', header_format)
+			col += 1
+			worksheet.write(row, col, f'{model_key}\nElliott-活度系数', header_format)
 			col += 1
 		
 		row += 1
@@ -1661,19 +1662,19 @@ class ActivityTemperatureVariationWidget(QWidget):
 			
 			for model_key in self.current_parameters.get("selected_models", []):
 				# 获取数据
-				act_elliott = self._get_value_at_temperature(model_key, "activity", temp_k)
 				act_darken = self._get_value_at_temperature(model_key, "activity_darken", temp_k)
-				gamma_elliott = self._get_value_at_temperature(model_key, "activity_coefficient", temp_k)
+				act_elliott = self._get_value_at_temperature(model_key, "activity", temp_k)
 				gamma_darken = self._get_value_at_temperature(model_key, "activity_coefficient_darken", temp_k)
+				gamma_elliott = self._get_value_at_temperature(model_key, "activity_coefficient", temp_k)
 				
-				# 写入数据，使用不同颜色格式
-				worksheet.write(row, col, act_elliott if not math.isnan(act_elliott) else "N/A", elliott_format)
-				col += 1
-				worksheet.write(row, col, gamma_elliott if not math.isnan(gamma_elliott) else "N/A", elliott_format)
-				col += 1
+				# 写入数据，使用不同颜色格式 - 调整顺序为Darken在前
 				worksheet.write(row, col, act_darken if not math.isnan(act_darken) else "N/A", darken_format)
 				col += 1
 				worksheet.write(row, col, gamma_darken if not math.isnan(gamma_darken) else "N/A", darken_format)
+				col += 1
+				worksheet.write(row, col, act_elliott if not math.isnan(act_elliott) else "N/A", elliott_format)
+				col += 1
+				worksheet.write(row, col, gamma_elliott if not math.isnan(gamma_elliott) else "N/A", elliott_format)
 				col += 1
 			
 			row += 1
