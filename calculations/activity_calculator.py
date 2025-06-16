@@ -43,7 +43,7 @@ class ActivityCoefficient:
         return self._comp_dict
 
     def _calculate_ln_yi(self, comp_dict, solvent, solute_i, Tem: float, state: str,
-                         geo_model: extrap_func, geo_model_name: str, model_type: str) -> float:
+                         geo_model: extrap_func, geo_model_name: str, model_type: str, full_alloy_str: str = "") -> float:
         """内部通用计算方法。"""
         if solute_i not in comp_dict or solvent not in comp_dict:
             print(f"警告: 组分 {solute_i} 或溶剂 {solvent} 不在成分中。")
@@ -60,7 +60,7 @@ class ActivityCoefficient:
         for j_name in solute_keys:
             xj = comp_dict[j_name]
             epsilon_i_j = ternary_melts.activity_interact_coefficient_1st(
-                    solv, solui, Element(j_name), Tem, state, geo_model, geo_model_name)
+                    solv, solui, Element(j_name), Tem, state, geo_model, geo_model_name,full_alloy_str)
             linear_sum += epsilon_i_j * xj
 
         if model_type == "Wagner":
@@ -72,7 +72,7 @@ class ActivityCoefficient:
             for k_name in solute_keys:
                 xk = comp_dict[k_name]
                 epsilon_j_k = ternary_melts.activity_interact_coefficient_1st(
-                    solv, Element(j_name), Element(k_name), Tem, state, geo_model, geo_model_name)
+                    solv, Element(j_name), Element(k_name), Tem, state, geo_model, geo_model_name,full_alloy_str)
                 quadratic_sum_darken += xj * xk * epsilon_j_k
 
         if model_type == "Darken":
@@ -106,11 +106,11 @@ class ActivityCoefficient:
                     xp = comp_dict[p_name]
                     solup = Element(p_name)
                     epislon_j_k = ternary_melts.activity_interact_coefficient_1st(
-                            solv, Element(j_name), Element(k_name), Tem, state, geo_model, geo_model_name)
+                            solv, Element(j_name), Element(k_name), Tem, state, geo_model, geo_model_name,full_alloy_str)
                     epislon_j_p = ternary_melts.activity_interact_coefficient_1st(
-                            solv, Element(j_name), Element(p_name), Tem, state, geo_model, geo_model_name)
+                            solv, Element(j_name), Element(p_name), Tem, state, geo_model, geo_model_name,full_alloy_str)
                     epislon_p_k = ternary_melts.activity_interact_coefficient_1st(
-                            solv, Element(p_name), Element(k_name), Tem, state, geo_model, geo_model_name)
+                            solv, Element(p_name), Element(k_name), Tem, state, geo_model, geo_model_name,full_alloy_str)
                     rho_p_jk = ternary_melts.roui_jk(solv, soluk, solup, soluj, Tem, state, geo_model, geo_model_name)
                     corrected_term_sum +=  xp * xj * xk * (rho_p_jk + epislon_j_k)
         if model_type == "Elliot1":
@@ -368,7 +368,7 @@ class ActivityCoefficient:
     
     def activity_coefficient_wagner (self, comp_dict, solvent, solute_i, Tem: float, state: str,
                                      geo_model: extrap_func, geo_model_name: str,
-                                     verify_gd: bool = False, gd_verbose: bool = False):
+                                     verify_gd: bool = False, gd_verbose: bool = False, full_alloy_str: str = ""):
         """
         Wagner模型计算活度系数
 
@@ -396,11 +396,11 @@ class ActivityCoefficient:
                 if gd_result['gd_violations']:
                     print(f"  最大违背: {gd_result['max_violation']:.6e}")
         
-        return self._calculate_ln_yi(comp_dict, solvent, solute_i, Tem, state, geo_model, geo_model_name, "Wagner")
+        return self._calculate_ln_yi(comp_dict, solvent, solute_i, Tem, state, geo_model, geo_model_name, "Wagner", full_alloy_str)
     
     def activity_coefficient_darken (self, comp_dict, solute_i, matrix, Tem: float, phase_state: str,
                                      geo_model: extrap_func, geo_model_name: str,
-                                     verify_gd: bool = False, gd_verbose: bool = False):
+                                     verify_gd: bool = False, gd_verbose: bool = False, full_alloy_str: str = ""):
         """Darken模型 - 参数名统一为solvent而非matrix"""
         if verify_gd:
             if gd_verbose:
@@ -421,12 +421,12 @@ class ActivityCoefficient:
                     print(f"  最大违背: {gd_result['max_violation']:.6e}")
         
         return self._calculate_ln_yi(comp_dict, matrix, solute_i, Tem, phase_state, geo_model, geo_model_name,
-                                     "Darken")
+                                     "Darken", full_alloy_str)
     
     # 📍 修改点6: 修正函数名拼写
     def activity_coefficient_elliott (self, comp_dict, solute_i, matrix, Tem, phase_state: str,
                                       geo_model: extrap_func, geo_model_name: str,
-                                      verify_gd: bool = False, gd_verbose: bool = False):
+                                      verify_gd: bool = False, gd_verbose: bool = False, full_alloy_str: str = ""):
         """Elliott模型 - 修正了函数名拼写"""
         if verify_gd:
             if gd_verbose:
@@ -447,7 +447,7 @@ class ActivityCoefficient:
                     print(f"  最大违背: {gd_result['max_violation']:.6e}")
         
         return self._calculate_ln_yi(comp_dict, matrix, solute_i, Tem, phase_state, geo_model, geo_model_name,
-                                     "Elliot")
+                                     "Elliot", full_alloy_str)
     
    
     # 📍 修改点7: 新增辅助函数

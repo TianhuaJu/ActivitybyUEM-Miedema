@@ -9,7 +9,7 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QLabel, QLineEdit, QComboBox, QPushButton, QSplitter,
                              QFrame, QGroupBox, QTextEdit, QDoubleSpinBox, QCheckBox, QFileDialog, QFormLayout,
-                             QProgressDialog, QTabWidget, QButtonGroup, QRadioButton, QMessageBox)
+                             QProgressDialog, QTabWidget, QMessageBox)
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure

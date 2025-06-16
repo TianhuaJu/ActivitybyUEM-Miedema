@@ -7,7 +7,6 @@ from matplotlib.axes import Axes
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-from core.utils import *
 from gui.UnitConversionWidget import UnitConversionWidget
 
 # Set matplotlib font settings
@@ -19,8 +18,7 @@ matplotlib.rcParams['mathtext.default'] = 'regular'
 
 # Import PyQt5 modules
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                             QGridLayout, QLabel, QLineEdit, QComboBox, QPushButton,
-                             QTabWidget, QFrame, QGroupBox, QTextEdit, QMessageBox,
+                             QLabel, QTabWidget, QMessageBox,
                              QStatusBar, QAction, QSystemTrayIcon, QMenu)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QGuiApplication, QIcon

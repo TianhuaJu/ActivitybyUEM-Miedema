@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Fe-Si
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-06-16 21:53:20 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Si-C
+k=Fe, i=Si  : 0.3639
+k=Fe, j=C   : 0.1822
+		 in Si-C
+
+# For Binary Sub-system: Fe-C
+i=Si, k=Fe  : 0.5397
+i=Si, j=C   : 0.0013
+		 in Fe-C
+
+# For Binary Sub-system: Fe-Si
+j=C, i=Si   : 0.0019
+j=C, k=Fe   : 0.3915
+		 in Fe-Si

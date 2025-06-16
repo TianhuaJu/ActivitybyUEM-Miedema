@@ -9,7 +9,7 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QLabel, QLineEdit, QComboBox, QPushButton, QSplitter,
                              QFrame, QGroupBox, QTextEdit, QDoubleSpinBox, QCheckBox, QFileDialog, QFormLayout,
-                             QProgressDialog, QTabWidget, QButtonGroup, QRadioButton)
+                             QProgressDialog, QTabWidget, QButtonGroup, QRadioButton, QMessageBox)
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -1064,7 +1064,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 						# 计算Elliott原始方法
 						ln_gamma_elliott = self.activity_calc_module.activity_coefficient_elliott(
 								comp_for_calc, solute_elem, solvent_elem, temp_k, phase,
-								geo_model_function, model_key_geo
+								geo_model_function, model_key_geo,full_alloy_str=base_matrix_str
 						)
 						gamma_elliott = math.exp(ln_gamma_elliott) if not (
 								math.isnan(ln_gamma_elliott) or math.isinf(ln_gamma_elliott)) else float('nan')
@@ -1072,8 +1072,8 @@ class ActivityTemperatureVariationWidget(QWidget):
 						
 						# 计算Darken修正方法
 						ln_gamma_darken = self.activity_calc_module.activity_coefficient_darken(
-								comp_for_calc, solute_elem, solvent_elem, temp_k, phase,
-								geo_model_function, model_key_geo, gd_verbose=True
+								comp_for_calc, solute_elem, solvent_elem, float(temp_k), phase,
+								geo_model_function, model_key_geo,full_alloy_str=base_matrix_str
 						)
 						gamma_darken = math.exp(ln_gamma_darken) if not (
 								math.isnan(ln_gamma_darken) or math.isinf(ln_gamma_darken)) else float('nan')

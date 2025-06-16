@@ -9,7 +9,7 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QLabel, QLineEdit, QComboBox, QPushButton, QSplitter,
                              QFrame, QGroupBox, QTextEdit, QDoubleSpinBox, QCheckBox, QFileDialog, QFormLayout,
-                             QProgressDialog, QTabWidget, QButtonGroup, QRadioButton)
+                             QProgressDialog, QTabWidget, QButtonGroup, QRadioButton, QMessageBox)
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -1088,11 +1088,8 @@ class CompositionVariationWidget(QWidget):
 			min_comp = self.min_composition.value()
 			max_comp = self.max_composition.value()
 			step_comp = self.step_composition.value()
+			alloy_composition = base_matrix_str+varying_elem
 			
-			print(f"=== 调试信息 ===")
-			print(f"输入合金: {base_matrix_str}")
-			print(f"基体元素: {matrix_elem}, 变化组分: {varying_elem}, 目标组分: {target_elem}")
-			print(f"浓度范围: {min_comp} - {max_comp}, 步长: {step_comp}")
 			
 			# 解析基础组成
 			base_comp_dict = CompositionVariationWidget._parse_composition_static(base_matrix_str)
@@ -1100,7 +1097,7 @@ class CompositionVariationWidget(QWidget):
 				QMessageBox.critical(self, "成分解析失败", f"无法解析: {base_matrix_str}")
 				return
 			
-			print(f"解析结果: {base_comp_dict}")
+		
 			
 			# 验证元素存在性
 			for elem, name in [(varying_elem, "变化组分"), (target_elem, "目标组分"), (matrix_elem, "基体元素")]:
@@ -1110,7 +1107,7 @@ class CompositionVariationWidget(QWidget):
 			
 			# 生成组分序列
 			compositions = np.arange(min_comp, max_comp + step_comp / 2, step_comp)
-			print(f"生成组分点数: {len(compositions)}")
+			
 			
 			if len(compositions) == 0:
 				QMessageBox.warning(self, "组分范围错误", "无有效组分点。")
@@ -1141,7 +1138,7 @@ class CompositionVariationWidget(QWidget):
 				QMessageBox.warning(self, "模型未选择", "请至少选择一个外推模型。")
 				return
 			
-			print(f"选择的模型: {[mk for mk, _ in selected_models_to_run]}")
+			
 			
 			# 创建结果HTML
 			current_timestamp = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
@@ -1200,14 +1197,14 @@ class CompositionVariationWidget(QWidget):
 						# 计算Elliott方法
 						ln_gamma_elliott = self.activity_calc_module.activity_coefficient_elliott(
 								current_comp, target_elem, matrix_elem, temperature, phase,
-								geo_model_function, model_key_geo)
+								geo_model_function, model_key_geo,full_alloy_str = alloy_composition)
 						gamma_elliott = math.exp(ln_gamma_elliott) if not (
 								math.isnan(ln_gamma_elliott) or math.isinf(ln_gamma_elliott)) else float('nan')
 						
 						# 计算Darken方法
 						ln_gamma_darken = self.activity_calc_module.activity_coefficient_darken(
 								current_comp, target_elem, matrix_elem, temperature, phase,
-								geo_model_function, model_key_geo, gd_verbose=False)
+								geo_model_function, model_key_geo, gd_verbose=False,full_alloy_str = alloy_composition)
 						gamma_darken = math.exp(ln_gamma_darken) if not (
 								math.isnan(ln_gamma_darken) or math.isinf(ln_gamma_darken)) else float('nan')
 						

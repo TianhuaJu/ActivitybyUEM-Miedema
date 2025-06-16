@@ -1,5 +1,4 @@
 import math
-import numpy as np
 from datetime import datetime
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QLabel, QLineEdit, QComboBox, QPushButton,
@@ -340,11 +339,11 @@ class ActivityCalculationWidget(QWidget):
 			
 			# 计算不同方法的活度系数
 			darken_acf = self.parent.activity_coefficient.activity_coefficient_darken(
-					comp_dict, solute, solvent, temp, state, model_func, model_name)
+					comp_dict, solute, solvent, temp, state, model_func, model_name,full_alloy_str=alloy_composition_str)
 			wagner_acf = self.parent.activity_coefficient.activity_coefficient_wagner(
-					comp_dict, solvent, solute, temp, state, model_func, model_name)
+					comp_dict, solvent, solute, temp, state, model_func, model_name,full_alloy_str=alloy_composition_str)
 			elliot_acf = self.parent.activity_coefficient.activity_coefficient_elliott(
-					comp_dict, solute, solvent, temp, state, model_func, model_name)
+					comp_dict, solute, solvent, temp, state, model_func, model_name,full_alloy_str=alloy_composition_str)
 			
 			# 计算活度
 			darken_activity = math.exp(darken_acf) * xi

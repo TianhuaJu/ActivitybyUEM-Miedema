@@ -4,7 +4,8 @@ from typing import Callable
 
 from core.constants import Constants
 from core.element import Element
-from core.utils import entropy_judge
+from core.utils import entropy_judge, get_canonical_alloy_name
+from utils.DataLogger import log_contribution_coefficients
 from .extrapolation_models import BinaryModel
 
 extrap_func = Callable[[str, str, str, float, str], float]
@@ -184,7 +185,7 @@ class TernaryMelts:
         return 1000.0 * (hij - hik - hjk + dhik + dhjk) / (Constants.R * self._temperature)
     
     def activity_interact_coefficient_1st (self, solv, solui, soluj, Tem: float, state: str, geo_model: extrap_func,
-                                           geo_model_name="UEM1"):
+                                           geo_model_name="UEM1", full_alloy_str: str = ""):
         """Calculate first-order interaction coefficient"""
         import os
         entropy_yesornot = entropy_judge(solv, solui, soluj)
@@ -206,17 +207,47 @@ class TernaryMelts:
         file_path = os.path.join(project_root, "results", "Contribution Coefficient")
         os.makedirs(file_path, exist_ok=True)
         
-        file_name = os.path.join(file_path, f"{geo_model_name}.txt")
-        content = (
-            f"{solv.name}-{solui.name}: \t {aki_ij}, \t {solv.name}-{soluj.name}: \t {akj_ij} \t in ( {solui.name}-{soluj.name})\n"
-            f"{solui.name}-{solv.name}: \t {aik_jk}, \t {solui.name}-{soluj.name}: \t {aij_jk} \t in ( {soluj.name}-{solv.name})\n"
-            f"{soluj.name}-{solui.name}: \t {aji_ik}, \t {soluj.name}-{solv.name}: \t {ajk_ik} \t in ( {solui.name}-{solv.name})\n")
         
-        with open(file_name, "a") as f:
-            f.write(content)
         
         if aki_ij == 0 and akj_ij == 0:
             aki_ij = akj_ij = 0.5
+        
+        #写入贡献系数
+        ternary_system_str = f"{solv.name}-{solui.name}-{soluj.name}"
+        system_context_for_check = full_alloy_str if full_alloy_str else f"{solv.name}-{solui.name}-{soluj.name}"
+        from core.utils import get_canonical_alloy_name  # 确保导入
+        canonical_name = get_canonical_alloy_name(system_context_for_check)
+        element_count = len(canonical_name.split('-'))
+        # 3. 添加过滤条件：只在体系组元数大于等于3时才记录日志
+        if element_count >= 3:
+            # 准备日志所需的数据
+            ternary_system_str = f"{solv.name}-{solui.name}-{soluj.name}"
+            
+            contribution_data_for_log = {
+                f"{solui.name}-{soluj.name}": {
+                    f"k={solv.name}, i={solui.name}": aki_ij,
+                    f"k={solv.name}, j={soluj.name}": akj_ij
+                },
+                f"{solv.name}-{soluj.name}": {
+                    f"i={solui.name}, k={solv.name}": aik_jk,
+                    f"i={solui.name}, j={soluj.name}": aij_jk
+                },
+                f"{solv.name}-{solui.name}": {
+                    f"j={soluj.name}, i={solui.name}": aji_ik,
+                    f"j={soluj.name}, k={solv.name}": ajk_ik
+                }
+            }
+            
+            # 调用日志函数
+            log_contribution_coefficients(
+                    ternary_system=ternary_system_str,
+                    model_name=geo_model_name,
+                    temperature=Tem,
+                    contribution_data=contribution_data_for_log,
+                    full_alloy_context=full_alloy_str
+            )
+        
+        
         
         via = (1 + solui.u * (solui.phi - soluj.phi) * akj_ij * soluj.v /
                (aki_ij * solui.v + akj_ij * soluj.v)) * solui.v

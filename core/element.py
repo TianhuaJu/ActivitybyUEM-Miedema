@@ -1,7 +1,7 @@
 # element.py
 
 from core.constants import Constants
-from .database_handler import get_miedema_data
+from core.database_handler import get_miedema_data
 
 class Element:
     """定义 Element 类，负责加载和管理单个元素的属性。"""

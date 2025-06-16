@@ -3631,6 +3631,11 @@
   ('urllib.response',
    'C:\\Users\\jthua\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\urllib\\response.py',
    'PYMODULE'),
+  ('utils', '-', 'PYMODULE'),
+  ('utils.DataLogger',
+   'E:\\user\\jthua\\Python '
+   'Code\\ActivitybyUEMandMiedema\\utils\\DataLogger.py',
+   'PYMODULE'),
   ('uuid',
    'C:\\Users\\jthua\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\uuid.py',
    'PYMODULE'),
