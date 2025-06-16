@@ -81,3 +81,27 @@ def parse_composition_static (alloy_str):
     
     return normalized_comp_dict
 
+# 请将此函数添加到 core/utils.py 的末尾
+
+
+
+def get_canonical_alloy_name(alloy_composition) -> str:
+    """
+    从合金组成字符串或字典中，生成一个按字母排序的、规范的合金名称。
+    例如: "Fe0.7Si0.1C0.2" -> "C-Fe-Si"
+
+    Args:
+        alloy_composition (str or dict): 合金组成字符串或已解析的字典。
+
+    Returns:
+        str: 规范化的合金名称，例如 "C-Fe-Si"。
+    """
+    elements = []
+    if isinstance(alloy_composition, str):
+        # 从字符串中提取所有元素符号
+        elements = sorted(list(set(re.findall(r"([A-Z][a-z]?)", alloy_composition))))
+    elif isinstance(alloy_composition, dict):
+        # 从字典的键中获取所有元素
+        elements = sorted(list(alloy_composition.keys()))
+
+    return "-".join(elements)
