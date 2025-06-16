@@ -3,6 +3,7 @@ import sys
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 from gui.alloyact_gui import AlloyActGUI
+from gui.Alloyact_GUI_Pro import AlloyActProGUI
 
 
 def get_resource_path(relative_path):
@@ -29,7 +30,7 @@ def run_gui():
 
     # 创建主窗口实例
    
-    main_window_pro = AlloyActGUI()
+    main_window_pro = AlloyActProGUI()
     
     if os.path.exists(icon_path):
         main_window_pro.setWindowIcon(QIcon(icon_path))
