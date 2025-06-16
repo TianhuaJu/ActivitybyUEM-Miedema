@@ -4,7 +4,6 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 from gui.alloyact_gui import AlloyActGUI
 
-from gui.Alloyact_GUI_Pro import AlloyActProGUI
 
 def get_resource_path(relative_path):
     """获取资源文件路径"""
@@ -23,14 +22,14 @@ def run_gui():
     # 设置高 DPI 缩放支持 (与您 alloyact_gui.py 中的设置一致)
     app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    icon_path = get_resource_path('resources/app_ico_Alloyact_Pro.ico')
+    icon_path = get_resource_path('resources/app_icon.ico')
     if os.path.exists(icon_path):
         from PyQt5.QtGui import QIcon
         app.setWindowIcon(QIcon(icon_path))
 
     # 创建主窗口实例
    
-    main_window_pro = AlloyActProGUI()
+    main_window_pro = AlloyActGUI()
     
     if os.path.exists(icon_path):
         main_window_pro.setWindowIcon(QIcon(icon_path))

@@ -470,7 +470,7 @@ class CompositionVariationWidget(QWidget):
 		self.alloy_compositions.setMinimumWidth(200)
 		comp_layout.addWidget(self.alloy_compositions)
 		
-		update_btn = ModernButton("刷新", "secondary")
+		update_btn = ModernButton("解析", "secondary")
 		update_btn.setFixedWidth(60)
 		update_btn.clicked.connect(self.update_element_dropdowns)
 		comp_layout.addWidget(update_btn)
@@ -1067,7 +1067,7 @@ class CompositionVariationWidget(QWidget):
 			self.progress_dialog.close()
 	
 	def calculate_all_properties (self):
-		"""计算所有属性 - Elliott和Darken两种方法"""
+		"""计算所有属性 - 使用预分配大数组的安全版本"""
 		try:
 			self.has_calculated = False
 			# 重置数据结构
@@ -1089,11 +1089,18 @@ class CompositionVariationWidget(QWidget):
 			max_comp = self.max_composition.value()
 			step_comp = self.step_composition.value()
 			
+			print(f"=== 调试信息 ===")
+			print(f"输入合金: {base_matrix_str}")
+			print(f"基体元素: {matrix_elem}, 变化组分: {varying_elem}, 目标组分: {target_elem}")
+			print(f"浓度范围: {min_comp} - {max_comp}, 步长: {step_comp}")
+			
 			# 解析基础组成
 			base_comp_dict = CompositionVariationWidget._parse_composition_static(base_matrix_str)
 			if base_comp_dict is None:
 				QMessageBox.critical(self, "成分解析失败", f"无法解析: {base_matrix_str}")
 				return
+			
+			print(f"解析结果: {base_comp_dict}")
 			
 			# 验证元素存在性
 			for elem, name in [(varying_elem, "变化组分"), (target_elem, "目标组分"), (matrix_elem, "基体元素")]:
@@ -1103,6 +1110,8 @@ class CompositionVariationWidget(QWidget):
 			
 			# 生成组分序列
 			compositions = np.arange(min_comp, max_comp + step_comp / 2, step_comp)
+			print(f"生成组分点数: {len(compositions)}")
+			
 			if len(compositions) == 0:
 				QMessageBox.warning(self, "组分范围错误", "无有效组分点。")
 				return
@@ -1132,7 +1141,9 @@ class CompositionVariationWidget(QWidget):
 				QMessageBox.warning(self, "模型未选择", "请至少选择一个外推模型。")
 				return
 			
-			# 创建结果HTML - 始终显示两种方法的对比结果
+			print(f"选择的模型: {[mk for mk, _ in selected_models_to_run]}")
+			
+			# 创建结果HTML
 			current_timestamp = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
 			new_results_html = f"<hr><b>🕐 计算时间: {current_timestamp}</b><br>"
 			new_results_html += f"<b>📋 计算参数:</b><br>"
@@ -1150,17 +1161,28 @@ class CompositionVariationWidget(QWidget):
 			
 			# 执行计算
 			for model_key_geo, geo_model_function in selected_models_to_run:
-				# 初始化数据数组
-				current_activities, current_coefficients = [], []
-				current_activities_darken, current_coefficients_darken = [], []
-				composition_values = []
+				print(f"\n--- 开始计算模型: {model_key_geo} ---")
+				
+				# ✅ 关键改进：预分配更大的数组 + 使用计数器
+				MAX_ARRAY_SIZE = 10000  # 预分配足够大的数组
+				current_activities = np.full(MAX_ARRAY_SIZE, float('nan'))
+				current_coefficients = np.full(MAX_ARRAY_SIZE, float('nan'))
+				current_activities_darken = np.full(MAX_ARRAY_SIZE, float('nan'))
+				current_coefficients_darken = np.full(MAX_ARRAY_SIZE, float('nan'))
+				composition_values = np.full(MAX_ARRAY_SIZE, float('nan'))
+				
+				valid_count = 0  # 有效数据计数器
+				
+				print(f"预分配数组大小: {MAX_ARRAY_SIZE}, 计划计算点数: {len(compositions)}")
 				
 				new_results_html += f"<br><b>⚙️ 外推模型: {model_key_geo}</b><br>"
-				# 统一使用对比格式的表头
 				new_results_html += f"<font face='Courier New' color='#2C3E50'><b>X_{varying_elem}   | Elliott-Act | Elliott-γ   | Darken-Act  | Darken-γ    | Δa(%)  | Δγ(%)</b></font><br>"
 				new_results_html += f"<font face='Courier New'>---------|-------------|-------------|-------------|-------------|--------|------</font><br>"
 				
-				for comp_val in compositions:
+				successful_calcs = 0
+				failed_calcs = 0
+				
+				for i, comp_val in enumerate(compositions):
 					if hasattr(self, 'progress_dialog') and self.progress_dialog.wasCanceled():
 						new_results_html += "<font color='red'>❌ 计算已取消</font><br>"
 						break
@@ -1168,32 +1190,26 @@ class CompositionVariationWidget(QWidget):
 					# 构建当前组成
 					current_comp = self.build_composition_at_point(base_comp_dict, varying_elem, matrix_elem, comp_val)
 					if current_comp is None:
-						current_activities.append(float('nan'))
-						current_coefficients.append(float('nan'))
-						current_activities_darken.append(float('nan'))
-						current_coefficients_darken.append(float('nan'))
+						print(f"组分点{i} (X={comp_val:.3f}): 组成构建失败")
 						new_results_html += f"<font face='Courier New'>{comp_val:<9.3f}|     N/A     |     N/A     |     N/A     |     N/A     |  N/A   |  N/A</font><br>"
+						failed_calcs += 1
 						calcs_done += 1
 						continue
 					
 					try:
 						# 计算Elliott方法
-						ln_gamma_elliott = self.activity_calc_module.activity_coefficient_elliott(current_comp,
-						                                                                          target_elem,
-						                                                                          matrix_elem,
-						                                                                          temperature,
-						                                                                          phase,
-						                                                                          geo_model_function,
-						                                                                          model_key_geo)
+						ln_gamma_elliott = self.activity_calc_module.activity_coefficient_elliott(
+								current_comp, target_elem, matrix_elem, temperature, phase,
+								geo_model_function, model_key_geo)
 						gamma_elliott = math.exp(ln_gamma_elliott) if not (
-									math.isnan(ln_gamma_elliott) or math.isinf(ln_gamma_elliott)) else float('nan')
+								math.isnan(ln_gamma_elliott) or math.isinf(ln_gamma_elliott)) else float('nan')
 						
 						# 计算Darken方法
 						ln_gamma_darken = self.activity_calc_module.activity_coefficient_darken(
-								current_comp, target_elem, matrix_elem, temperature, phase, geo_model_function,
-								model_key_geo, gd_verbose=True)
+								current_comp, target_elem, matrix_elem, temperature, phase,
+								geo_model_function, model_key_geo, gd_verbose=False)
 						gamma_darken = math.exp(ln_gamma_darken) if not (
-									math.isnan(ln_gamma_darken) or math.isinf(ln_gamma_darken)) else float('nan')
+								math.isnan(ln_gamma_darken) or math.isinf(ln_gamma_darken)) else float('nan')
 						
 						# 计算活度
 						xi_target = current_comp.get(target_elem, 0.0)
@@ -1211,25 +1227,28 @@ class CompositionVariationWidget(QWidget):
 						else:
 							delta_gamma_percent = float('nan')
 						
-						# 存储结果
-						current_activities.append(act_elliott)
-						current_coefficients.append(gamma_elliott)
-						current_activities_darken.append(act_darken)
-						current_coefficients_darken.append(gamma_darken)
-						composition_values.append(comp_val)
+						# ✅ 使用计数器索引存储有效数据
+						current_activities[valid_count] = act_elliott
+						current_coefficients[valid_count] = gamma_elliott
+						current_activities_darken[valid_count] = act_darken
+						current_coefficients_darken[valid_count] = gamma_darken
+						composition_values[valid_count] = comp_val
 						
-						# 格式化显示 - 带颜色标识差异大小
+						valid_count += 1  # 递增有效数据计数
+						successful_calcs += 1
+						
+						# 格式化显示
 						delta_act_str = f"{delta_act_percent:6.2f}" if not math.isnan(delta_act_percent) else "  N/A"
 						delta_gamma_str = f"{delta_gamma_percent:6.2f}" if not math.isnan(
 							delta_gamma_percent) else "  N/A"
 						
 						# 根据差异大小设置颜色
 						if not math.isnan(delta_act_percent) and delta_act_percent > 5:
-							delta_act_color = "#E74C3C"  # 红色：差异大
+							delta_act_color = "#E74C3C"
 						elif not math.isnan(delta_act_percent) and delta_act_percent > 1:
-							delta_act_color = "#F39C12"  # 橙色：差异中等
+							delta_act_color = "#F39C12"
 						else:
-							delta_act_color = "#27AE60"  # 绿色：差异小
+							delta_act_color = "#27AE60"
 						
 						if not math.isnan(delta_gamma_percent) and delta_gamma_percent > 5:
 							delta_gamma_color = "#E74C3C"
@@ -1244,69 +1263,86 @@ class CompositionVariationWidget(QWidget):
 							f"<font color='{delta_act_color}'>{delta_act_str}</font>| "
 							f"<font color='{delta_gamma_color}'>{delta_gamma_str}</font></font><br>"
 						)
+						
+						if i < 5:  # 只打印前5个点的详细信息
+							print(f"组分点{i} (X={comp_val:.3f}): 计算成功, 存储索引{valid_count - 1}")
 					
 					except Exception as e_calc:
-						print(f"计算错误 (X={comp_val}, 模型={model_key_geo}): {e_calc}")
-						current_activities.append(float('nan'))
-						current_coefficients.append(float('nan'))
-						current_activities_darken.append(float('nan'))
-						current_coefficients_darken.append(float('nan'))
-						composition_values.append(comp_val)
+						print(f"组分点{i} (X={comp_val:.3f}): 计算异常 - {e_calc}")
 						new_results_html += f"<font face='Courier New'>{comp_val:<9.3f}|     N/A     |     N/A     |     N/A     |     N/A     |  N/A   |  N/A</font><br>"
+						failed_calcs += 1
 					
 					calcs_done += 1
 					if hasattr(self, 'progress_dialog'):
 						self.progress_dialog.setValue(calcs_done)
 						QApplication.processEvents()
 				
+				print(
+					f"模型 {model_key_geo} 计算完成: 成功 {successful_calcs}/{len(compositions)}, 有效数据点: {valid_count}")
+				
 				if hasattr(self, 'progress_dialog') and self.progress_dialog.wasCanceled():
 					break
 				
-				# 存储所有结果
+				# ✅ 截取有效数据部分，确保所有数组长度完全一致
+				if valid_count > 0:
+					final_compositions = composition_values[:valid_count].copy()
+					final_activities = current_activities[:valid_count].copy()
+					final_coefficients = current_coefficients[:valid_count].copy()
+					final_activities_darken = current_activities_darken[:valid_count].copy()
+					final_coefficients_darken = current_coefficients_darken[:valid_count].copy()
+					
+					print(f"最终数组长度验证:")
+					print(f"  final_compositions: {len(final_compositions)}")
+					print(f"  final_activities: {len(final_activities)}")
+					print(f"  final_activities_darken: {len(final_activities_darken)}")
+					print(
+						f"  所有数组长度一致: {len(final_compositions) == len(final_activities) == len(final_activities_darken)}")
+				
+				else:
+					print(f"模型 {model_key_geo}: 无有效数据")
+					# 创建空数组但保持结构一致
+					final_compositions = np.array([])
+					final_activities = np.array([])
+					final_coefficients = np.array([])
+					final_activities_darken = np.array([])
+					final_coefficients_darken = np.array([])
+				
+				# 存储结果 - 保证长度一致性
 				self.calculation_results["activity"][model_key_geo] = {
-					"compositions": np.array(composition_values),
-					"values": np.array(current_activities)
+					"compositions": final_compositions,
+					"values": final_activities
 				}
 				self.calculation_results["activity_coefficient"][model_key_geo] = {
-					"compositions": np.array(composition_values),
-					"values": np.array(current_coefficients)
+					"compositions": final_compositions,
+					"values": final_coefficients
 				}
 				self.calculation_results["activity_darken"][model_key_geo] = {
-					"compositions": np.array(composition_values),
-					"values": np.array(current_activities_darken)
+					"compositions": final_compositions,
+					"values": final_activities_darken
 				}
 				self.calculation_results["activity_coefficient_darken"][model_key_geo] = {
-					"compositions": np.array(composition_values),
-					"values": np.array(current_coefficients_darken)
+					"compositions": final_compositions,
+					"values": final_coefficients_darken
 				}
 				
-				# 添加统计对比信息
-				if len(current_activities) > 0 and len(current_activities_darken) > 0:
-					valid_elliott_act = [x for x in current_activities if not math.isnan(x)]
-					valid_darken_act = [x for x in current_activities_darken if not math.isnan(x)]
-					valid_elliott_gamma = [x for x in current_coefficients if not math.isnan(x)]
-					valid_darken_gamma = [x for x in current_coefficients_darken if not math.isnan(x)]
+				# 添加统计信息
+				if valid_count > 1:
+					valid_elliott_act = final_activities[~np.isnan(final_activities)]
+					valid_darken_act = final_activities_darken[~np.isnan(final_activities_darken)]
 					
-					if valid_elliott_act and valid_darken_act and len(valid_elliott_act) == len(valid_darken_act):
-						avg_diff_act = np.mean(
-								[abs((d - e) / e) * 100 for e, d in zip(valid_elliott_act, valid_darken_act) if
-								 abs(e) > 1e-10])
-						max_diff_act = np.max(
-								[abs((d - e) / e) * 100 for e, d in zip(valid_elliott_act, valid_darken_act) if
-								 abs(e) > 1e-10])
-						
-						if valid_elliott_gamma and valid_darken_gamma and len(valid_elliott_gamma) == len(
-								valid_darken_gamma):
-							avg_diff_gamma = np.mean(
-									[abs((d - e) / e) * 100 for e, d in zip(valid_elliott_gamma, valid_darken_gamma) if
-									 abs(e) > 1e-10])
-							max_diff_gamma = np.max(
-									[abs((d - e) / e) * 100 for e, d in zip(valid_elliott_gamma, valid_darken_gamma) if
-									 abs(e) > 1e-10])
-							
-							new_results_html += f"<br><b>📊 模型 {model_key_geo} 对比统计:</b><br>"
-							new_results_html += f"<font color='#2980B9'>活度 - 平均差异: {avg_diff_act:.2f}%, 最大差异: {max_diff_act:.2f}%</font><br>"
-							new_results_html += f"<font color='#8E44AD'>活度系数 - 平均差异: {avg_diff_gamma:.2f}%, 最大差异: {max_diff_gamma:.2f}%</font><br>"
+					if len(valid_elliott_act) > 0 and len(valid_darken_act) > 0:
+						min_len = min(len(valid_elliott_act), len(valid_darken_act))
+						if min_len > 1:
+							valid_pairs_act = [(e, d) for e, d in
+							                   zip(valid_elliott_act[:min_len], valid_darken_act[:min_len]) if
+							                   abs(e) > 1e-10]
+							if valid_pairs_act:
+								avg_diff_act = np.mean([abs((d - e) / e) * 100 for e, d in valid_pairs_act])
+								max_diff_act = np.max([abs((d - e) / e) * 100 for e, d in valid_pairs_act])
+								
+								new_results_html += f"<br><b>📊 模型 {model_key_geo} 统计:</b><br>"
+								new_results_html += f"<font color='#2980B9'>成功计算: {successful_calcs}/{len(compositions)} ({valid_count}个有效数据点)</font><br>"
+								new_results_html += f"<font color='#2980B9'>活度平均差异: {avg_diff_act:.2f}%, 最大差异: {max_diff_act:.2f}%</font><br>"
 			
 			# 更新界面
 			self.historical_results_html = new_results_html + self.historical_results_html
@@ -1316,13 +1352,139 @@ class CompositionVariationWidget(QWidget):
 			self.has_calculated = True
 			self.update_plot_display_only()
 			self.status_bar.set_status("✅ 计算完成")
+			
+			print("=== 计算流程完成 ===")
 		
 		except Exception as e_outer:
+			print(f"计算主流程异常: {e_outer}")
 			QMessageBox.critical(self, "计算主流程出错", f"发生严重错误: {str(e_outer)}\n{traceback.format_exc()}")
 			self.status_bar.set_status("❌ 计算失败")
 		finally:
 			if hasattr(self, 'progress_dialog') and self.progress_dialog:
 				self.progress_dialog.close()
+	
+	def plot_property_variation (self, model_data_dict, property_type, method_name="Darken"):
+		"""绘制属性变化图 - 适配大数组版本"""
+		self.figure.clear()
+		ax = self.figure.add_subplot(111)
+		
+		# 设置图表样式
+		ax.set_facecolor('#FAFAFA')
+		self.figure.patch.set_facecolor('white')
+		
+		plot_handles, plot_labels = [], []
+		color_cycle = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6', '#1ABC9C']
+		marker_cycle = ['o', 's', '^', 'D', 'v', 'P']
+		
+		# 收集所有组分数据
+		all_comps = []
+		for model_key, data in model_data_dict.items():
+			comps = data.get("compositions")
+			if comps is not None and len(comps) > 0:
+				# ✅ 过滤掉NaN值
+				valid_comps = comps[~np.isnan(comps)]
+				if len(valid_comps) > 0:
+					all_comps.extend(valid_comps)
+		
+		print(f"收集到的所有组分数据点: {len(all_comps)}")
+		
+		# 绘制每个模型的结果
+		for i, (model_key, data) in enumerate(model_data_dict.items()):
+			comps, vals = data.get("compositions"), data.get("values")
+			if comps is None or vals is None or len(comps) == 0 or len(vals) == 0:
+				print(f"模型 {model_key}: 数据为空，跳过绘制")
+				continue
+			
+			print(f"模型 {model_key}: compositions长度={len(comps)}, values长度={len(vals)}")
+			
+			# ✅ 自动长度一致性保证（理论上现在应该总是一致的）
+			if len(comps) != len(vals):
+				print(f"警告: 模型 {model_key} 数组长度不一致，这不应该发生！")
+				min_len = min(len(comps), len(vals))
+				comps = comps[:min_len]
+				vals = vals[:min_len]
+				print(f"  已裁剪到长度: {min_len}")
+			
+			# 找出有效的数据点
+			valid_mask = ~np.isnan(vals) & ~np.isinf(vals) & ~np.isnan(comps) & ~np.isinf(comps)
+			comps_p = comps[valid_mask]
+			vals_p = vals[valid_mask]
+			
+			print(f"模型 {model_key}: 原始{len(comps)}点 -> 有效{len(comps_p)}点")
+			
+			if len(comps_p) > 0:
+				# 对数据排序
+				sorted_indices = np.argsort(comps_p)
+				comps_p = comps_p[sorted_indices]
+				vals_p = vals_p[sorted_indices]
+				
+				# 绘制曲线
+				base_color = color_cycle[i % len(color_cycle)]
+				marker = marker_cycle[i % len(marker_cycle)]
+				
+				try:
+					line, = ax.plot(comps_p, vals_p,
+					                label=model_key,
+					                color=base_color,
+					                marker=marker,
+					                markersize=5,
+					                linewidth=2.5,
+					                alpha=0.9,
+					                linestyle='-',
+					                markeredgewidth=0.5,
+					                markeredgecolor='white')
+					
+					plot_handles.append(line)
+					plot_labels.append(model_key)
+					print(f"模型 {model_key}: 绘制成功")
+				
+				except Exception as plot_error:
+					print(f"模型 {model_key}: 绘制失败 - {plot_error}")
+					continue
+			else:
+				print(f"模型 {model_key}: 无有效数据点，跳过绘制")
+		
+		# 设置标签和标题
+		varying_elem = self.current_parameters.get("varying_element", "?")
+		target_elem = self.current_parameters.get("target_element", "?")
+		prop_name_cn = "活度" if property_type == "activity" else "活度系数"
+		y_label = f"{prop_name_cn} ($a_{{{target_elem}}}$)" if property_type == "activity" else f"{prop_name_cn} ($\\gamma_{{{target_elem}}}$)"
+		
+		title = (
+			f"{self.current_parameters.get('base_matrix', 'N/A')} 中 {target_elem} 的 {prop_name_cn} vs. {varying_elem} 浓度\n"
+			f"温度: {self.current_parameters.get('temperature', 'N/A')}K, "
+			f"相态: {self.current_parameters.get('phase_state', 'N/A')} ({method_name} 方法)")
+		
+		ax.set_xlabel(f"{varying_elem} 摩尔分数", fontsize=12, fontweight='bold')
+		ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
+		ax.set_title(title, fontsize=11, fontweight='bold', pad=20, color='#2C3E50')
+		
+		# 网格设置
+		ax.grid(True, linestyle='--', alpha=0.3, color='#BDC3C7', linewidth=0.5)
+		ax.tick_params(axis='both', which='major', labelsize=10)
+		
+		# 图例设置
+		if plot_handles:
+			try:
+				legend = ax.legend(loc='best', fontsize=10, frameon=True, fancybox=True, shadow=True,
+				                   framealpha=0.95, facecolor='white', edgecolor='#CCCCCC')
+				legend.get_frame().set_linewidth(0.5)
+			except Exception as legend_error:
+				print(f"设置图例时出错: {legend_error}")
+		else:
+			ax.text(0.5, 0.5, "无有效数据", ha='center', va='center', transform=ax.transAxes,
+			        fontsize=14, color='#E74C3C', fontweight='bold')
+			print("没有可绘制的数据")
+		
+		# 调整布局
+		try:
+			self.figure.tight_layout(rect=[0, 0, 1, 0.96])
+			self.canvas.draw()
+			print("图表绘制完成")
+		except Exception as layout_error:
+			print(f"调整布局时出错: {layout_error}")
+	
+	
 	
 	def normalize_dict (self, comp, exclude_key):
 		'''归一化去掉指定组元后的合金组成'''

@@ -647,9 +647,17 @@
    'C:\\Users\\jthua\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\glob.py',
    'PYMODULE'),
   ('gui', '-', 'PYMODULE'),
+  ('gui.ActivityCalculationWidget',
+   'E:\\user\\jthua\\Python '
+   'Code\\ActivitybyUEMandMiedema\\gui\\ActivityCalculationWidget.py',
+   'PYMODULE'),
   ('gui.ActivityVaryConcentrationWdget',
    'E:\\user\\jthua\\Python '
    'Code\\ActivitybyUEMandMiedema\\gui\\ActivityVaryConcentrationWdget.py',
+   'PYMODULE'),
+  ('gui.ActivityVaryConcentrationWdget2',
+   'E:\\user\\jthua\\Python '
+   'Code\\ActivitybyUEMandMiedema\\gui\\ActivityVaryConcentrationWdget2.py',
    'PYMODULE'),
   ('gui.ActivityVaryTemperatureWdget',
    'E:\\user\\jthua\\Python '
@@ -658,6 +666,18 @@
   ('gui.Alloyact_GUI_Pro',
    'E:\\user\\jthua\\Python '
    'Code\\ActivitybyUEMandMiedema\\gui\\Alloyact_GUI_Pro.py',
+   'PYMODULE'),
+  ('gui.InteractionCoefficientWidget',
+   'E:\\user\\jthua\\Python '
+   'Code\\ActivitybyUEMandMiedema\\gui\\InteractionCoefficientWidget.py',
+   'PYMODULE'),
+  ('gui.SecondOrderCoefficientWidget',
+   'E:\\user\\jthua\\Python '
+   'Code\\ActivitybyUEMandMiedema\\gui\\SecondOrderCoefficientWidget.py',
+   'PYMODULE'),
+  ('gui.UnitConversionWidget',
+   'E:\\user\\jthua\\Python '
+   'Code\\ActivitybyUEMandMiedema\\gui\\UnitConversionWidget.py',
    'PYMODULE'),
   ('gui.alloyact_gui',
    'E:\\user\\jthua\\Python '

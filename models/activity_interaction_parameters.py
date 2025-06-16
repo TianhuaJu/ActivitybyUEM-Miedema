@@ -127,7 +127,7 @@ class TernaryMelts:
         
         dfx = (dnx * dx - ddx * nx) / (dx * dx)
         
-        return dfx
+        return dfx*fij
     
     def second_derivative_q0 (self, i_element: Element, j_element: Element, xi=0):
         """Calculate second derivative of Q(x) at x=0"""

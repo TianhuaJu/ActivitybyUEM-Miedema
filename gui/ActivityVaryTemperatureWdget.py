@@ -469,7 +469,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 		self.matrix_input.setMinimumWidth(200)
 		comp_layout.addWidget(self.matrix_input)
 		
-		update_btn = ModernButton("刷新", "secondary")
+		update_btn = ModernButton("解析", "secondary")
 		update_btn.setFixedWidth(60)
 		update_btn.clicked.connect(self.update_element_dropdowns)
 		comp_layout.addWidget(update_btn)

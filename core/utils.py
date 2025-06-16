@@ -1,9 +1,6 @@
 # utils.py
 import re
-
 from core.constants import Constants
-from PyQt5.QtWidgets import QMessageBox # Consider removing or abstracting PyQt5
-
 def entropy_judge(*elements: str) -> bool:
     """
     判断是否需要考虑过剩熵。
@@ -83,3 +80,4 @@ def parse_composition_static (alloy_str):
         normalized_comp_dict[element] = moles / total_moles
     
     return normalized_comp_dict
+
