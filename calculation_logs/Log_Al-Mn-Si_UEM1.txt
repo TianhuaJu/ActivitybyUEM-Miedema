@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Al-Mn-Si
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-06-29 12:55:36 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 805.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Si-Mn
+k=Al, i=Si  : 0.9136
+k=Al, j=Mn  : 0.0038
+		 in Si-Mn
+
+# For Binary Sub-system: Al-Mn
+i=Si, k=Al  : 0.9147
+i=Si, j=Mn  : 0.0033
+		 in Al-Mn
+
+# For Binary Sub-system: Al-Si
+j=Mn, i=Si  : 0.0585
+j=Mn, k=Al  : 0.0672
+		 in Al-Si

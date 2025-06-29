@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Al-Cu-Mn
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-06-29 12:55:36 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 805.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Cu-Mn
+k=Al, i=Cu  : 0.3031
+k=Al, j=Mn  : 0.0387
+		 in Cu-Mn
+
+# For Binary Sub-system: Al-Mn
+i=Cu, k=Al  : 0.0231
+i=Cu, j=Mn  : 0.9018
+		 in Al-Mn
+
+# For Binary Sub-system: Al-Cu
+j=Mn, i=Cu  : 0.9310
+j=Mn, k=Al  : 0.0030
+		 in Al-Cu

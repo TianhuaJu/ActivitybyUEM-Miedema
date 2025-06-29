@@ -1,0 +1,28 @@
+﻿# 构建产物
+build/
+dist/
+*.pkg
+*.exe
+*.app
+*.dmg
+*.msi
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+.venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
