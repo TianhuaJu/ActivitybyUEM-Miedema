@@ -450,7 +450,7 @@ class AlloyActProGUI(QMainWindow):
 		
 	
 	def setup_icon (self):
-		icon_path = self.get_resource_path('resources/app_ico_Alloyact_Pro.png')
+		icon_path = self.get_resource_path('resources/AlloyActApp.png')
 		if os.path.exists(icon_path):
 			
 			self.setWindowIcon(QIcon(icon_path))
