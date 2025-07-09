@@ -7,7 +7,8 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import (QWidget, QSplitter, QVBoxLayout, QGroupBox, QGridLayout,
                              QLabel, QLineEdit, QPushButton, QHBoxLayout, QComboBox,
                              QTableWidget, QFileDialog, QMessageBox, QTableWidgetItem,
-                             QApplication, QMainWindow, QProgressBar, QTextEdit)
+                             QApplication, QMainWindow, QProgressBar, QTextEdit, QDialog,
+                             QDialogButtonBox)
 
 # 尝试导入pycalphad，如果失败则TDB功能不可用
 try:
@@ -19,7 +20,115 @@ except ImportError:
 	print("警告: pycalphad 库未安装，TDB数据库功能将不可用。请使用 'pip install pycalphad' 安装。")
 
 
-# === 数据连接与操作核心类 ===
+# === 新增：密码输入对话框 ===
+class PasswordDialog(QDialog):
+	"""一个简单的密码输入对话框"""
+	
+	def __init__ (self, parent=None):
+		super().__init__(parent)
+		self.setWindowTitle("密码验证")
+		self.setFixedSize(300, 120)
+		
+		layout = QVBoxLayout(self)
+		
+		self.label = QLabel("此为高级敏感操作，请输入密码：")
+		self.password_input = QLineEdit()
+		self.password_input.setEchoMode(QLineEdit.Password)
+		
+		# OK 和 Cancel 按钮
+		self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+		self.button_box.accepted.connect(self.accept)
+		self.button_box.rejected.connect(self.reject)
+		
+		layout.addWidget(self.label)
+		layout.addWidget(self.password_input)
+		layout.addWidget(self.button_box)
+	
+	def get_password (self):
+		"""获取输入的密码"""
+		return self.password_input.text()
+
+
+# === 新增：SQL执行对话框 ===
+class SqlExecutorDialog(QDialog):
+	"""用于执行SQL脚本的对话框"""
+	
+	def __init__ (self, db_connector, parent_tab, parent=None):
+		super().__init__(parent)
+		self.db_connector = db_connector
+		self.parent_tab = parent_tab
+		self.setWindowTitle("高级SQL执行器")
+		self.setGeometry(200, 200, 700, 500)
+		
+		layout = QVBoxLayout(self)
+		layout.setSpacing(10)
+		
+		# SQL 输入区
+		input_group = QGroupBox("输入SQL脚本 (可包含多条语句)")
+		input_layout = QVBoxLayout(input_group)
+		self.sql_input_text = QTextEdit()
+		self.sql_input_text.setPlaceholderText(
+				"例如:\nUPDATE Mytable SET value = 0 WHERE id > 10;\n"
+				"DELETE FROM Mytable WHERE name = 'test';"
+		)
+		self.sql_input_text.setStyleSheet("font-family: 'Courier New'; font-size: 14px;")
+		input_layout.addWidget(self.sql_input_text)
+		layout.addWidget(input_group)
+		
+		# 结果显示区
+		result_group = QGroupBox("执行结果")
+		result_layout = QVBoxLayout(result_group)
+		self.result_output_text = QTextEdit()
+		self.result_output_text.setReadOnly(True)
+		self.result_output_text.setStyleSheet("color: #333;")
+		result_layout.addWidget(self.result_output_text)
+		layout.addWidget(result_group)
+		
+		layout.setStretchFactor(input_group, 2)
+		layout.setStretchFactor(result_group, 1)
+		
+		# 操作按钮
+		button_layout = QHBoxLayout()
+		self.execute_btn = QPushButton("🚀 执行脚本")
+		self.execute_btn.setStyleSheet("background-color: #dc3545; color: white; font-weight: bold; padding: 8px;")
+		self.execute_btn.clicked.connect(self.execute_sql_script)
+		
+		self.close_btn = QPushButton("关闭")
+		self.close_btn.clicked.connect(self.accept)
+		
+		button_layout.addStretch()
+		button_layout.addWidget(self.execute_btn)
+		button_layout.addWidget(self.close_btn)
+		layout.addLayout(button_layout)
+	
+	def execute_sql_script (self):
+		"""执行SQL脚本的逻辑"""
+		sql_script = self.sql_input_text.toPlainText().strip()
+		if not sql_script:
+			self.result_output_text.setText("错误：SQL脚本不能为空。")
+			self.result_output_text.setStyleSheet("color: red;")
+			return
+		
+		reply = QMessageBox.question(
+				self, "确认执行", "SQL脚本将直接修改数据库，此操作非常危险且可能无法恢复。\n\n您确定要继续吗？",
+				QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+		)
+		
+		if reply == QMessageBox.Yes:
+			try:
+				self.db_connector.execute_script(sql_script)
+				self.result_output_text.setText("✅ 命令执行成功！\n\n请检查左侧数据预览以确认更改。")
+				self.result_output_text.setStyleSheet("color: green;")
+				# 刷新主界面的表格视图
+				current_table = self.parent_tab.table_selector_combo.currentText()
+				if current_table:
+					self.parent_tab.on_table_selected(current_table)
+			except Exception as e:
+				self.result_output_text.setText(f"❌ 命令执行失败:\n\n{str(e)}")
+				self.result_output_text.setStyleSheet("color: red;")
+
+
+# === 数据连接与操作核心类 (增加 execute_script 方法) ===
 class DatabaseConnector:
 	"""
 	一个统一的数据连接器，用于处理SQLite和TDB数据库。
@@ -36,18 +145,34 @@ class DatabaseConnector:
 		
 		if db_path.lower().endswith('.db'):
 			self.db_type = 'SQLite'
-			self.conn = sqlite3.connect(db_path)
-			# 启用外键约束
+			self.conn = sqlite3.connect(db_path, isolation_level=None)  # 设置isolation_level为None以在executescript中自动提交
 			self.conn.execute("PRAGMA foreign_keys = ON")
 		elif db_path.lower().endswith('.tdb'):
 			self.db_type = 'TDB'
 			if PYCALPHAD_AVAILABLE:
-				self.conn = Database(db_path)  # pycalphad的Database对象
+				self.conn = Database(db_path)
 			else:
 				raise ImportError("pycalphad库未安装，无法处理TDB文件。")
 		else:
 			raise ValueError(f"不支持的数据库文件格式: {os.path.basename(db_path)}")
 	
+	def execute_script (self, script: str):
+		"""
+		新增：执行一个完整的SQL脚本 (可能包含多条语句)
+		这个方法是为批量操作设计的。
+		"""
+		if self.db_type != 'SQLite':
+			raise NotImplementedError("只有SQLite数据库支持脚本执行。")
+		
+		try:
+			cursor = self.conn.cursor()
+			cursor.executescript(script)
+		# self.conn.commit() # isolation_level=None时, executescript会自动处理事务
+		except Exception as e:
+			# self.conn.rollback() # 事务失败会自动回滚
+			raise e
+	
+	# ... (DatabaseConnector中其他方法保持不变) ...
 	def get_tables_or_phases (self) -> List[str]:
 		"""获取数据库中所有表名或相名"""
 		try:
@@ -100,7 +225,7 @@ class DatabaseConnector:
 					headers = [description[0] for description in cursor.description]
 					rows = cursor.fetchall()
 					return headers, rows
-				except sqlite3.OperationalError:  # 如果没有Symbol列
+				except sqlite3.OperationalError:
 					QMessageBox.warning(None, "查找错误", f"表 '{table_name}' 中没有 'Symbol' 列。")
 					return self.get_table_data(table_name)
 			elif self.db_type == 'TDB':
@@ -187,7 +312,7 @@ class DatabaseConnector:
 			self.conn.close()
 
 
-# === 数据库管理标签页 ===
+# === 数据库管理标签页 (UI修改) ===
 class DatabaseManagerTab(QWidget):
 	"""现代化的数据库管理界面"""
 	
@@ -196,20 +321,21 @@ class DatabaseManagerTab(QWidget):
 		self.parent_app = parent_app
 		self.current_headers = []
 		self.edit_widgets = {}
-		self.db_path = ""  # 初始化db_path属性
-		self.db_type = "未知"  # 初始化db_type属性
-		self.quick_status_label = None  # 初始化快速状态标签
+		self.db_path = ""
+		self.db_type = "未知"
+		self.quick_status_label = None
 		self.init_ui()
 	
 	def init_ui (self):
 		"""初始化用户界面"""
+		# ... (init_ui 的前半部分代码不变) ...
 		top_layout = QVBoxLayout(self)
 		top_layout.setContentsMargins(8, 8, 8, 8)
 		top_layout.setSpacing(8)
 		
 		# 紧凑型标题栏
 		title_widget = QWidget()
-		title_widget.setFixedHeight(50)  # 增加高度
+		title_widget.setFixedHeight(50)
 		title_widget.setStyleSheet("""
             QWidget {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
@@ -259,6 +385,7 @@ class DatabaseManagerTab(QWidget):
 		
 		top_layout.addWidget(main_splitter)
 	
+	# ... (create_left_panel 方法不变) ...
 	def create_left_panel (self) -> QWidget:
 		"""创建左侧控制面板"""
 		left_widget = QWidget()
@@ -283,7 +410,7 @@ class DatabaseManagerTab(QWidget):
                 color: #6366f1;
             }
         """)
-		control_layout = QVBoxLayout()  # 改为垂直布局，更紧凑
+		control_layout = QVBoxLayout()
 		control_layout.setSpacing(6)
 		
 		# 文件选择行
@@ -294,7 +421,7 @@ class DatabaseManagerTab(QWidget):
 		
 		self.db_path_label = QLineEdit("尚未选择数据库文件")
 		self.db_path_label.setReadOnly(True)
-		self.db_path_label.setFixedHeight(32)  # 增加高度
+		self.db_path_label.setFixedHeight(32)
 		self.db_path_label.setStyleSheet("""
             QLineEdit {
                 background-color: #f8f9fa;
@@ -307,7 +434,7 @@ class DatabaseManagerTab(QWidget):
 		file_row.addWidget(self.db_path_label, 1)
 		
 		browse_btn = QPushButton("📂")
-		browse_btn.setFixedSize(36, 32)  # 增加大小
+		browse_btn.setFixedSize(36, 32)
 		browse_btn.setToolTip("浏览数据库文件")
 		browse_btn.setStyleSheet("""
             QPushButton {
@@ -339,7 +466,7 @@ class DatabaseManagerTab(QWidget):
 		
 		self.load_db_btn = QPushButton("✔️ 加载")
 		self.load_db_btn.setEnabled(False)
-		self.load_db_btn.setFixedHeight(32)  # 增加高度
+		self.load_db_btn.setFixedHeight(32)
 		self.load_db_btn.setStyleSheet("""
             QPushButton {
                 background-color: #10b981;
@@ -390,7 +517,7 @@ class DatabaseManagerTab(QWidget):
 		table_select_layout.addWidget(table_label)
 		
 		self.table_selector_combo = QComboBox()
-		self.table_selector_combo.setFixedHeight(32)  # 增加高度
+		self.table_selector_combo.setFixedHeight(32)
 		self.table_selector_combo.setStyleSheet("""
             QComboBox {
                 border: 1px solid #d1d5db;
@@ -418,8 +545,8 @@ class DatabaseManagerTab(QWidget):
 		self.data_preview_table.setEditTriggers(QTableWidget.NoEditTriggers)
 		self.data_preview_table.setAlternatingRowColors(True)
 		self.data_preview_table.setSelectionBehavior(QTableWidget.SelectRows)
-		self.data_preview_table.verticalHeader().setDefaultSectionSize(28)  # 增加行高
-		self.data_preview_table.horizontalHeader().setDefaultSectionSize(120)  # 增加默认列宽
+		self.data_preview_table.verticalHeader().setDefaultSectionSize(28)
+		self.data_preview_table.horizontalHeader().setDefaultSectionSize(120)
 		self.data_preview_table.setStyleSheet("""
             QTableWidget {
                 gridline-color: #e5e7eb;
@@ -452,13 +579,13 @@ class DatabaseManagerTab(QWidget):
 		return left_widget
 	
 	def create_right_panel (self) -> QWidget:
-		"""创建右侧操作面板"""
+		"""创建右侧操作面板 (修改处：添加新按钮)"""
 		right_widget = QWidget()
 		right_layout = QVBoxLayout(right_widget)
 		right_layout.setSpacing(8)
 		right_layout.setContentsMargins(0, 0, 0, 0)
 		
-		# 3. 查找记录组 - 紧凑型
+		# 3. 查找记录组 - 不变
 		search_group = QGroupBox("查找记录")
 		search_group.setStyleSheet("""
             QGroupBox {
@@ -470,10 +597,7 @@ class DatabaseManagerTab(QWidget):
                 margin-top: 8px;
                 padding-top: 8px;
             }
-            QGroupBox::title {
-                padding: 0 8px;
-                color: #f59e0b;
-            }
+            QGroupBox::title { padding: 0 8px; color: #f59e0b; }
         """)
 		search_layout = QHBoxLayout()
 		search_layout.setSpacing(6)
@@ -484,34 +608,24 @@ class DatabaseManagerTab(QWidget):
 		
 		self.search_input = QLineEdit()
 		self.search_input.setPlaceholderText("例如: Ni-Cr 或 LIQUID")
-		self.search_input.setFixedHeight(32)  # 增加高度
+		self.search_input.setFixedHeight(32)
 		self.search_input.setStyleSheet("""
             QLineEdit {
-                border: 1px solid #d1d5db;
-                border-radius: 4px;
-                padding: 6px 10px;
-                background-color: white;
-                font-size: 14px;
+                border: 1px solid #d1d5db; border-radius: 4px;
+                padding: 6px 10px; background-color: white; font-size: 14px;
             }
-            QLineEdit:focus {
-                border-color: #3b82f6;
-                outline: none;
-            }
+            QLineEdit:focus { border-color: #3b82f6; outline: none; }
         """)
 		self.search_input.returnPressed.connect(self.find_record)
 		search_layout.addWidget(self.search_input, 1)
 		
 		search_btn = QPushButton("🔍")
-		search_btn.setFixedSize(36, 32)  # 增加大小
+		search_btn.setFixedSize(36, 32)
 		search_btn.setToolTip("查找记录")
 		search_btn.setStyleSheet("""
             QPushButton {
-                background-color: #f59e0b;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 16px;
+                background-color: #f59e0b; color: white; border: none;
+                border-radius: 4px; font-weight: bold; font-size: 16px;
             }
             QPushButton:hover { background-color: #d97706; }
         """)
@@ -521,127 +635,162 @@ class DatabaseManagerTab(QWidget):
 		search_group.setLayout(search_layout)
 		right_layout.addWidget(search_group)
 		
-		# 4. 编辑/添加记录组 - 更紧凑
+		# 4. 编辑/添加记录组 - 不变
 		self.edit_group = QGroupBox("编辑记录")
 		self.edit_group.setStyleSheet("""
             QGroupBox {
-                font-weight: bold;
-                font-size: 16px;
-                color: #374151;
-                border: 1px solid #d1d5db;
-                border-radius: 6px;
-                margin-top: 8px;
-                padding-top: 8px;
+                font-weight: bold; font-size: 16px; color: #374151;
+                border: 1px solid #d1d5db; border-radius: 6px;
+                margin-top: 8px; padding-top: 8px;
             }
-            QGroupBox::title {
-                padding: 0 8px;
-                color: #3b82f6;
-            }
+            QGroupBox::title { padding: 0 8px; color: #3b82f6; }
         """)
-		self.edit_form_layout = QGridLayout()  # 使用网格布局
+		self.edit_form_layout = QGridLayout()
 		self.edit_form_layout.setSpacing(4)
 		
 		self.edit_placeholder = QLabel("请先选择一条记录进行编辑\n或点击添加新记录")
 		self.edit_placeholder.setAlignment(Qt.AlignCenter)
 		self.edit_placeholder.setStyleSheet("""
-            color: #6b7280;
-            font-style: italic;
-            font-size: 14px;
-            padding: 16px;
-            background-color: #f9fafb;
-            border-radius: 4px;
-            border: 1px dashed #d1d5db;
+            color: #6b7280; font-style: italic; font-size: 14px;
+            padding: 16px; background-color: #f9fafb;
+            border-radius: 4px; border: 1px dashed #d1d5db;
         """)
 		self.edit_form_layout.addWidget(self.edit_placeholder)
 		
 		self.edit_group.setLayout(self.edit_form_layout)
 		right_layout.addWidget(self.edit_group)
 		
-		# 操作按钮 - 紧凑布局
+		# 操作按钮 (修改处: 增加高级SQL按钮)
 		action_widget = QWidget()
-		action_widget.setFixedHeight(45)  # 增加高度
-		action_button_layout = QHBoxLayout(action_widget)
+		action_button_layout = QGridLayout(action_widget)  # 改用Grid布局方便扩展
 		action_button_layout.setContentsMargins(0, 8, 0, 0)
-		action_button_layout.setSpacing(6)
+		action_button_layout.setSpacing(8)
 		
+		# --- 标准操作按钮 ---
 		self.add_new_btn = QPushButton("➕ 新增")
-		self.add_new_btn.setEnabled(False)
-		self.add_new_btn.setFixedHeight(36)  # 增加高度
-		self.add_new_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #10b981;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover { background-color: #059669; }
-            QPushButton:disabled {
-                background-color: #d1d5db;
-                color: #9ca3af;
-            }
-        """)
-		self.add_new_btn.clicked.connect(self.prepare_add_new)
-		
 		self.save_btn = QPushButton("💾 保存")
-		self.save_btn.setEnabled(False)
-		self.save_btn.setFixedHeight(36)  # 增加高度
-		self.save_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3b82f6;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover { background-color: #2563eb; }
-            QPushButton:disabled {
-                background-color: #d1d5db;
-                color: #9ca3af;
-            }
-        """)
-		self.save_btn.clicked.connect(self.save_changes)
-		
 		self.delete_btn = QPushButton("❌ 删除")
-		self.delete_btn.setEnabled(False)
-		self.delete_btn.setFixedHeight(36)  # 增加高度
-		self.delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #ef4444;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover { background-color: #dc2626; }
-            QPushButton:disabled {
-                background-color: #d1d5db;
-                color: #9ca3af;
-            }
-        """)
-		self.delete_btn.clicked.connect(self.delete_record)
 		
-		action_button_layout.addWidget(self.add_new_btn)
-		action_button_layout.addWidget(self.save_btn)
-		action_button_layout.addWidget(self.delete_btn)
+		# --- 新增：高级SQL操作按钮 ---
+		self.advanced_sql_btn = QPushButton("⚙️ 高级SQL操作")
+		
+		# 统一设置按钮样式和状态
+		buttons = {
+			self.add_new_btn: ("#10b981", "#059669"),
+			self.save_btn: ("#3b82f6", "#2563eb"),
+			self.delete_btn: ("#ef4444", "#dc2626"),
+			self.advanced_sql_btn: ("#8b5cf6", "#7c3aed")  # 紫色系，表示特殊
+		}
+		for btn, colors in buttons.items():
+			btn.setEnabled(False)
+			btn.setFixedHeight(36)
+			btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {colors[0]}; color: white; border: none;
+                    padding: 6px 12px; border-radius: 4px;
+                    font-weight: bold; font-size: 14px;
+                }}
+                QPushButton:hover {{ background-color: {colors[1]}; }}
+                QPushButton:disabled {{ background-color: #d1d5db; color: #9ca3af; }}
+            """)
+		
+		# 连接信号
+		self.add_new_btn.clicked.connect(self.prepare_add_new)
+		self.save_btn.clicked.connect(self.save_changes)
+		self.delete_btn.clicked.connect(self.delete_record)
+		self.advanced_sql_btn.clicked.connect(self.open_sql_executor)  # 连接新方法
+		
+		# 添加到布局
+		action_button_layout.addWidget(self.add_new_btn, 0, 0)
+		action_button_layout.addWidget(self.save_btn, 0, 1)
+		action_button_layout.addWidget(self.delete_btn, 0, 2)
+		action_button_layout.addWidget(self.advanced_sql_btn, 1, 0, 1, 3)  # 占据一行
 		
 		right_layout.addWidget(action_widget)
 		right_layout.addStretch()
 		
 		return right_widget
 	
+	# === 新增方法：打开SQL执行器 ===
+	def open_sql_executor (self):
+		"""处理高级SQL操作按钮点击事件，进行密码验证并打开执行器"""
+		# 1. 弹出密码输入框
+		dialog = PasswordDialog(self)
+		if dialog.exec_() == QDialog.Accepted:
+			password = dialog.get_password()
+			
+			# 2. 验证密码
+			if password == "tianhua_UEM":
+				# 3. 密码正确，打开SQL执行器
+				if hasattr(self.parent_app, 'db_connector') and self.parent_app.db_connector:
+					sql_dialog = SqlExecutorDialog(self.parent_app.db_connector, self, self)
+					sql_dialog.exec_()
+				else:
+					QMessageBox.warning(self, "错误", "数据库连接丢失。")
+			else:
+				# 4. 密码错误
+				QMessageBox.warning(self, "验证失败", "密码错误，您没有权限执行此操作。")
+	
+	def load_and_apply_database (self):
+		"""加载并应用数据库 (修改处：控制高级SQL按钮的可用性)"""
+		if not self.db_path:
+			return
+		
+		try:
+			if hasattr(self.parent_app, 'db_connector') and self.parent_app.db_connector:
+				self.parent_app.db_connector.close()
+			
+			self.parent_app.db_connector = DatabaseConnector(self.db_path)
+			
+			db_name = os.path.basename(self.db_path)
+			self.status_label.setText(f"已加载: {db_name}")
+			self.status_label.setStyleSheet("font-weight: bold; color: #10b981; font-size: 14px;")
+			
+			self.quick_status_label.setText(f"✅ {self.parent_app.db_connector.db_type}")
+			self.quick_status_label.setStyleSheet("""
+                color: #10b981; font-size: 15px; font-weight: bold;
+                background: rgba(255,255,255,0.3); padding: 4px 8px; border-radius: 4px;
+            """)
+			
+			if hasattr(self.parent_app, 'statusBar'):
+				self.parent_app.statusBar().showMessage(f"数据库 {db_name} 已加载", 5000)
+			
+			self.table_selector_combo.clear()
+			tables = self.parent_app.db_connector.get_tables_or_phases()
+			self.table_selector_combo.addItems(tables)
+			
+			# 根据数据库类型启用/禁用功能
+			is_sqlite = self.parent_app.db_connector.db_type == 'SQLite'
+			self.add_new_btn.setEnabled(is_sqlite)
+			
+			# --- 修改处 ---
+			# 只有当数据库是SQLite时，才启用高级SQL操作按钮
+			self.advanced_sql_btn.setEnabled(is_sqlite)
+			
+			if not is_sqlite:
+				QMessageBox.information(self, "提示", "TDB数据库为只读模式，仅支持查看和搜索功能。")
+		
+		except Exception as e:
+			QMessageBox.critical(self, "加载失败", f"加载数据库时发生错误:\n\n{str(e)}")
+			self.status_label.setText("加载失败")
+			self.status_label.setStyleSheet("font-weight: bold; color: #ef4444; font-size: 14px;")
+			self.quick_status_label.setText("❌ 失败")
+			self.quick_status_label.setStyleSheet("""
+                color: #ef4444; font-size: 15px; font-weight: bold;
+                background: rgba(255,255,255,0.3); padding: 4px 8px; border-radius: 4px;
+            """)
+			# 加载失败时禁用所有写操作按钮
+			self.add_new_btn.setEnabled(False)
+			self.save_btn.setEnabled(False)
+			self.delete_btn.setEnabled(False)
+			self.advanced_sql_btn.setEnabled(False)
+	
+	# ... (其余所有方法保持不变) ...
 	def browse_database_file (self):
 		"""浏览并选择数据库文件"""
-		# 设置默认路径为软件工作目录下的database文件夹
 		default_path = os.path.join(os.getcwd(), "database/data")
 		if not os.path.exists(default_path):
-			default_path = os.getcwd()  # 如果database文件夹不存在，则使用当前工作目录
+			default_path = os.getcwd()
 		
 		filepath, _ = QFileDialog.getOpenFileName(
 				self, "选择数据库文件", default_path,
@@ -649,7 +798,7 @@ class DatabaseManagerTab(QWidget):
 		)
 		if filepath:
 			self.db_path = filepath
-			self.db_path_label.setText(os.path.basename(filepath))  # 只显示文件名，节省空间
+			self.db_path_label.setText(os.path.basename(filepath))
 			
 			if filepath.lower().endswith('.db'):
 				self.db_type = "SQLite"
@@ -661,78 +810,13 @@ class DatabaseManagerTab(QWidget):
 			self.status_label.setText(f"已选择 {self.db_type}")
 			self.status_label.setStyleSheet("font-weight: bold; color: #f59e0b; font-size: 14px;")
 			
-			# 更新快速状态
 			self.quick_status_label.setText(f"⏳ {self.db_type}")
 			self.quick_status_label.setStyleSheet("""
-                color: #f59e0b;
-                font-size: 15px;
-                font-weight: bold;
-                background: rgba(255,255,255,0.3);
-                padding: 4px 8px;
-                border-radius: 4px;
+                color: #f59e0b; font-size: 15px; font-weight: bold;
+                background: rgba(255,255,255,0.3); padding: 4px 8px; border-radius: 4px;
             """)
 			
 			self.load_db_btn.setEnabled(True)
-	
-	def load_and_apply_database (self):
-		"""加载并应用数据库"""
-		if not self.db_path:
-			return
-		
-		try:
-			# 关闭现有连接
-			if hasattr(self.parent_app, 'db_connector') and self.parent_app.db_connector:
-				self.parent_app.db_connector.close()
-			
-			# 创建新连接
-			self.parent_app.db_connector = DatabaseConnector(self.db_path)
-			
-			# 更新状态
-			db_name = os.path.basename(self.db_path)
-			self.status_label.setText(f"已加载: {db_name}")
-			self.status_label.setStyleSheet("font-weight: bold; color: #10b981; font-size: 14px;")
-			
-			# 更新快速状态
-			self.quick_status_label.setText(f"✅ {self.parent_app.db_connector.db_type}")
-			self.quick_status_label.setStyleSheet("""
-                color: #10b981;
-                font-size: 15px;
-                font-weight: bold;
-                background: rgba(255,255,255,0.3);
-                padding: 4px 8px;
-                border-radius: 4px;
-            """)
-			
-			if hasattr(self.parent_app, 'statusBar'):
-				self.parent_app.statusBar().showMessage(
-						f"数据库 {db_name} 已加载", 5000)
-			
-			# 更新表列表
-			self.table_selector_combo.clear()
-			tables = self.parent_app.db_connector.get_tables_or_phases()
-			self.table_selector_combo.addItems(tables)
-			
-			# 根据数据库类型启用/禁用功能
-			is_sqlite = self.parent_app.db_connector.db_type == 'SQLite'
-			self.add_new_btn.setEnabled(is_sqlite)
-			
-			if not is_sqlite:
-				QMessageBox.information(self, "提示",
-				                        "TDB数据库为只读模式，仅支持查看和搜索功能。")
-		
-		except Exception as e:
-			QMessageBox.critical(self, "加载失败", f"加载数据库时发生错误:\n\n{str(e)}")
-			self.status_label.setText("加载失败")
-			self.status_label.setStyleSheet("font-weight: bold; color: #ef4444; font-size: 14px;")
-			self.quick_status_label.setText("❌ 失败")
-			self.quick_status_label.setStyleSheet("""
-                color: #ef4444;
-                font-size: 15px;
-                font-weight: bold;
-                background: rgba(255,255,255,0.3);
-                padding: 4px 8px;
-                border-radius: 4px;
-            """)
 	
 	def on_table_selected (self, table_name: str):
 		"""当选择表时更新预览"""
@@ -743,7 +827,6 @@ class DatabaseManagerTab(QWidget):
 			headers, rows = self.parent_app.db_connector.get_table_data(table_name)
 			self.update_table_view(headers, rows)
 			
-			# 显示表信息
 			if hasattr(self.parent_app, 'statusBar'):
 				self.parent_app.statusBar().showMessage(
 						f"已加载表 '{table_name}' - {len(rows)} 条记录", 3000)
@@ -760,19 +843,16 @@ class DatabaseManagerTab(QWidget):
 			self.save_btn.setEnabled(False)
 			return
 		
-		# 检查是否为SQLite数据库
 		is_sqlite = (hasattr(self.parent_app, 'db_connector') and
 		             self.parent_app.db_connector and
 		             self.parent_app.db_connector.db_type == 'SQLite')
 		
 		self.delete_btn.setEnabled(is_sqlite)
 		self.save_btn.setEnabled(is_sqlite)
-		self.edit_group.setTitle("4. 编辑选中记录")
+		self.edit_group.setTitle("编辑选中记录")
 		
-		# 清除现有表单
 		self.clear_edit_form(add_placeholder=False)
 		
-		# 填充编辑表单
 		row = self.data_preview_table.currentRow()
 		for col_idx, header in enumerate(self.current_headers):
 			label = QLabel(f"{header}:")
@@ -782,25 +862,16 @@ class DatabaseManagerTab(QWidget):
 			text = item.text() if item else ""
 			
 			line_edit = QLineEdit(text)
-			line_edit.setFixedHeight(32)  # 增加高度
+			line_edit.setFixedHeight(32)
 			line_edit.setStyleSheet("""
                 QLineEdit {
-                    border: 1px solid #d1d5db;
-                    border-radius: 4px;
-                    padding: 6px;
-                    background-color: white;
-                    font-size: 14px;
+                    border: 1px solid #d1d5db; border-radius: 4px;
+                    padding: 6px; background-color: white; font-size: 14px;
                 }
-                QLineEdit:focus {
-                    border-color: #3b82f6;
-                }
-                QLineEdit:read-only {
-                    background-color: #f3f4f6;
-                    color: #6b7280;
-                }
+                QLineEdit:focus { border-color: #3b82f6; }
+                QLineEdit:read-only { background-color: #f3f4f6; color: #6b7280; }
             """)
 			
-			# Symbol列和TDB文件设为只读
 			if header.lower() == 'symbol' or not is_sqlite:
 				line_edit.setReadOnly(True)
 			
@@ -822,7 +893,6 @@ class DatabaseManagerTab(QWidget):
 			return
 		
 		if not symbol:
-			# 如果搜索内容为空，则显示全表
 			self.on_table_selected(table_name)
 			return
 		
@@ -849,29 +919,22 @@ class DatabaseManagerTab(QWidget):
 			QMessageBox.warning(self, "操作无效", "请先选择一个数据表。")
 			return
 		
-		# 清除选择并设置模式
 		self.data_preview_table.clearSelection()
-		self.edit_group.setTitle("4. 添加新记录")
+		self.edit_group.setTitle("添加新记录")
 		self.clear_edit_form(add_placeholder=False)
 		
-		# 创建空的编辑表单
 		for row_idx, header in enumerate(self.current_headers):
 			label = QLabel(f"{header}:")
 			label.setStyleSheet("font-weight: bold; color: #374151; font-size: 14px;")
 			
 			line_edit = QLineEdit()
-			line_edit.setFixedHeight(32)  # 增加高度
+			line_edit.setFixedHeight(32)
 			line_edit.setStyleSheet("""
                 QLineEdit {
-                    border: 1px solid #d1d5db;
-                    border-radius: 4px;
-                    padding: 6px;
-                    background-color: white;
-                    font-size: 14px;
+                    border: 1px solid #d1d5db; border-radius: 4px;
+                    padding: 6px; background-color: white; font-size: 14px;
                 }
-                QLineEdit:focus {
-                    border-color: #3b82f6;
-                }
+                QLineEdit:focus { border-color: #3b82f6; }
             """)
 			
 			self.edit_form_layout.addWidget(label, row_idx, 0)
@@ -887,16 +950,14 @@ class DatabaseManagerTab(QWidget):
 			return
 		
 		try:
-			# 收集数据
 			new_data = {header: widget.text().strip() for header, widget in self.edit_widgets.items()}
 			table_name = self.table_selector_combo.currentText()
 			
-			# 验证必填字段 - 只有Symbol字段必须填写
 			if 'Symbol' not in new_data or not new_data['Symbol'].strip():
 				QMessageBox.warning(self, "保存失败", "Symbol字段必须填写。")
 				return
 			
-			if self.data_preview_table.selectedItems():  # 编辑模式
+			if self.data_preview_table.selectedItems():
 				symbol = self.edit_widgets.get('Symbol')
 				if not symbol or not symbol.text().strip():
 					QMessageBox.warning(self, "保存失败", "主键 'Symbol' 不能为空。")
@@ -908,13 +969,12 @@ class DatabaseManagerTab(QWidget):
 				if hasattr(self.parent_app, 'statusBar'):
 					self.parent_app.statusBar().showMessage(f"记录 '{symbol_value}' 已更新", 3000)
 			
-			else:  # 添加模式
+			else:
 				self.parent_app.db_connector.insert_record(table_name, new_data)
 				
 				if hasattr(self.parent_app, 'statusBar'):
 					self.parent_app.statusBar().showMessage(f"新记录已添加", 3000)
 			
-			# 刷新表格
 			self.on_table_selected(table_name)
 		
 		except Exception as e:
@@ -930,7 +990,6 @@ class DatabaseManagerTab(QWidget):
 		row = self.data_preview_table.currentRow()
 		
 		try:
-			# 查找Symbol列
 			if 'Symbol' not in self.current_headers:
 				QMessageBox.critical(self, "删除失败", "无法确定主键'Symbol'列。")
 				return
@@ -944,7 +1003,6 @@ class DatabaseManagerTab(QWidget):
 			
 			symbol_value = symbol_item.text()
 			
-			# 确认删除
 			reply = QMessageBox.question(
 					self, "确认删除",
 					f"您确定要删除记录 '{symbol_value}' 吗？\n\n此操作不可恢复。",
@@ -956,13 +1014,11 @@ class DatabaseManagerTab(QWidget):
 				table_name = self.table_selector_combo.currentText()
 				self.parent_app.db_connector.delete_record(table_name, symbol_value)
 				
-				# 从表格中移除行
 				self.data_preview_table.removeRow(row)
 				
 				if hasattr(self.parent_app, 'statusBar'):
 					self.parent_app.statusBar().showMessage(f"记录 '{symbol_value}' 已删除", 3000)
 				
-				# 清除编辑表单
 				self.clear_edit_form()
 		
 		except Exception as e:
@@ -970,26 +1026,19 @@ class DatabaseManagerTab(QWidget):
 	
 	def clear_edit_form (self, add_placeholder: bool = True):
 		"""清除编辑表单"""
-		# 移除所有控件
 		for i in reversed(range(self.edit_form_layout.count())):
 			item = self.edit_form_layout.itemAt(i)
 			if item and item.widget():
 				item.widget().setParent(None)
 		
-		# 清空编辑控件字典
 		self.edit_widgets.clear()
 		
-		# 添加占位符
 		if add_placeholder:
 			self.edit_placeholder = QLabel("请先在左侧表格中选择一条记录进行编辑，\n或点击添加新记录。")
 			self.edit_placeholder.setAlignment(Qt.AlignCenter)
 			self.edit_placeholder.setStyleSheet("""
-                color: #6b7280;
-                font-style: italic;
-                font-size: 14px;
-                padding: 20px;
-                background-color: #f9fafb;
-                border-radius: 6px;
+                color: #6b7280; font-style: italic; font-size: 14px;
+                padding: 20px; background-color: #f9fafb; border-radius: 6px;
             """)
 			self.edit_form_layout.addWidget(self.edit_placeholder, 0, 0, 1, 2)
 	
@@ -997,26 +1046,21 @@ class DatabaseManagerTab(QWidget):
 		"""更新表格视图"""
 		self.current_headers = headers
 		
-		# 设置表格尺寸
 		self.data_preview_table.clearContents()
 		self.data_preview_table.setRowCount(len(rows))
 		self.data_preview_table.setColumnCount(len(headers))
 		self.data_preview_table.setHorizontalHeaderLabels(headers)
 		
-		# 填充数据
 		for row_idx, row_data in enumerate(rows):
 			for col_idx, cell_data in enumerate(row_data):
 				item = QTableWidgetItem(str(cell_data) if cell_data is not None else "")
 				self.data_preview_table.setItem(row_idx, col_idx, item)
 		
-		# 调整列宽
 		self.data_preview_table.resizeColumnsToContents()
-		
-		# 清除编辑表单
 		self.clear_edit_form()
 
 
-# === 主窗口集成代码 ===
+# === 主窗口集成代码 (保持不变) ===
 def add_database_tab_to_main_window (main_window):
 	"""
 	将数据库管理标签页添加到主窗口
@@ -1027,13 +1071,39 @@ def add_database_tab_to_main_window (main_window):
 	if not hasattr(main_window, 'tabs'):
 		raise AttributeError("主窗口必须有tabs属性（QTabWidget）")
 	
-	# 初始化数据库连接器
 	main_window.db_connector = None
-	
-	# 创建数据库管理标签页
 	db_manager_tab = DatabaseManagerTab(main_window)
-	
-	# 添加到标签页
 	main_window.tabs.addTab(db_manager_tab, "🗃️ 数据库管理")
-	
 	return db_manager_tab
+
+
+# === 用于独立测试的示例代码 (保持不变) ===
+if __name__ == '__main__':
+	class ModernMainWindow(QMainWindow):
+		def __init__ (self):
+			super().__init__()
+			self.setWindowTitle("数据库管理工具")
+			self.setGeometry(100, 100, 1200, 800)
+			
+			# 创建一个QTabWidget作为中心部件
+			self.tabs = QWidget()  # 简化测试，直接用QWidget
+			self.setCentralWidget(self.tabs)
+			
+			# 使用一个简单的布局
+			main_layout = QVBoxLayout(self.tabs)
+			
+			# 添加状态栏
+			self.statusBar().showMessage("准备就绪")
+			
+			# 初始化数据库连接器
+			self.db_connector = None
+			
+			# 创建并添加数据库管理标签页
+			db_manager_tab = DatabaseManagerTab(self)
+			main_layout.addWidget(db_manager_tab)
+	
+	
+	app = QApplication(sys.argv)
+	window = ModernMainWindow()
+	window.show()
+	sys.exit(app.exec_())
