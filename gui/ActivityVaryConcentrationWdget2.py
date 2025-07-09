@@ -256,6 +256,7 @@ class StatusBar(QWidget):
         """)
 		
 		layout = QHBoxLayout(self)
+		layout.setSpacing(10)
 		layout.setContentsMargins(10, 5, 10, 5)
 		
 		self.status_label = QLabel("就绪")
@@ -416,10 +417,10 @@ class AlloyAdditionWidget(QWidget):
 	def create_base_alloy_group (self):
 		"""创建基体合金组"""
 		group = ModernGroupBox("🧪 基体合金组成 (比例固定)")
-		group.setFixedHeight(170)
 		layout = QFormLayout(group)
-		layout.setSpacing(14)
-		layout.setContentsMargins(15, 20, 15, 20)
+		layout.setSpacing(12)
+		layout.setContentsMargins(10, 15, 10, 10)
+		
 		layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 		layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
 		
@@ -456,7 +457,7 @@ class AlloyAdditionWidget(QWidget):
 		group = ModernGroupBox("➕ 添加元素设置")
 		layout = QFormLayout(group)
 		layout.setSpacing(10)
-		layout.setContentsMargins(15, 20, 15, 15)
+		layout.setContentsMargins(10, 15, 10, 10)
 		layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 		layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
 		
@@ -472,10 +473,9 @@ class AlloyAdditionWidget(QWidget):
 	def create_addition_range_group (self):
 		"""创建添加元素浓度范围组"""
 		group = ModernGroupBox("📊 添加元素浓度范围")
-		group.setFixedHeight(180)
 		layout = QFormLayout(group)
-		layout.setSpacing(10)
-		layout.setContentsMargins(15, 20, 15, 15)
+		layout.setSpacing(12)
+		layout.setContentsMargins(10, 15, 10, 10)
 		layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 		layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
 		
@@ -511,10 +511,9 @@ class AlloyAdditionWidget(QWidget):
 	def create_calculation_setup_group (self):
 		"""创建计算设置组"""
 		group = ModernGroupBox("⚙️ 计算设置")
-		group.setFixedHeight(180)
 		layout = QFormLayout(group)
-		layout.setSpacing(15)
-		layout.setContentsMargins(15, 25, 15, 25)
+		layout.setSpacing(12)
+		layout.setContentsMargins(10, 15, 10, 10)
 		layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 		layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
 		
