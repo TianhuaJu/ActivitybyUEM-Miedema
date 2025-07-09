@@ -1078,7 +1078,7 @@ class AlloyAdditionWidget(QWidget):
 							QApplication.processEvents()
 					
 					print(
-						f"{method} 方法 {model_key_geo} 计算完成: 成功 {successful_calcs}/{len(addition_concentrations)}, 有效数据点: {valid_count}")
+							f"{method} 方法 {model_key_geo} 计算完成: 成功 {successful_calcs}/{len(addition_concentrations)}, 有效数据点: {valid_count}")
 					
 					if hasattr(self, 'progress_dialog') and self.progress_dialog.wasCanceled():
 						break
