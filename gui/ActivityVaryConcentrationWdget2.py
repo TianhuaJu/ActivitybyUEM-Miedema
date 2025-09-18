@@ -971,14 +971,14 @@ class AlloyAdditionWidget(QWidget):
 						selected_models_to_run.append((mk, gmf))
 						self.current_parameters["selected_models"].append(mk)
 			
-			selected_methods = [k for k, v in self.method_checkboxes.items() if v.isChecked()]
+			selected_activity_methods = [k for k, v in self.method_checkboxes.items() if v.isChecked()]
 			
 			if not selected_models_to_run:
 				QMessageBox.warning(self, "模型未选择", "请至少选择一个外推模型。")
 				return
 			
 			print(f"选择的模型: {[mk for mk, _ in selected_models_to_run]}")
-			print(f"选择的方法: {selected_methods}")
+			print(f"选择的方法: {selected_activity_methods}")
 			
 			# 创建结果HTML
 			current_timestamp = QDateTime.currentDateTime().toString("yyyy-MM-dd hh:mm:ss")
@@ -988,19 +988,19 @@ class AlloyAdditionWidget(QWidget):
 			new_results_html += f"添加元素: {addition_elem}, 目标组分: {target_elem}, 溶剂组分: {solvent_elem}<br>"
 			new_results_html += f"温度: {temperature}K, 相态: {phase}<br>"
 			new_results_html += f"添加浓度范围: {min_add:.3f} - {max_add:.3f} (步长 {step_add:.3f})<br>"
-			new_results_html += f"计算方法: {', '.join(selected_methods)}<br>"
+			new_results_html += f"计算方法: {', '.join(selected_activity_methods)}<br>"
 			new_results_html += f"外推模型: {', '.join(self.current_parameters['selected_models'])}<hr>"
 			
 			# 设置进度条
-			total_calcs = len(selected_models_to_run) * len(addition_concentrations) * len(selected_methods)
+			total_calcs = len(selected_models_to_run) * len(addition_concentrations) * len(selected_activity_methods)
 			if hasattr(self, 'progress_dialog'):
 				self.progress_dialog.setRange(0, total_calcs)
 			calcs_done = 0
 			
 			# 执行计算
-			for method in selected_methods:
-				for model_key_geo, geo_model_function in selected_models_to_run:
-					print(f"\n--- 开始计算: {method} 方法, {model_key_geo} 模型 ---")
+			for activity_method in selected_activity_methods:
+				for model_key_Extra, geo_model_function in selected_models_to_run:
+					print(f"\n--- 开始计算: {activity_method} 方法, {model_key_Extra} 模型 ---")
 					
 					# 预分配大数组
 					MAX_ARRAY_SIZE = 10000
@@ -1010,7 +1010,7 @@ class AlloyAdditionWidget(QWidget):
 					
 					valid_count = 0
 					
-					new_results_html += f"<br><b>⚙️ {method.upper()} 方法 - {model_key_geo} 模型</b><br>"
+					new_results_html += f"<br><b>⚙️ {activity_method.upper()} 方法 - {model_key_Extra} 模型</b><br>"
 					new_results_html += f"<font face='Courier New' color='#2C3E50'><b>X_{addition_elem}   | {target_elem}-活度    | {target_elem}-γ        | 基体缩减比</b></font><br>"
 					new_results_html += f"<font face='Courier New'>---------|-------------|-------------|--------</font><br>"
 					
@@ -1032,15 +1032,11 @@ class AlloyAdditionWidget(QWidget):
 							continue
 						
 						try:
-							# 根据方法选择计算函数
-							if method == "darken":
-								ln_gamma = self.activity_calc_module.activity_coefficient_darken(
-										current_comp, target_elem, solvent_elem, temperature, phase,
-										geo_model_function, model_key_geo, gd_verbose=False)
-							else:  # elliott
-								ln_gamma = self.activity_calc_module.activity_coefficient_elliott(
-										current_comp, target_elem, solvent_elem, temperature, phase,
-										geo_model_function, model_key_geo, gd_verbose=False)
+							ln_gamma = self.activity_calc_module.get_ln_gamma(
+									current_comp, target_elem, solvent_elem, temperature, phase,
+									geo_model_function, model_key_Extra, activity_method,full_alloy_str='')
+							
+							
 							
 							gamma = math.exp(ln_gamma) if not (
 									math.isnan(ln_gamma) or math.isinf(ln_gamma)) else float('nan')
@@ -1078,7 +1074,7 @@ class AlloyAdditionWidget(QWidget):
 							QApplication.processEvents()
 					
 					print(
-							f"{method} 方法 {model_key_geo} 计算完成: 成功 {successful_calcs}/{len(addition_concentrations)}, 有效数据点: {valid_count}")
+							f"{activity_method} 方法 {model_key_Extra} 计算完成: 成功 {successful_calcs}/{len(addition_concentrations)}, 有效数据点: {valid_count}")
 					
 					if hasattr(self, 'progress_dialog') and self.progress_dialog.wasCanceled():
 						break
@@ -1096,14 +1092,14 @@ class AlloyAdditionWidget(QWidget):
 						final_coefficients = np.array([])
 					
 					# 存储结果
-					activity_key = f"activity_{method}"
-					coefficient_key = f"activity_coefficient_{method}"
+					activity_key = f"activity_{activity_method}"
+					coefficient_key = f"activity_coefficient_{activity_method}"
 					
-					self.calculation_results[activity_key][model_key_geo] = {
+					self.calculation_results[activity_key][model_key_Extra] = {
 						"compositions": final_additions,
 						"values": final_activities
 					}
-					self.calculation_results[coefficient_key][model_key_geo] = {
+					self.calculation_results[coefficient_key][model_key_Extra] = {
 						"compositions": final_additions,
 						"values": final_coefficients
 					}
@@ -1116,7 +1112,7 @@ class AlloyAdditionWidget(QWidget):
 							avg_activity = np.mean(valid_activities)
 							activity_range = np.max(valid_activities) - np.min(valid_activities)
 							
-							new_results_html += f"<br><b>📊 {method} 方法 {model_key_geo} 统计:</b><br>"
+							new_results_html += f"<br><b>📊 {activity_method} 方法 {model_key_Extra} 统计:</b><br>"
 							new_results_html += f"<font color='#27AE60'>成功计算: {successful_calcs}/{len(addition_concentrations)}</font><br>"
 							new_results_html += f"<font color='#2980B9'>{target_elem}平均活度: {avg_activity:.4f}, 变化范围: {activity_range:.4f}</font><br>"
 			

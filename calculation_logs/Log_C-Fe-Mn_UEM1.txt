@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Fe-Mn
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-18 17:29:53 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1200.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Mn-C
+k=Fe, i=Mn  : 0.9979
+k=Fe, j=C   : 0.0002
+		 in Mn-C
+
+# For Binary Sub-system: Fe-C
+i=Mn, k=Fe  : 0.9970
+i=Mn, j=C   : 0.0008
+		 in Fe-C
+
+# For Binary Sub-system: Fe-Mn
+j=C, i=Mn   : 0.3058
+j=C, k=Fe   : 0.0653
+		 in Fe-Mn

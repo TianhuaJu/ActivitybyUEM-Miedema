@@ -1126,15 +1126,15 @@ class CompositionVariationWidget(QWidget):
 			}
 			
 			# 获取选择的模型
-			selected_models_to_run = []
+			selected_extra_models_to_run = []
 			for mk, cbx in self.model_checkboxes.items():
 				if cbx.isChecked():
 					gmf = self.get_model_function(mk)
 					if gmf:
-						selected_models_to_run.append((mk, gmf))
+						selected_extra_models_to_run.append((mk, gmf))
 						self.current_parameters["selected_models"].append(mk)
 			
-			if not selected_models_to_run:
+			if not selected_extra_models_to_run:
 				QMessageBox.warning(self, "模型未选择", "请至少选择一个外推模型。")
 				return
 			
@@ -1151,14 +1151,14 @@ class CompositionVariationWidget(QWidget):
 			new_results_html += f"外推模型: {', '.join(self.current_parameters['selected_models'])}<hr>"
 			
 			# 设置进度条
-			total_calcs = len(selected_models_to_run) * len(compositions)
+			total_calcs = len(selected_extra_models_to_run) * len(compositions)
 			if hasattr(self, 'progress_dialog'):
 				self.progress_dialog.setRange(0, total_calcs)
 			calcs_done = 0
 			
 			# 执行计算
-			for model_key_geo, geo_model_function in selected_models_to_run:
-				print(f"\n--- 开始计算模型: {model_key_geo} ---")
+			for model_key_Extra, extra_model_function in selected_extra_models_to_run:
+				print(f"\n--- 开始计算模型: {model_key_Extra} ---")
 				
 				# ✅ 关键改进：预分配更大的数组 + 使用计数器
 				MAX_ARRAY_SIZE = 10000  # 预分配足够大的数组
@@ -1172,7 +1172,7 @@ class CompositionVariationWidget(QWidget):
 				
 				print(f"预分配数组大小: {MAX_ARRAY_SIZE}, 计划计算点数: {len(compositions)}")
 				
-				new_results_html += f"<br><b>⚙️ 外推模型: {model_key_geo}</b><br>"
+				new_results_html += f"<br><b>⚙️ 外推模型: {model_key_Extra}</b><br>"
 				new_results_html += f"<font face='Courier New' color='#2C3E50'><b>X_{varying_elem}   | Elliott-Act | Elliott-γ   | Darken-Act  | Darken-γ    | Δa(%)  | Δγ(%)</b></font><br>"
 				new_results_html += f"<font face='Courier New'>---------|-------------|-------------|-------------|-------------|--------|------</font><br>"
 				
@@ -1195,16 +1195,22 @@ class CompositionVariationWidget(QWidget):
 					
 					try:
 						# 计算Elliott方法
-						ln_gamma_elliott = self.activity_calc_module.activity_coefficient_elliott(
-								current_comp, target_elem, matrix_elem, temperature, phase,
-								geo_model_function, model_key_geo,full_alloy_str = alloy_composition)
+						ln_gamma_elliott = self.activity_calc_module.get_ln_gamma_elliott(current_comp, target_elem,
+						                                                                  matrix_elem, temperature,
+						                                                                  phase, extra_model_function,
+						                                                                  model_key_Extra,
+						                                                                  activity_model='Elliott',
+						                                                                  full_alloy_str=alloy_composition)
 						gamma_elliott = math.exp(ln_gamma_elliott) if not (
 								math.isnan(ln_gamma_elliott) or math.isinf(ln_gamma_elliott)) else float('nan')
 						
 						# 计算Darken方法
-						ln_gamma_darken = self.activity_calc_module.activity_coefficient_darken(
-								current_comp, target_elem, matrix_elem, temperature, phase,
-								geo_model_function, model_key_geo, gd_verbose=False,full_alloy_str = alloy_composition)
+						ln_gamma_darken = self.activity_calc_module.get_ln_gamma_darken(current_comp, target_elem,
+						                                                                matrix_elem, temperature, phase,
+						                                                                extra_model_function,
+						                                                                model_key_Extra,
+						                                                                activity_model='Darken',
+						                                                                full_alloy_str=alloy_composition)
 						gamma_darken = math.exp(ln_gamma_darken) if not (
 								math.isnan(ln_gamma_darken) or math.isinf(ln_gamma_darken)) else float('nan')
 						
@@ -1275,7 +1281,7 @@ class CompositionVariationWidget(QWidget):
 						QApplication.processEvents()
 				
 				print(
-					f"模型 {model_key_geo} 计算完成: 成功 {successful_calcs}/{len(compositions)}, 有效数据点: {valid_count}")
+					f"模型 {model_key_Extra} 计算完成: 成功 {successful_calcs}/{len(compositions)}, 有效数据点: {valid_count}")
 				
 				if hasattr(self, 'progress_dialog') and self.progress_dialog.wasCanceled():
 					break
@@ -1296,7 +1302,7 @@ class CompositionVariationWidget(QWidget):
 						f"  所有数组长度一致: {len(final_compositions) == len(final_activities) == len(final_activities_darken)}")
 				
 				else:
-					print(f"模型 {model_key_geo}: 无有效数据")
+					print(f"模型 {model_key_Extra}: 无有效数据")
 					# 创建空数组但保持结构一致
 					final_compositions = np.array([])
 					final_activities = np.array([])
@@ -1305,19 +1311,19 @@ class CompositionVariationWidget(QWidget):
 					final_coefficients_darken = np.array([])
 				
 				# 存储结果 - 保证长度一致性
-				self.calculation_results["activity"][model_key_geo] = {
+				self.calculation_results["activity"][model_key_Extra] = {
 					"compositions": final_compositions,
 					"values": final_activities
 				}
-				self.calculation_results["activity_coefficient"][model_key_geo] = {
+				self.calculation_results["activity_coefficient"][model_key_Extra] = {
 					"compositions": final_compositions,
 					"values": final_coefficients
 				}
-				self.calculation_results["activity_darken"][model_key_geo] = {
+				self.calculation_results["activity_darken"][model_key_Extra] = {
 					"compositions": final_compositions,
 					"values": final_activities_darken
 				}
-				self.calculation_results["activity_coefficient_darken"][model_key_geo] = {
+				self.calculation_results["activity_coefficient_darken"][model_key_Extra] = {
 					"compositions": final_compositions,
 					"values": final_coefficients_darken
 				}
@@ -1337,7 +1343,7 @@ class CompositionVariationWidget(QWidget):
 								avg_diff_act = np.mean([abs((d - e) / e) * 100 for e, d in valid_pairs_act])
 								max_diff_act = np.max([abs((d - e) / e) * 100 for e, d in valid_pairs_act])
 								
-								new_results_html += f"<br><b>📊 模型 {model_key_geo} 统计:</b><br>"
+								new_results_html += f"<br><b>📊 模型 {model_key_Extra} 统计:</b><br>"
 								new_results_html += f"<font color='#2980B9'>成功计算: {successful_calcs}/{len(compositions)} ({valid_count}个有效数据点)</font><br>"
 								new_results_html += f"<font color='#2980B9'>活度平均差异: {avg_diff_act:.2f}%, 最大差异: {max_diff_act:.2f}%</font><br>"
 			

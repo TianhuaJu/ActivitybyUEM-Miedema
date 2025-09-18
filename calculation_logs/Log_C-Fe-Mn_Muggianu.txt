@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Fe-Mn
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-09-18 17:29:21 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1200.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Mn-C
+k=Fe, i=Mn  : 0.5000
+k=Fe, j=C   : 0.5000
+		 in Mn-C
+
+# For Binary Sub-system: Fe-C
+i=Mn, k=Fe  : 0.5000
+i=Mn, j=C   : 0.5000
+		 in Fe-C
+
+# For Binary Sub-system: Fe-Mn
+j=C, i=Mn   : 0.5000
+j=C, k=Fe   : 0.5000
+		 in Fe-Mn

@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Fe-Si-V
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-18 17:57:07 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1200.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Si-V
+k=Fe, i=Si  : 0.0754
+k=Fe, j=V   : 0.7096
+		 in Si-V
+
+# For Binary Sub-system: Fe-V
+i=Si, k=Fe  : 0.2097
+i=Si, j=V   : 0.2676
+		 in Fe-V
+
+# For Binary Sub-system: Fe-Si
+j=V, i=Si   : 0.0939
+j=V, k=Fe   : 0.6922
+		 in Fe-Si

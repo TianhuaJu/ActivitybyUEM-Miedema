@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Fe-Mn-Si
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-18 17:29:53 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1200.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Mn-Si
+k=Fe, i=Mn  : 0.9970
+k=Fe, j=Si  : 0.0007
+		 in Mn-Si
+
+# For Binary Sub-system: Fe-Si
+i=Mn, k=Fe  : 0.9978
+i=Mn, j=Si  : 0.0002
+		 in Fe-Si
+
+# For Binary Sub-system: Fe-Mn
+j=Si, i=Mn  : 0.0861
+j=Si, k=Fe  : 0.2893
+		 in Fe-Mn

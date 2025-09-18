@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Fe-Mn
+Extrapolation Model: GSM 模型
+============================================================
+
+# --- Calculation Record: 2025-09-18 17:29:54 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1200.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Mn-C
+k=Fe, i=Mn  : 0.8736
+k=Fe, j=C   : 0.1264
+		 in Mn-C
+
+# For Binary Sub-system: Fe-C
+i=Mn, k=Fe  : 0.8868
+i=Mn, j=C   : 0.1132
+		 in Fe-C
+
+# For Binary Sub-system: Fe-Mn
+j=C, i=Mn   : 0.4687
+j=C, k=Fe   : 0.5313
+		 in Fe-Mn

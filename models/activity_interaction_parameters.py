@@ -184,8 +184,8 @@ class TernaryMelts:
         
         return 1000.0 * (hij - hik - hjk + dhik + dhjk) / (Constants.R * self._temperature)
     
-    def activity_interact_coefficient_1st (self, solv, solui, soluj, Tem: float, state: str, geo_model: extrap_func,
-                                           geo_model_name="UEM1", full_alloy_str: str = ""):
+    def activity_interact_coefficient_1st (self, solv, solui, soluj, Tem: float, state: str, extra_model: extrap_func,
+                                           extra_model_name="UEM1", full_alloy_str: str = ""):
         """Calculate first-order interaction coefficient"""
         import os
         entropy_yesornot = entropy_judge(solv, solui, soluj)
@@ -194,12 +194,12 @@ class TernaryMelts:
         fjk = self.fab_func_contain_s(solv, soluj, entropy_yesornot)
         
         
-        aji_ik = geo_model(soluj.name, solui.name, solv.name, Tem, state)
-        ajk_ik = geo_model(soluj.name, solv.name, solui.name, Tem, state)
-        aij_jk = geo_model(solui.name, soluj.name, solv.name, Tem, state)
-        aki_ij = geo_model(solv.name, solui.name, soluj.name, Tem, state)
-        akj_ij = geo_model(solv.name, soluj.name, solui.name, Tem, state)
-        aik_jk = geo_model(solui.name, solv.name, soluj.name, Tem, state)
+        aji_ik = extra_model(soluj.name, solui.name, solv.name, Tem, state)
+        ajk_ik = extra_model(soluj.name, solv.name, solui.name, Tem, state)
+        aij_jk = extra_model(solui.name, soluj.name, solv.name, Tem, state)
+        aki_ij = extra_model(solv.name, solui.name, soluj.name, Tem, state)
+        akj_ij = extra_model(solv.name, soluj.name, solui.name, Tem, state)
+        aik_jk = extra_model(solui.name, solv.name, soluj.name, Tem, state)
         
         current_script_path = os.path.abspath(__file__)
         models_dir = os.path.dirname(current_script_path)
@@ -241,7 +241,7 @@ class TernaryMelts:
             # 调用日志函数
             log_contribution_coefficients(
                     ternary_system=ternary_system_str,
-                    model_name=geo_model_name,
+                    model_name=extra_model_name,
                     temperature=Tem,
                     contribution_data=contribution_data_for_log,
                     full_alloy_context=full_alloy_str
@@ -265,9 +265,9 @@ class TernaryMelts:
         
         return 1000 * chemical_term / (Constants.R * Tem)
     
-    def roui_ii (self, solv, solui, Tem: float, state: str, geo_model, geo_model_name="UEM1"):
+    def roui_ii (self, solv, solui, Tem: float, state: str, extra_model, extra_model_name="UEM1"):
         """Calculate second-order self-interaction coefficient ρi^ii"""
-        sii = self.activity_interact_coefficient_1st(solv, solui, solui, Tem, state, geo_model, geo_model_name)
+        sii = self.activity_interact_coefficient_1st(solv, solui, solui, Tem, state, extra_model, extra_model_name)
         df10 = self.first_derivative_qx(solui, solv, 0)
         df20 = self.second_derivative_q0(solui, solv, 0)
         
@@ -275,16 +275,16 @@ class TernaryMelts:
         
         return rii
     
-    def roui_jj (self, solv, solui, soluj, Tem: float, state: str, geo_model: extrap_func, geo_model_name="UEM1"):
+    def roui_jj (self, solv, solui, soluj, Tem: float, state: str, extra_model: extrap_func, extra_model_name="UEM1"):
         """Calculate second-order interaction coefficient ρi^jj"""
-        sjj = self.activity_interact_coefficient_1st(solv, soluj, soluj, Tem, state, geo_model, geo_model_name)
+        sjj = self.activity_interact_coefficient_1st(solv, soluj, soluj, Tem, state, extra_model, extra_model_name)
         
-        aji_ik = geo_model(soluj.name, solui.name, solv.name, Tem, state)
-        ajk_ik = geo_model(soluj.name, solv.name, solui.name, Tem, state)
-        aij_jk = geo_model(solui.name, soluj.name, solv.name, Tem, state)
-        aki_ij = geo_model(solv.name, solui.name, soluj.name, Tem, state)
-        akj_ij = geo_model(solv.name, soluj.name, solui.name, Tem, state)
-        aik_jk = geo_model(solui.name, solv.name, soluj.name, Tem, state)
+        aji_ik = extra_model(soluj.name, solui.name, solv.name, Tem, state)
+        ajk_ik = extra_model(soluj.name, solv.name, solui.name, Tem, state)
+        aij_jk = extra_model(solui.name, soluj.name, solv.name, Tem, state)
+        aki_ij = extra_model(solv.name, solui.name, soluj.name, Tem, state)
+        akj_ij = extra_model(solv.name, soluj.name, solui.name, Tem, state)
+        aik_jk = extra_model(solui.name, solv.name, soluj.name, Tem, state)
         
         qij = -2 * aki_ij / (aki_ij + akj_ij) ** 2 * self.first_derivative_qx(solui, soluj, aki_ij / (aki_ij + akj_ij))
         qik = aji_ik * aji_ik * self.second_derivative_q0(solui, solv, 0) - 2 * aji_ik * (
@@ -296,16 +296,16 @@ class TernaryMelts:
         
         return ri_jj
     
-    def roui_ij (self, solv, solui, soluj, Tem: float, state: str, geo_model: extrap_func, geo_model_name="UEM1"):
+    def roui_ij (self, solv, solui, soluj, Tem: float, state: str, extra_model: extrap_func, extra_model_name="UEM1"):
         """Calculate second-order cross-interaction coefficient ρi^ij"""
-        sji = self.activity_interact_coefficient_1st(solv, solui, soluj, Tem, state, geo_model, geo_model_name)
+        sji = self.activity_interact_coefficient_1st(solv, solui, soluj, Tem, state, extra_model, extra_model_name)
         
-        aji_ik = geo_model(soluj.name, solui.name, solv.name, Tem, state)
-        ajk_ik = geo_model(soluj.name, solv.name, solui.name, Tem, state)
-        aij_jk = geo_model(solui.name, soluj.name, solv.name, Tem, state)
-        aki_ij = geo_model(solv.name, solui.name, soluj.name, Tem, state)
-        akj_ij = geo_model(solv.name, soluj.name, solui.name, Tem, state)
-        aik_jk = geo_model(solui.name, solv.name, soluj.name, Tem, state)
+        aji_ik = extra_model(soluj.name, solui.name, solv.name, Tem, state)
+        ajk_ik = extra_model(soluj.name, solv.name, solui.name, Tem, state)
+        aij_jk = extra_model(solui.name, soluj.name, solv.name, Tem, state)
+        aki_ij = extra_model(solv.name, solui.name, soluj.name, Tem, state)
+        akj_ij = extra_model(solv.name, soluj.name, solui.name, Tem, state)
+        aik_jk = extra_model(solui.name, solv.name, soluj.name, Tem, state)
         
         qij = 2 * akj_ij / (akj_ij + aki_ij) ** 2 * self.first_derivative_qx(solui, soluj, aki_ij / (akj_ij + aki_ij))
         qik = 2 * aji_ik * self.second_derivative_q0(solui, solv, 0) - 2 * (
@@ -315,39 +315,39 @@ class TernaryMelts:
         
         return (-sji + 1000 * (qij + qik + qjk) / (Constants.R * Tem))
     
-    def roui_jk (self, matrix, i, j, k, Tem: float, state: str, geo_model: extrap_func, geo_model_name="UEM1"):
+    def roui_jk (self, matrix, i, j, k, Tem: float, state: str, extra_model: extrap_func, extra_model_name="UEM1"):
         """Calculate cross-interaction parameter, the influence of components j,k on i"""
-        skj = self.activity_interact_coefficient_1st(matrix, j, k, Tem, state, geo_model, geo_model_name)
+        skj = self.activity_interact_coefficient_1st(matrix, j, k, Tem, state, extra_model, extra_model_name)
         
-        amj_ij = geo_model(matrix.name, j.name, i.name, Tem, state)
-        ami_ij = geo_model(matrix.name, i.name, j.name, Tem, state)
-        aki_ij = geo_model(k.name, i.name, j.name, Tem, state)
-        akj_ij = geo_model(k.name, j.name, i.name, Tem, state)
+        amj_ij = extra_model(matrix.name, j.name, i.name, Tem, state)
+        ami_ij = extra_model(matrix.name, i.name, j.name, Tem, state)
+        aki_ij = extra_model(k.name, i.name, j.name, Tem, state)
+        akj_ij = extra_model(k.name, j.name, i.name, Tem, state)
         
-        amk_ik = geo_model(matrix.name, k.name, i.name, Tem, state)
-        ami_ik = geo_model(matrix.name, i.name, k.name, Tem, state)
-        aji_ik = geo_model(j.name, i.name, k.name, Tem, state)
-        ajk_ik = geo_model(j.name, k.name, i.name, Tem, state)
+        amk_ik = extra_model(matrix.name, k.name, i.name, Tem, state)
+        ami_ik = extra_model(matrix.name, i.name, k.name, Tem, state)
+        aji_ik = extra_model(j.name, i.name, k.name, Tem, state)
+        ajk_ik = extra_model(j.name, k.name, i.name, Tem, state)
         
-        aji_im = geo_model(j.name, i.name, matrix.name, Tem, state)
-        ajm_im = geo_model(j.name, matrix.name, i.name, Tem, state)
-        aki_im = geo_model(k.name, i.name, matrix.name, Tem, state)
-        akm_im = geo_model(k.name, matrix.name, i.name, Tem, state)
+        aji_im = extra_model(j.name, i.name, matrix.name, Tem, state)
+        ajm_im = extra_model(j.name, matrix.name, i.name, Tem, state)
+        aki_im = extra_model(k.name, i.name, matrix.name, Tem, state)
+        akm_im = extra_model(k.name, matrix.name, i.name, Tem, state)
         
-        amk_jk = geo_model(matrix.name, k.name, j.name, Tem, state)
-        amj_jk = geo_model(matrix.name, j.name, k.name, Tem, state)
-        aik_jk = geo_model(i.name, k.name, j.name, Tem, state)
-        aij_jk = geo_model(i.name, j.name, k.name, Tem, state)
+        amk_jk = extra_model(matrix.name, k.name, j.name, Tem, state)
+        amj_jk = extra_model(matrix.name, j.name, k.name, Tem, state)
+        aik_jk = extra_model(i.name, k.name, j.name, Tem, state)
+        aij_jk = extra_model(i.name, j.name, k.name, Tem, state)
         
-        aij_jm = geo_model(i.name, j.name, matrix.name, Tem, state)
-        aim_jm = geo_model(i.name, matrix.name, j.name, Tem, state)
-        akj_jm = geo_model(k.name, j.name, matrix.name, Tem, state)
-        akm_jm = geo_model(k.name, matrix.name, j.name, Tem, state)
+        aij_jm = extra_model(i.name, j.name, matrix.name, Tem, state)
+        aim_jm = extra_model(i.name, matrix.name, j.name, Tem, state)
+        akj_jm = extra_model(k.name, j.name, matrix.name, Tem, state)
+        akm_jm = extra_model(k.name, matrix.name, j.name, Tem, state)
         
-        aik_km = geo_model(i.name, k.name, matrix.name, Tem, state)
-        aim_km = geo_model(i.name, matrix.name, k.name, Tem, state)
-        ajk_km = geo_model(j.name, k.name, matrix.name, Tem, state)
-        ajm_km = geo_model(j.name, matrix.name, k.name, Tem, state)
+        aik_km = extra_model(i.name, k.name, matrix.name, Tem, state)
+        aim_km = extra_model(i.name, matrix.name, k.name, Tem, state)
+        ajk_km = extra_model(j.name, k.name, matrix.name, Tem, state)
+        ajm_km = extra_model(j.name, matrix.name, k.name, Tem, state)
         
         dfij = self.first_derivative_qx(i, j, ami_ij / (ami_ij + amj_ij))
         dfik = self.first_derivative_qx(i, k, ami_ik / (ami_ik + amk_ik))

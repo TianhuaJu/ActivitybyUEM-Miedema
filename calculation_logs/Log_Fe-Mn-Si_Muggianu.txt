@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Fe-Mn-Si
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-09-18 17:29:21 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1200.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Mn-Si
+k=Fe, i=Mn  : 0.5000
+k=Fe, j=Si  : 0.5000
+		 in Mn-Si
+
+# For Binary Sub-system: Fe-Si
+i=Mn, k=Fe  : 0.5000
+i=Mn, j=Si  : 0.5000
+		 in Fe-Si
+
+# For Binary Sub-system: Fe-Mn
+j=Si, i=Mn  : 0.5000
+j=Si, k=Fe  : 0.5000
+		 in Fe-Mn

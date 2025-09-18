@@ -1015,15 +1015,15 @@ class ActivityTemperatureVariationWidget(QWidget):
 			}
 			
 			# 获取选择的模型
-			selected_models_to_run = []
+			selected_extra_models_to_run = []
 			for mk, cbx in self.model_checkboxes.items():
 				if cbx.isChecked():
 					gmf = self.get_model_function(mk)
 					if gmf:
-						selected_models_to_run.append((mk, gmf))
+						selected_extra_models_to_run.append((mk, gmf))
 						self.current_parameters["selected_models"].append(mk)
 			
-			if not selected_models_to_run:
+			if not selected_extra_models_to_run:
 				QMessageBox.warning(self, "模型未选择", "请至少选择一个外推模型。")
 				return
 			
@@ -1036,19 +1036,19 @@ class ActivityTemperatureVariationWidget(QWidget):
 			new_results_html += f"外推模型: {', '.join(self.current_parameters['selected_models'])}<br><hr>"
 			
 			# 设置进度条
-			total_calcs = len(selected_models_to_run) * len(temperatures)
+			total_calcs = len(selected_extra_models_to_run) * len(temperatures)
 			if hasattr(self, 'progress_dialog'):
 				self.progress_dialog.setRange(0, total_calcs)
 			calcs_done = 0
 			
 			# 执行计算
-			for model_key_geo, geo_model_function in selected_models_to_run:
+			for model_key_extra, extra_model_function in selected_extra_models_to_run:
 				current_activities = []
 				current_coefficients = []
 				current_activities_darken = []
 				current_coefficients_darken = []
 				
-				new_results_html += f"<br><b>⚙️ 外推模型: {model_key_geo}</b><br>"
+				new_results_html += f"<br><b>⚙️ 外推模型: {model_key_extra}</b><br>"
 				new_results_html += f"<font face='Courier New' color='#2C3E50'><b>Temp(K)  | Darken-Act | Darken-γ  | Elliott-Act | Elliott-γ  | Δa(%)  | Δγ(%)</b></font><br>"
 				new_results_html += f"<font face='Courier New'>---------|------------|-----------|-------------|-----------|--------|------</font><br>"
 				
@@ -1062,19 +1062,23 @@ class ActivityTemperatureVariationWidget(QWidget):
 					
 					try:
 						# 计算Elliott原始方法
-						ln_gamma_elliott = self.activity_calc_module.activity_coefficient_elliott(
-								comp_for_calc, solute_elem, solvent_elem, temp_k, phase,
-								geo_model_function, model_key_geo,full_alloy_str=base_matrix_str
-						)
+						ln_gamma_elliott = self.activity_calc_module.get_ln_gamma_elliott(comp_for_calc, solute_elem,
+						                                                                  solvent_elem, temp_k, phase,
+						                                                                  extra_model_function,
+						                                                                  model_key_extra,
+						                                                                  activity_model='Elliott',
+						                                                                  full_alloy_str=base_matrix_str)
 						gamma_elliott = math.exp(ln_gamma_elliott) if not (
 								math.isnan(ln_gamma_elliott) or math.isinf(ln_gamma_elliott)) else float('nan')
 						act_elliott = gamma_elliott * xi_solute if not math.isnan(gamma_elliott) else float('nan')
 						
 						# 计算Darken修正方法
-						ln_gamma_darken = self.activity_calc_module.activity_coefficient_darken(
-								comp_for_calc, solute_elem, solvent_elem, float(temp_k), phase,
-								geo_model_function, model_key_geo,full_alloy_str=base_matrix_str
-						)
+						ln_gamma_darken = self.activity_calc_module.get_ln_gamma_darken(comp_for_calc, solute_elem,
+						                                                                solvent_elem, float(temp_k),
+						                                                                phase, extra_model_function,
+						                                                                model_key_extra,
+						                                                                activity_model='Darken',
+						                                                                full_alloy_str=base_matrix_str)
 						gamma_darken = math.exp(ln_gamma_darken) if not (
 								math.isnan(ln_gamma_darken) or math.isinf(ln_gamma_darken)) else float('nan')
 						act_darken = gamma_darken * xi_solute if not math.isnan(gamma_darken) else float('nan')
@@ -1125,7 +1129,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 						)
 					
 					except Exception as e_calc:
-						print(f"计算错误 (T={temp_k}K, 模型={model_key_geo}): {e_calc}")
+						print(f"计算错误 (T={temp_k}K, 模型={model_key_extra}): {e_calc}")
 						current_activities.append(float('nan'))
 						current_coefficients.append(float('nan'))
 						current_activities_darken.append(float('nan'))
@@ -1142,19 +1146,19 @@ class ActivityTemperatureVariationWidget(QWidget):
 					break
 				
 				# 存储所有结果
-				self.calculation_results["activity"][model_key_geo] = {
+				self.calculation_results["activity"][model_key_extra] = {
 					"temperatures": temperatures.copy(),
 					"values": np.array(current_activities)
 				}
-				self.calculation_results["activity_coefficient"][model_key_geo] = {
+				self.calculation_results["activity_coefficient"][model_key_extra] = {
 					"temperatures": temperatures.copy(),
 					"values": np.array(current_coefficients)
 				}
-				self.calculation_results["activity_darken"][model_key_geo] = {
+				self.calculation_results["activity_darken"][model_key_extra] = {
 					"temperatures": temperatures.copy(),
 					"values": np.array(current_activities_darken)
 				}
-				self.calculation_results["activity_coefficient_darken"][model_key_geo] = {
+				self.calculation_results["activity_coefficient_darken"][model_key_extra] = {
 					"temperatures": temperatures.copy(),
 					"values": np.array(current_coefficients_darken)
 				}
@@ -1183,7 +1187,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 									[abs((e - d) / d) * 100 for d, e in zip(valid_darken_gamma, valid_elliott_gamma) if
 									 abs(d) > 1e-10])
 							
-							new_results_html += f"<br><b>📊 模型 {model_key_geo} 对比统计 (以Darken为基准):</b><br>"
+							new_results_html += f"<br><b>📊 模型 {model_key_extra} 对比统计 (以Darken为基准):</b><br>"
 							new_results_html += f"<font color='#2980B9'>活度 - Elliott与Darken平均差异: {avg_diff_act:.2f}%, 最大差异: {max_diff_act:.2f}%</font><br>"
 							new_results_html += f"<font color='#8E44AD'>活度系数 - Elliott与Darken平均差异: {avg_diff_gamma:.2f}%, 最大差异: {max_diff_gamma:.2f}%</font><br>"
 			
