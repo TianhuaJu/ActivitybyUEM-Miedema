@@ -1195,7 +1195,7 @@ class CompositionVariationWidget(QWidget):
 					
 					try:
 						# 计算Elliott方法
-						ln_gamma_elliott = self.activity_calc_module.get_ln_gamma_elliott(current_comp, target_elem,
+						ln_gamma_elliott = self.activity_calc_module.get_ln_gamma(current_comp, target_elem,
 						                                                                  matrix_elem, temperature,
 						                                                                  phase, extra_model_function,
 						                                                                  model_key_Extra,
@@ -1205,7 +1205,7 @@ class CompositionVariationWidget(QWidget):
 								math.isnan(ln_gamma_elliott) or math.isinf(ln_gamma_elliott)) else float('nan')
 						
 						# 计算Darken方法
-						ln_gamma_darken = self.activity_calc_module.get_ln_gamma_darken(current_comp, target_elem,
+						ln_gamma_darken = self.activity_calc_module.get_ln_gamma(current_comp, target_elem,
 						                                                                matrix_elem, temperature, phase,
 						                                                                extra_model_function,
 						                                                                model_key_Extra,
@@ -1365,129 +1365,6 @@ class CompositionVariationWidget(QWidget):
 		finally:
 			if hasattr(self, 'progress_dialog') and self.progress_dialog:
 				self.progress_dialog.close()
-	
-	def plot_property_variation (self, model_data_dict, property_type, method_name="Darken"):
-		"""绘制属性变化图 - 适配大数组版本"""
-		self.figure.clear()
-		ax = self.figure.add_subplot(111)
-		
-		# 设置图表样式
-		ax.set_facecolor('#FAFAFA')
-		self.figure.patch.set_facecolor('white')
-		
-		plot_handles, plot_labels = [], []
-		color_cycle = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6', '#1ABC9C']
-		marker_cycle = ['o', 's', '^', 'D', 'v', 'P']
-		
-		# 收集所有组分数据
-		all_comps = []
-		for model_key, data in model_data_dict.items():
-			comps = data.get("compositions")
-			if comps is not None and len(comps) > 0:
-				# ✅ 过滤掉NaN值
-				valid_comps = comps[~np.isnan(comps)]
-				if len(valid_comps) > 0:
-					all_comps.extend(valid_comps)
-		
-		print(f"收集到的所有组分数据点: {len(all_comps)}")
-		
-		# 绘制每个模型的结果
-		for i, (model_key, data) in enumerate(model_data_dict.items()):
-			comps, vals = data.get("compositions"), data.get("values")
-			if comps is None or vals is None or len(comps) == 0 or len(vals) == 0:
-				print(f"模型 {model_key}: 数据为空，跳过绘制")
-				continue
-			
-			print(f"模型 {model_key}: compositions长度={len(comps)}, values长度={len(vals)}")
-			
-			# ✅ 自动长度一致性保证（理论上现在应该总是一致的）
-			if len(comps) != len(vals):
-				print(f"警告: 模型 {model_key} 数组长度不一致，这不应该发生！")
-				min_len = min(len(comps), len(vals))
-				comps = comps[:min_len]
-				vals = vals[:min_len]
-				print(f"  已裁剪到长度: {min_len}")
-			
-			# 找出有效的数据点
-			valid_mask = ~np.isnan(vals) & ~np.isinf(vals) & ~np.isnan(comps) & ~np.isinf(comps)
-			comps_p = comps[valid_mask]
-			vals_p = vals[valid_mask]
-			
-			print(f"模型 {model_key}: 原始{len(comps)}点 -> 有效{len(comps_p)}点")
-			
-			if len(comps_p) > 0:
-				# 对数据排序
-				sorted_indices = np.argsort(comps_p)
-				comps_p = comps_p[sorted_indices]
-				vals_p = vals_p[sorted_indices]
-				
-				# 绘制曲线
-				base_color = color_cycle[i % len(color_cycle)]
-				marker = marker_cycle[i % len(marker_cycle)]
-				
-				try:
-					line, = ax.plot(comps_p, vals_p,
-					                label=model_key,
-					                color=base_color,
-					                marker=marker,
-					                markersize=5,
-					                linewidth=2.5,
-					                alpha=0.9,
-					                linestyle='-',
-					                markeredgewidth=0.5,
-					                markeredgecolor='white')
-					
-					plot_handles.append(line)
-					plot_labels.append(model_key)
-					print(f"模型 {model_key}: 绘制成功")
-				
-				except Exception as plot_error:
-					print(f"模型 {model_key}: 绘制失败 - {plot_error}")
-					continue
-			else:
-				print(f"模型 {model_key}: 无有效数据点，跳过绘制")
-		
-		# 设置标签和标题
-		varying_elem = self.current_parameters.get("varying_element", "?")
-		target_elem = self.current_parameters.get("target_element", "?")
-		prop_name_cn = "活度" if property_type == "activity" else "活度系数"
-		y_label = f"{prop_name_cn} ($a_{{{target_elem}}}$)" if property_type == "activity" else f"{prop_name_cn} ($\\gamma_{{{target_elem}}}$)"
-		
-		title = (
-			f"{self.current_parameters.get('base_matrix', 'N/A')} 中 {target_elem} 的 {prop_name_cn} vs. {varying_elem} 浓度\n"
-			f"温度: {self.current_parameters.get('temperature', 'N/A')}K, "
-			f"相态: {self.current_parameters.get('phase_state', 'N/A')} ({method_name} 方法)")
-		
-		ax.set_xlabel(f"{varying_elem} 摩尔分数", fontsize=12, fontweight='bold')
-		ax.set_ylabel(y_label, fontsize=12, fontweight='bold')
-		ax.set_title(title, fontsize=11, fontweight='bold', pad=20, color='#2C3E50')
-		
-		# 网格设置
-		ax.grid(True, linestyle='--', alpha=0.3, color='#BDC3C7', linewidth=0.5)
-		ax.tick_params(axis='both', which='major', labelsize=10)
-		
-		# 图例设置
-		if plot_handles:
-			try:
-				legend = ax.legend(loc='best', fontsize=10, frameon=True, fancybox=True, shadow=True,
-				                   framealpha=0.95, facecolor='white', edgecolor='#CCCCCC')
-				legend.get_frame().set_linewidth(0.5)
-			except Exception as legend_error:
-				print(f"设置图例时出错: {legend_error}")
-		else:
-			ax.text(0.5, 0.5, "无有效数据", ha='center', va='center', transform=ax.transAxes,
-			        fontsize=14, color='#E74C3C', fontweight='bold')
-			print("没有可绘制的数据")
-		
-		# 调整布局
-		try:
-			self.figure.tight_layout(rect=[0, 0, 1, 0.96])
-			self.canvas.draw()
-			print("图表绘制完成")
-		except Exception as layout_error:
-			print(f"调整布局时出错: {layout_error}")
-	
-	
 	
 	def normalize_dict (self, comp, exclude_key):
 		'''归一化去掉指定组元后的合金组成'''

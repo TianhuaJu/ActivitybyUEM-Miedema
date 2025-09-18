@@ -1032,9 +1032,10 @@ class AlloyAdditionWidget(QWidget):
 							continue
 						
 						try:
-							ln_gamma = self.activity_calc_module.get_ln_gamma(
-									current_comp, target_elem, solvent_elem, temperature, phase,
-									geo_model_function, model_key_Extra, activity_method,full_alloy_str='')
+							ln_gamma = self.activity_calc_module.get_ln_gamma(current_comp, target_elem, solvent_elem,
+							                                                  temperature, phase, geo_model_function,
+							                                                  model_key_Extra, activity_method,
+							                                                  full_alloy_str='')
 							
 							
 							

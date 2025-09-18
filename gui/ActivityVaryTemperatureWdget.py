@@ -1061,19 +1061,20 @@ class ActivityTemperatureVariationWidget(QWidget):
 					xi_solute = comp_for_calc.get(solute_elem, 0.0)
 					
 					try:
+						temp_k = float(temp_k)
 						# 计算Elliott原始方法
-						ln_gamma_elliott = self.activity_calc_module.get_ln_gamma_elliott(comp_for_calc, solute_elem,
-						                                                                  solvent_elem, temp_k, phase,
-						                                                                  extra_model_function,
-						                                                                  model_key_extra,
-						                                                                  activity_model='Elliott',
-						                                                                  full_alloy_str=base_matrix_str)
+						
+						ln_gamma_elliott = self.activity_calc_module.get_ln_gamma(comp_for_calc, solute_elem,
+						                                                          solvent_elem, temp_k, phase,
+						                                                          extra_model_function, model_key_extra,
+						                                                          activity_model='Elliott',
+						                                                          full_alloy_str=base_matrix_str)
 						gamma_elliott = math.exp(ln_gamma_elliott) if not (
 								math.isnan(ln_gamma_elliott) or math.isinf(ln_gamma_elliott)) else float('nan')
 						act_elliott = gamma_elliott * xi_solute if not math.isnan(gamma_elliott) else float('nan')
 						
 						# 计算Darken修正方法
-						ln_gamma_darken = self.activity_calc_module.get_ln_gamma_darken(comp_for_calc, solute_elem,
+						ln_gamma_darken = self.activity_calc_module.get_ln_gamma(comp_for_calc, solute_elem,
 						                                                                solvent_elem, float(temp_k),
 						                                                                phase, extra_model_function,
 						                                                                model_key_extra,

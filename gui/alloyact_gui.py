@@ -286,7 +286,7 @@ class AlloyActGUI(QMainWindow):
 	
 	def create_activity_tab (self):
 		"""创建活度计算选项卡"""
-		self.activity_widget = ActivityCalculationWidget(self)
+		self.activity_widget = ActivityCalculationWidget()
 		self.tabs.addTab(self.activity_widget, "活度计算")
 	
 	def create_interaction_tab (self):

@@ -170,7 +170,7 @@ class ActivityCoefficient:
         
     # 📍 新增功能 2: 创建一个统一的计算入口函数
     def get_ln_gamma(self, comp_dict: Dict[str, float], component_to_calculate: str, solvent: str,
-                     Tem: float, state: str, geo_model: extrap_func, geo_model_name: str,activity_model_type:str,
+                     Tem: float, state: str, extra_model: extrap_func, extra_model_name: str,activity_model:str,
                      full_alloy_str: str = "") -> float:
         """
         统一的活度系数计算入口。
@@ -180,41 +180,11 @@ class ActivityCoefficient:
         if component_to_calculate == solvent:
             # Darken模型和UIPF在热力学上是一致的，直接调用UIPF溶剂公式
             return self._calculate_ln_gamma_solvent_UIPF(
-                    comp_dict, solvent, Tem, state, geo_model, geo_model_name, activity_model_type, full_alloy_str)
+                    comp_dict, solvent, Tem, state, extra_model, extra_model_name, activity_model, full_alloy_str)
         # 如果待计算组分是溶质
         else:
-            return self._calculate_ln_yi(comp_dict, solvent, component_to_calculate, Tem, state, geo_model,
-                                         geo_model_name, activity_model_type, full_alloy_str)
+            return self._calculate_ln_yi(comp_dict, solvent, component_to_calculate, Tem, state, extra_model,
+                                         extra_model_name, activity_model, full_alloy_str)
     
    
-    def get_ln_gamma_wagner (self, comp_dict, solvent, solute_i, Tem: float, state: str,
-                                     extra_model: extrap_func, extra_model_name: str,activity_model , full_alloy_str: str = ""):
-        """
-        Wagner模型计算活度系数
-        
-        """
-        
-        
-        return self._calculate_ln_yi(comp_dict, solvent, solute_i, Tem, state, extra_model, extra_model_name, activity_model,
-                                     full_alloy_str)
-    
-    def get_ln_gamma_darken (self, comp_dict, solute_i, matrix, Tem: float, phase_state: str,
-                                     extra_model: extrap_func, extra_model_name: str,activity_model, full_alloy_str: str = ""):
-        """Darken模型 - """
-        
-        
-        return self._calculate_ln_yi(comp_dict, matrix, solute_i, Tem, phase_state, extra_model, extra_model_name, activity_model,
-                                     full_alloy_str)
-    
-    # 📍 修改点6: 修正函数名拼写
-    def get_ln_gamma_elliott (self, comp_dict, solute_i, matrix, Tem, phase_state: str,
-                                      extra_model: extrap_func, extra_model_name: str,activity_model, full_alloy_str: str = ""):
-        """Elliott模型 - """
-        
-        
-        return self._calculate_ln_yi(comp_dict, matrix, solute_i, Tem, phase_state, extra_model, extra_model_name, activity_model,
-                                     full_alloy_str)
-    
-   
-    
    

@@ -8,6 +8,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from calculations.activity_calculator import ActivityCoefficient
 from core.utils import parse_composition_static
+from models.extrapolation_models import BinaryModel
 
 
 class MplCanvas(FigureCanvas):
@@ -22,9 +23,11 @@ class MplCanvas(FigureCanvas):
 class ActivityCalculationWidget(QWidget):
 	"""活度计算组件"""
 	
-	def __init__ (self, parent=None):
+	def __init__ (self):
 		super().__init__( )
+		
 		self.activity_calc_module = ActivityCoefficient()
+		self.extra_model = BinaryModel()
 		self.setup_ui()
 	
 	def setup_ui (self):
@@ -283,10 +286,7 @@ class ActivityCalculationWidget(QWidget):
 			QMessageBox.critical(self, "输入错误", "请选择溶质元素")
 			return False
 		
-		# 检查是否选择了相同的元素
-		if self.solvent_combo.currentText() == self.solute_combo.currentText():
-			QMessageBox.warning(self, "输入警告", "基体元素和溶质元素不能相同\n请选择不同的元素进行计算")
-			return False
+		
 		
 		# 检查温度
 		try:
@@ -338,23 +338,23 @@ class ActivityCalculationWidget(QWidget):
 			self.activity_calc_module.set_composition_dict(alloy_composition_str)
 			
 			# 计算不同方法的活度系数
-			darken_acf = self.activity_calc_module.get_ln_gamma_darken(comp_dict, solute, solvent, temp, state,
-			                                                                                model_func, model_name,
-			                                                                                activity_model='Darken',
-			                                                                                full_alloy_str=alloy_composition_str)
-			wagner_acf = self.activity_calc_module.get_ln_gamma_wagner(comp_dict, solvent, solute, temp, state,
-			                                                                                model_func, model_name,
-			                                                                                activity_model='Wagner',
-			                                                                                full_alloy_str=alloy_composition_str)
-			elliot_acf = self.activity_calc_module.get_ln_gamma_elliott(comp_dict, solute, solvent, temp, state,
-			                                                                                 model_func, model_name,
-			                                                                                 activity_model='Elliott',
-			                                                                                 full_alloy_str=alloy_composition_str)
+			ln_gamma_darken = self.activity_calc_module.get_ln_gamma(comp_dict, solute, solvent, temp, state,
+			                                                                model_func, model_name,
+			                                                                activity_model='Darken',
+			                                                                full_alloy_str=alloy_composition_str)
+			ln_gamma_wagner = self.activity_calc_module.get_ln_gamma(comp_dict, solute, solvent,  temp, state,
+			                                                                model_func, model_name,
+			                                                                activity_model='Wagner',
+			                                                                full_alloy_str=alloy_composition_str)
+			ln_gamma_elliot = self.activity_calc_module.get_ln_gamma(comp_dict, solute, solvent, temp, state,
+			                                                                 model_func, model_name,
+			                                                                 activity_model='Elliott',
+			                                                                 full_alloy_str=alloy_composition_str)
 			
 			# 计算活度
-			darken_activity = math.exp(darken_acf) * xi
-			wagner_activity = math.exp(wagner_acf) * xi
-			elliot_activity = math.exp(elliot_acf) * xi
+			Activity_darken = math.exp(ln_gamma_darken) * xi
+			Activity_wagner = math.exp(ln_gamma_wagner) * xi
+			Activity_elliot = math.exp(ln_gamma_elliot) * xi
 			
 			results = {
 				"composition": alloy_composition_str,
@@ -363,13 +363,13 @@ class ActivityCalculationWidget(QWidget):
 				"temperature": temp,
 				"state": state,
 				"model": model_name,
-				"activity_darken": round(darken_activity, 3),
-				"activity_wagner": round(wagner_activity, 3),
-				"activity_elliott": round(elliot_activity, 3),
+				"activity_darken": round(Activity_darken, 3),
+				"activity_wagner": round(Activity_wagner, 3),
+				"activity_elliott": round(Activity_elliot, 3),
 				"mole_fraction": round(xi, 3),
-				"activity_coefficient_darken": round(math.exp(darken_acf), 3),
-				"activity_coefficient_wagner": round(math.exp(wagner_acf), 3),
-				"activity_coefficient_elliott": round(math.exp(elliot_acf), 3),
+				"activity_coefficient_darken": round(math.exp(ln_gamma_darken), 3),
+				"activity_coefficient_wagner": round(math.exp(ln_gamma_wagner), 3),
+				"activity_coefficient_elliott": round(math.exp(ln_gamma_elliot), 3),
 			}
 			
 			self.display_results(results)
@@ -383,19 +383,20 @@ class ActivityCalculationWidget(QWidget):
 	def get_model_function (self, model_name):
 		"""获取对应的模型函数"""
 		if model_name == "UEM1":
-			return self.activity_calc_module.binary_model.UEM1
+			
+			return self.extra_model.UEM1
 		elif model_name == "UEM2":
-			return self.activity_calc_module.binary_model.UEM2
+			return self.extra_model.UEM2
 		elif model_name == "GSM":
-			return self.activity_calc_module.binary_model.GSM
+			return self.extra_model.GSM
 		elif model_name == "Muggianu":
-			return self.activity_calc_module.binary_model.Muggianu
+			return self.extra_model.Muggianu
 		elif model_name == "Toop-Muggianu":
-			return self.activity_calc_module.binary_model.Toop_Muggianu
+			return self.extra_model.Toop_Muggianu
 		elif model_name == "Toop-Kohler":
-			return self.activity_calc_module.binary_model.Toop_Kohler
+			return self.extra_model.Toop_Kohler
 		else:
-			return self.activity_calc_module.binary_model.UEM1
+			return self.extra_model.UEM1
 	
 	def display_results (self, results):
 		"""显示计算结果"""
@@ -411,7 +412,7 @@ class ActivityCalculationWidget(QWidget):
 		entry_text += f"外推模型: {results['model']}\n\n"
 		entry_text += f"活度值 (Wagner模型): {results['activity_wagner']}\n"
 		entry_text += f"活度值 (Darken模型): {results['activity_darken']}\n"
-		entry_text += f"活度值 (Elliot模型): {results['activity_elliot']}\n\n"
+		entry_text += f"活度值 (Elliot模型): {results['activity_elliott']}\n\n"
 		entry_text += f"摩尔分数: {results['mole_fraction']}\n\n"
 		entry_text += f"活度系数 (Wagner模型): {results['activity_coefficient_wagner']}\n"
 		entry_text += f"活度系数 (Darken模型): {results['activity_coefficient_darken']}\n"
@@ -513,17 +514,7 @@ class ActivityCalculationWidget(QWidget):
 		self.result_text.clear()
 		self.init_chart()
 	
-	def switch_to_temperature_tab (self):
-		"""切换到温度变化分析选项卡"""
-		if self.activity_calc_module:
-			self.activity_calc_module.switch_to_temperature_tab()
-	
-	def switch_to_concentration_tab (self):
-		"""切换到浓度变化分析选项卡"""
-		if self.activity_calc_module:
-			self.activity_calc_module.switch_to_concentration_tab()
 	
 	def update_status (self, message):
 		"""更新状态栏"""
-		if self.activity_calc_module:
-			self.activity_calc_module.update_status(message)
+		print(f"状态: {message}")
