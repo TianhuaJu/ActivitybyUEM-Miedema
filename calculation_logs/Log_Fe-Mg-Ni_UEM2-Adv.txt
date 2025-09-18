@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Fe-Mg-Ni
+Extrapolation Model: UEM2-Adv 模型
+============================================================
+
+# --- Calculation Record: 2025-09-19 00:47:53 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Fe-Mg
+k=Ni, i=Fe  : 0.0916
+k=Ni, j=Mg  : 0.1533
+		 in Fe-Mg
+
+# For Binary Sub-system: Ni-Mg
+i=Fe, k=Ni  : 0.0319
+i=Fe, j=Mg  : 0.6298
+		 in Ni-Mg
+
+# For Binary Sub-system: Ni-Fe
+j=Mg, i=Fe  : 0.6074
+j=Mg, k=Ni  : 0.0515
+		 in Ni-Fe

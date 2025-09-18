@@ -189,6 +189,7 @@ class TernaryMelts:
         """Calculate first-order interaction coefficient"""
         import os
         entropy_yesornot = entropy_judge(solv, solui, soluj)
+        
         fij = self.fab_func_contain_s(solui, soluj, entropy_yesornot)
         fik = self.fab_func_contain_s(solv, solui, entropy_yesornot)
         fjk = self.fab_func_contain_s(solv, soluj, entropy_yesornot)
@@ -213,7 +214,7 @@ class TernaryMelts:
             aki_ij = akj_ij = 0.5
         
         #写入贡献系数
-        ternary_system_str = f"{solv.name}-{solui.name}-{soluj.name}"
+        
         system_context_for_check = full_alloy_str if full_alloy_str else f"{solv.name}-{solui.name}-{soluj.name}"
         from core.utils import get_canonical_alloy_name  # 确保导入
         canonical_name = get_canonical_alloy_name(system_context_for_check)

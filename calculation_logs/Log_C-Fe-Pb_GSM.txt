@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Fe-Pb
+Extrapolation Model: GSM 模型
+============================================================
+
+# --- Calculation Record: 2025-09-19 00:46:51 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Pb
+k=Fe, i=C   : 0.3709
+k=Fe, j=Pb  : 0.6291
+		 in C-Pb
+
+# For Binary Sub-system: Fe-Pb
+i=C, k=Fe   : 0.5170
+i=C, j=Pb   : 0.4830
+		 in Fe-Pb
+
+# For Binary Sub-system: Fe-C
+j=Pb, i=C   : 0.3552
+j=Pb, k=Fe  : 0.6448
+		 in Fe-C

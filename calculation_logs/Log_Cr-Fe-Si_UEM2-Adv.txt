@@ -1,5 +1,5 @@
 Contribution Coefficient Log for Alloy System: Cr-Fe-Si
-Extrapolation Model: UEM1 模型
+Extrapolation Model: UEM2-Adv 模型
 ============================================================
 
 # --- Calculation Record: 2025-09-19 00:47:29 ---
@@ -8,16 +8,16 @@ Extrapolation Model: UEM1 模型
 #--------------------------------------------------
 
 # For Binary Sub-system: Si-Cr
-k=Fe, i=Si  : 0.0039
-k=Fe, j=Cr  : 0.9901
+k=Fe, i=Si  : 0.0223
+k=Fe, j=Cr  : 0.7976
 		 in Si-Cr
 
 # For Binary Sub-system: Fe-Cr
-i=Si, k=Fe  : 0.3322
-i=Si, j=Cr  : 0.2373
+i=Si, k=Fe  : 0.1212
+i=Si, j=Cr  : 0.1448
 		 in Fe-Cr
 
 # For Binary Sub-system: Fe-Si
-j=Cr, i=Si  : 0.0028
-j=Cr, k=Fe  : 0.9914
+j=Cr, i=Si  : 0.0264
+j=Cr, k=Fe  : 0.7920
 		 in Fe-Si

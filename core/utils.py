@@ -9,7 +9,7 @@ def entropy_judge(*elements: str) -> bool:
         *elements: 一个或多个元素符号。
 
     Returns:
-        bool: 如果根据规则需要考虑过剩熵，则返回 True，否则返回 False。
+        bool: 根据规则，如果需要考虑过剩熵，则返回 True，否则返回 False。
     """
     if not elements:
         # Avoid direct GUI calls in utility functions
