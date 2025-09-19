@@ -1,10 +1,12 @@
 # extrapolation_models.py
 
 import math
+from typing import Callable
+
 from scipy import integrate
 from core.constants import Constants
 from core.element import Element
-
+import mpmath
 
 # 导入 TernaryMelts 会导致循环导入，需要重构或延迟导入
 # from ternary_model import TernaryMelts
@@ -14,12 +16,14 @@ class BinaryModel:
 	"""处理二元体系的热力学计算。"""
 	
 	def __init__ (self):
-		self.ea = None
-		self.eb = None
+		self._temperature = 1873
+		
+		self._ea = None
+		self._eb = None
 		self._state = "liquid"
 		self._lambda = 0
-		self.temperature = 0
-		self.is_entropy = False
+		
+		self._is_entropy = False
 		
 		self.yeta_dict = {}
 		self.df_uem2 = {}
@@ -28,11 +32,11 @@ class BinaryModel:
 		self.df_uem2adv_a = {}
 	
 	def set_temperature (self, temp):
-		self.temperature = temp
+		self._temperature = temp
 	
 	def set_pair_element (self, element_a, element_b):
-		self.ea = Element(element_a)
-		self.eb = Element(element_b)
+		self._ea = Element(element_a)
+		self._eb = Element(element_b)
 	
 	def set_state (self, state):
 		self._state = state
@@ -41,7 +45,7 @@ class BinaryModel:
 		self._lambda = n
 	
 	def set_entropy (self, is_se):
-		self.is_entropy = is_se
+		self._is_entropy = is_se
 	
 	def fab (self, ea, eb, state):
 		"""计算 Miedema 模型中的 Fab 值。"""
@@ -85,41 +89,70 @@ class BinaryModel:
 	def binary_model (self, a, b, xa, xb):
 		"""二元模型计算。"""
 		self.set_pair_element(a, b)
-		f_ab = self.fab(self.ea, self.eb, self._state)
+		f_ab = self.fab(self._ea, self._eb, self._state)
 		entropy_term = 0
 		
-		if self.is_entropy:
-			if self.ea.tm and self.eb.tm:  # Avoid division by zero
-				avg_tm = 1.0 / self.ea.tm + 1.0 / self.eb.tm
+		if self._is_entropy:
+			if self._ea.tm and self._eb.tm:  # Avoid division by zero
+				avg_tm = 1.0 / self._ea.tm + 1.0 / self._eb.tm
 				factor = 15.1 if self._state == "solid" else 14.0
-				entropy_term = 1.0 / factor * avg_tm * self.temperature
+				entropy_term = 1.0 / factor * avg_tm * self._temperature
 			else:
 				entropy_term = 0.0
 		
 		f_ab *= (1 - entropy_term)
-		vaa, vba = self.v_in_alloy(self.ea, self.eb, xa, xb)
+		vaa, vba = self.v_in_alloy(self._ea, self._eb, xa, xb)
 		ca = xa / (xa + xb)
 		cb = xb / (xa + xb)
 		if (ca * vaa + cb * vba) == 0: return 0.0  # Avoid division by zero
 		cas = ca * vaa / (ca * vaa + cb * vba)
 		cbs = cb * vba / (ca * vaa + cb * vba)
 		fb = cbs * (1 + self._lambda * (cas * cbs) ** 2)
-		dh_trans = self.ea.dh_trans * ca + self.eb.dh_trans * cb
+		dh_trans = self._ea.dh_trans * ca + self._eb.dh_trans * cb
 		return fb * f_ab * ca * vaa + dh_trans
 	
 	def elastic_a_in_b (self, a, b):
 		"""计算固溶体相的弹性项。"""
 		self.set_pair_element(a, b)
-		if not (self.ea.n_ws and self.eb.n_ws): return float('nan')
+		if not (self._ea.n_ws and self._eb.n_ws): return float('nan')
 		
-		alpha = -6.0 * self.ea.v * (1 + self.ea.u * (self.ea.phi - self.eb.phi)) / \
-		        (1.0 / self.ea.n_ws + 1.0 / self.eb.n_ws)
-		va = self.ea.v ** 1.5 + alpha * (self.eb.phi - self.ea.phi) / self.ea.n_ws ** 3
-		vb = self.eb.v ** 1.5 + alpha * (self.eb.phi - self.ea.phi) / self.eb.n_ws ** 3
+		alpha = -6.0 * self._ea.v * (1 + self._ea.u * (self._ea.phi - self._eb.phi)) / \
+		        (1.0 / self._ea.n_ws + 1.0 / self._eb.n_ws)
+		va = self._ea.v ** 1.5 + alpha * (self._eb.phi - self._ea.phi) / self._ea.n_ws ** 3
+		vb = self._eb.v ** 1.5 + alpha * (self._eb.phi - self._ea.phi) / self._eb.n_ws ** 3
 		
-		if (3 * self.ea.bkm * vb + 4 * self.eb.shm * va) == 0: return float('nan')
-		dhe = 2 * self.ea.bkm * self.eb.shm * (vb - va) ** 2 / (3 * self.ea.bkm * vb + 4 * self.eb.shm * va)
+		if (3 * self._ea.bkm * vb + 4 * self._eb.shm * va) == 0: return float('nan')
+		dhe = 2 * self._ea.bkm * self._eb.shm * (vb - va) ** 2 / (3 * self._ea.bkm * vb + 4 * self._eb.shm * va)
 		return 1e-9 * dhe
+	
+	
+	
+	def integrate_miedema_mpmath_arbitrary_precision (self, model: Callable[[float], float],  decimal_places=30):
+		"""
+		使用 mpmath 库以任意精度对 Miedema 二元模型进行积分。
+
+		此函数适用于对积分精度有极高要求的场景。
+
+		参数:
+		model: Miedema 模型的实例对象。
+		e1: 组分1的 Element 对象。
+		e2: 组分2的 Element 对象。
+		decimal_places (int): 计算结果需要精确到的小数位数，默认为30位。
+
+		返回:
+		float: 积分结果，以标准浮点数形式返回。
+		"""
+		# 设置 mpmath 的计算精度
+		mpmath.mp.dps = decimal_places
+	
+		
+		# 使用 mpmath.quad 进行高精度积分
+		# 注意：mpmath.quad 的返回值是 mpmath 的浮点数类型
+		integral_value_mp = mpmath.quad(model, [0, 1])
+		
+		# 将结果转换为标准的 Python 浮点数后返回
+		return float(integral_value_mp)
+	
 	
 	def yeta (self, k, a, b, temp: float, state: str):
 		"""计算 GSM 的相似系数。"""
@@ -129,43 +162,57 @@ class BinaryModel:
 		m2.set_state(state)
 		m1.set_temperature(temp)
 		m2.set_temperature(temp)
+		m1.set_entropy(True)
+		m2.set_entropy(True)
 		
 		key = k + a + b + str(temp) + state
 		if key in self.yeta_dict: return self.yeta_dict[key]
 		
 		func = lambda x: m1.binary_model(a, b, x, 1 - x) - m2.binary_model(a, k, x, 1 - x)
 		func2 = lambda x: func(x) ** 2
-		result = integrate.quad(func2, 0, 1)[0]
+		result = self.integrate_miedema_mpmath_arbitrary_precision(func2,30)
 		self.yeta_dict[key] = result
 		return result
 	
-	def deviation_func (self, k, i, j, t):
-		"""计算 UEM2 的偏差函数。"""
+	def _get_dki_uem2 (self, k: str, i: str, j: str, t: float):
+		"""
+		根据提供的 C# 代码逻辑，为 UEM2 模型计算偏差函数 D_ki。
+		"""
 		mij = BinaryModel()
 		mkj = BinaryModel()
-		mij.set_entropy(True)
-		mkj.set_entropy(True)
+		
+		# Conditional entropy setting based on element names
+		non_entropy_elements = {"H", "O", "N"}
+		mij.set_entropy(not (i in non_entropy_elements or j in non_entropy_elements))
+		mkj.set_entropy(not (k in non_entropy_elements or j in non_entropy_elements))
+		
 		mij.set_pair_element(i, j)
-		mkj.set_pair_element(k, j)
 		mij.set_state("liquid")
-		mkj.set_state("liquid")
 		mij.set_temperature(t)
+		
+		mkj.set_pair_element(k, j)
+		mkj.set_state("liquid")
 		mkj.set_temperature(t)
 		
-		key_ij = i + j + str(self._lambda) + "liquid" + str(t)
-		key_kj = k + j + str(self._lambda) + "liquid" + str(t)
-		
-		def get_f (key, e1, e2, model):
-			if key in self.df_uem2: return self.df_uem2[key]
-			func = lambda x: model.binary_model(e1, e2, x, 1 - x) * 1000 / (Constants.R * t)
-			f_val = integrate.quad(func, 0, 1)[0]
+		def get_integral (model_instance, e1_name, e2_name):
+			# Cache key includes all relevant parameters
+			key = f"{e1_name}-{e2_name}-{model_instance._lambda}-{model_instance._state}-{t}"
+			if key in self.df_uem2:
+				return self.df_uem2[key]
+			
+			func = lambda x: model_instance.binary_model(e1_name, e2_name, x, 1 - x) * 1000 / (Constants.R * t)
+			f_val = self.integrate_miedema_mpmath_arbitrary_precision(func, 30)
 			self.df_uem2[key] = f_val
 			return f_val
 		
-		f_ij = get_f(key_ij, i, j, mij)
-		f_kj = get_f(key_kj, k, j, mkj)
+		f_ij = get_integral(mij, i, j)
+		f_kj = get_integral(mkj, k, j)
 		
-		return abs((f_ij - f_kj) / (f_ij + f_kj)) if (f_ij + f_kj) != 0 else float('inf')
+		denominator = f_ij + f_kj
+		if denominator == 0:
+			return float('inf')
+		
+		return abs((f_ij - f_kj) / denominator)
 	
 	def get_graphic_center (self, k, i, phase_state="liquid"):
 		"""计算函数图像的中心坐标 (x, y)。"""
@@ -173,9 +220,9 @@ class BinaryModel:
 		mki.set_entropy(True)
 		mki.set_pair_element(i, k)
 		mki.set_state(phase_state)  # Use passed phase_state
-		mki.set_temperature(self.temperature)
+		mki.set_temperature(self._temperature)
 		
-		key = i + k + str(self._lambda) + phase_state + str(self.temperature)
+		key = i + k + str(self._lambda) + phase_state + str(self._temperature)
 		
 		if key in self.df_uem2adv_x:
 			x_bar = self.df_uem2adv_x[key]
@@ -226,6 +273,31 @@ class BinaryModel:
 		      abs(a - b) / denom2
 		return dki
 	
+	def kexi (self, solvent, solutei):
+		"""Calculate ξ^k_i for UEM1 model"""
+		fik = self.fab(solvent, solutei,self._state)
+		elements_lst = ["Si", "Ge"]
+		
+		if self._state == "liquid":
+			if solutei.name in elements_lst:
+				dhtrans_i = 0
+			else:
+				dhtrans_i = solutei.dh_trans
+			
+			if solvent.name in elements_lst:
+				dhtrans_slv = 0
+			else:
+				dhtrans_slv = solvent.dh_trans
+		else:
+			dhtrans_i = solutei.dh_trans
+			dhtrans_slv = solvent.dh_trans
+		
+		dhtrans = dhtrans_i-dhtrans_slv
+		
+		lny0 = 1000 * fik * solutei.v * (1 + solutei.u * (solutei.phi - solvent.phi)) / \
+		       (Constants.R * self._temperature) + 1000 * dhtrans / (Constants.R * self._temperature)
+		
+		return lny0
 	def _asym_component_choice (self, k: str, i: str, j: str, Tem: float, phase_state: str):
 		"""Qiao's 不对称组元选择规则。"""
 		self.set_state(phase_state)
@@ -248,12 +320,11 @@ class BinaryModel:
 	
 	def UEM1 (self, k, i, j, Tem: float, phase_state: str):
 		"""UEM1 模型实现。"""
-		from .activity_interaction_parameters import TernaryMelts  # Delayed import
-		ternary = TernaryMelts(Tem, phase_state)
-		inter_ik = ternary.kexi(Element(k), Element(i))
-		inter_ki = ternary.kexi(Element(i), Element(k))
-		inter_jk = ternary.kexi(Element(k), Element(j))
-		inter_kj = ternary.kexi(Element(j), Element(k))
+		
+		inter_ik = self.kexi(Element(k), Element(i))
+		inter_ki = self.kexi(Element(i), Element(k))
+		inter_jk = self.kexi(Element(k), Element(j))
+		inter_kj = self.kexi(Element(j), Element(k))
 		df_ki = abs(inter_ik - inter_ki)
 		df_kj = abs(inter_jk - inter_kj)
 		if df_ki + df_kj == 0: return 0.5  # Avoid division by zero
@@ -261,12 +332,18 @@ class BinaryModel:
 		beta3 = df_kj / (df_ki + df_kj)
 		return alpha * beta3
 	
+	# 📍 MODIFIED UEM2: Uses the new calculation logic
 	def UEM2 (self, k, i, j, Tem: float, phase_state: str):
-		"""UEM2 模型实现。"""
-		df_ki = self.deviation_func(k, i, j, Tem)
-		df_kj = self.deviation_func(k, j, i, Tem)
-		if df_ki + df_kj == 0: return 0.5  # Avoid division by zero
-		weight1 = df_kj / (df_ki + df_kj)
+		"""UEM2 模型实现，采用新的偏差函数计算方法。"""
+		
+		df_ki = self._get_dki_uem2(k, i, j, Tem)
+		df_kj = self._get_dki_uem2(k, j, i, Tem)
+		
+		denominator = df_ki + df_kj
+		if denominator == 0:
+			return 0.5
+		
+		weight1 = df_kj / denominator
 		return math.exp(-df_ki) * weight1
 	
 	def GSM (self, k, i, j, Tem: float, phase_state: str):

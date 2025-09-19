@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Fe-Mn-Pb
+Extrapolation Model: UEM2-Adv 模型
+============================================================
+
+# --- Calculation Record: 2025-09-19 11:36:59 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Mn-Pb
+k=Fe, i=Mn  : 0.3207
+k=Fe, j=Pb  : 0.1597
+		 in Mn-Pb
+
+# For Binary Sub-system: Fe-Pb
+i=Mn, k=Fe  : 0.3285
+i=Mn, j=Pb  : 0.1453
+		 in Fe-Pb
+
+# For Binary Sub-system: Fe-Mn
+j=Pb, i=Mn  : 0.1817
+j=Pb, k=Fe  : 0.2044
+		 in Fe-Mn

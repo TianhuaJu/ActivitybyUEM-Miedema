@@ -2,7 +2,7 @@ Contribution Coefficient Log for Alloy System: C-Fe-Si
 Extrapolation Model: Muggianu 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-19 00:25:01 ---
+# --- Calculation Record: 2025-09-19 11:13:57 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------

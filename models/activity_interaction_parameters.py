@@ -1,5 +1,5 @@
 # ternary_model.py
-
+import os
 from typing import Callable
 
 from core.constants import Constants
@@ -72,31 +72,6 @@ class TernaryMelts:
         
         return fij * (1 - entropy_term)
     
-    def kexi (self, solvent, solutei):
-        """Calculate ξ^k_i for UEM1 model"""
-        fik = self.fab_pure(solvent, solutei)
-        elements_lst = ["Si", "Ge"]
-        
-        if self._state == "liquid":
-            if solutei.name in elements_lst:
-                dhtrans_i = 0
-            else:
-                dhtrans_i = solutei.dh_trans
-            
-            if solvent.name in elements_lst:
-                dhtrans_slv = 0
-            else:
-                dhtrans_slv = solvent.dh_trans
-        else:
-            dhtrans_i = solutei.dh_trans
-            dhtrans_slv = solvent.dh_trans
-        
-        dhtrans = dhtrans_slv
-        
-        lny0 = 1000 * fik * solutei.v * (1 + solutei.u * (solutei.phi - solvent.phi)) / \
-               (Constants.R * self._temperature) + 1000 * dhtrans / (Constants.R * self._temperature)
-        
-        return lny0
     
     def first_derivative_qx (self, i_element: Element, j_element: Element, xi: float = 0) -> float:
         """Calculate first derivative of Q(x)
@@ -184,6 +159,7 @@ class TernaryMelts:
         
         return 1000.0 * (hij - hik - hjk + dhik + dhjk) / (Constants.R * self._temperature)
     
+    #一阶活度相互作用系数，核心参数
     def activity_interact_coefficient_1st (self, solv, solui, soluj, Tem: float, state: str, extra_model: extrap_func,
                                            extra_model_name="UEM1", full_alloy_str: str = ""):
         """Calculate first-order interaction coefficient"""
@@ -202,53 +178,11 @@ class TernaryMelts:
         akj_ij = extra_model(solv.name, soluj.name, solui.name, Tem, state)
         aik_jk = extra_model(solui.name, solv.name, soluj.name, Tem, state)
         
-        current_script_path = os.path.abspath(__file__)
-        models_dir = os.path.dirname(current_script_path)
-        project_root = os.path.dirname(models_dir)
-        file_path = os.path.join(project_root, "results", "Contribution Coefficient")
-        os.makedirs(file_path, exist_ok=True)
-        
-        
-        
         if aki_ij == 0 and akj_ij == 0:
             aki_ij = akj_ij = 0.5
         
-        #写入贡献系数
-        
-        system_context_for_check = full_alloy_str if full_alloy_str else f"{solv.name}-{solui.name}-{soluj.name}"
-        from core.utils import get_canonical_alloy_name  # 确保导入
-        canonical_name = get_canonical_alloy_name(system_context_for_check)
-        element_count = len(canonical_name.split('-'))
-        # 3. 添加过滤条件：只在体系组元数大于等于3时才记录日志
-        if element_count >= 3:
-            # 准备日志所需的数据
-            ternary_system_str = f"{solv.name}-{solui.name}-{soluj.name}"
-            
-            contribution_data_for_log = {
-                f"{solui.name}-{soluj.name}": {
-                    f"k={solv.name}, i={solui.name}": aki_ij,
-                    f"k={solv.name}, j={soluj.name}": akj_ij
-                },
-                f"{solv.name}-{soluj.name}": {
-                    f"i={solui.name}, k={solv.name}": aik_jk,
-                    f"i={solui.name}, j={soluj.name}": aij_jk
-                },
-                f"{solv.name}-{solui.name}": {
-                    f"j={soluj.name}, i={solui.name}": aji_ik,
-                    f"j={soluj.name}, k={solv.name}": ajk_ik
-                }
-            }
-            
-            # 调用日志函数
-            log_contribution_coefficients(
-                    ternary_system=ternary_system_str,
-                    model_name=extra_model_name,
-                    temperature=Tem,
-                    contribution_data=contribution_data_for_log,
-                    full_alloy_context=full_alloy_str
-            )
-        
-        
+        self.log_and_write_contribution_coeffs(aki_ij,akj_ij, aik_jk, aij_jk, aji_ik, ajk_ik,
+    solv, solui, soluj, extra_model_name, Tem,  full_alloy_str)
         
         via = (1 + solui.u * (solui.phi - soluj.phi) * akj_ij * soluj.v /
                (aki_ij * solui.v + akj_ij * soluj.v)) * solui.v
@@ -374,4 +308,68 @@ class TernaryMelts:
         qkm = aik_km * ajk_km * ddfkm - (aik_km * ajm_km + ajk_km * aim_km + 2 * aik_km * ajk_km) * dfkm
         
         return 1000 * (qij + qik + qim + qjk + qjm + qkm) / (Constants.R * Tem) - skj
+    
+    
+    #打印贡献系数和日志记录
+    def log_and_write_contribution_coeffs (self,
+            aki_ij: float, akj_ij: float, aik_jk: float, aij_jk: float,
+            aji_ik: float, ajk_ik: float, solv: Element, solui: Element, soluj: Element,
+            extra_model_name: str, Tem: float, full_alloy_str: str = "" ):
+        """
+        处理、过滤并记录贡献系数。
+
+        这个函数会执行以下操作:
+        1. 确保日志文件目录存在。
+        2. 对 aki_ij 和 akj_ij 进行默认值处理。
+        3. 只在体系组元数大于等于3时才记录日志。
+        4. 构造数据并调用日志函数。
+
+        参数:
+        aki_ij, akj_ij, ...: 贡献系数值。
+        solv, solui, soluj: 代表溶剂和溶质的 Element 对象。
+        extra_model_name: 外推模型的名称。
+        Tem: 温度 (K)。
+        full_alloy_str: 完整的合金成分字符串 (可选)。
+        """
+        # 1. 确保日志文件目录存在
+        # (这部分可以放在函数外部的初始化代码中，以避免重复执行)
+        current_script_path = os.path.abspath(__file__)
+        models_dir = os.path.dirname(current_script_path)
+        project_root = os.path.dirname(models_dir)
+        file_path = os.path.join(project_root, "results", "Contribution Coefficient")
+        os.makedirs(file_path, exist_ok=True)
+        
+       
+        # 2. 过滤条件：只在体系组元数大于等于3时才记录日志
+        system_context_for_check = full_alloy_str if full_alloy_str else f"{solv.name}-{solui.name}-{soluj.name}"
+        canonical_name = get_canonical_alloy_name(system_context_for_check)
+        element_count = len(canonical_name.split('-'))
+        
+        if element_count >= 3:
+            # 准备日志所需的数据
+            ternary_system_str = f"{solv.name}-{solui.name}-{soluj.name}"
+            
+            contribution_data_for_log = {
+                f"{solui.name}-{soluj.name}": {
+                    f"k={solv.name}, i={solui.name}": aki_ij,
+                    f"k={solv.name}, j={soluj.name}": akj_ij
+                },
+                f"{solv.name}-{soluj.name}": {
+                    f"i={solui.name}, k={solv.name}": aik_jk,
+                    f"i={solui.name}, j={soluj.name}": aij_jk
+                },
+                f"{solv.name}-{solui.name}": {
+                    f"j={soluj.name}, i={solui.name}": aji_ik,
+                    f"j={soluj.name}, k={solv.name}": ajk_ik
+                }
+            }
+            
+            # 调用日志函数 (假设 log_contribution_coefficients 已在作用域内)
+            log_contribution_coefficients(
+                    ternary_system=ternary_system_str,
+                    model_name=extra_model_name,
+                    temperature=Tem,
+                    contribution_data=contribution_data_for_log,
+                    full_alloy_context=full_alloy_str
+            )
 

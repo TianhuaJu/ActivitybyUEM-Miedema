@@ -232,11 +232,11 @@ class InteractionCoefficientWidget(QWidget):
 			model_func = self.get_model_function(model_name)
 			
 			# 创建 TernaryMelts 实例
-			is_entropy = False
-			ternary = TernaryMelts(temp, state, is_entropy)
+			
+			ternary = TernaryMelts(temp, state)
 			
 			# 计算相互作用系数
-			sij_uem1 = ternary.activity_interact_coefficient_1st(solv, solui, soluj, temp, state, model_func,
+			sij_model_val = ternary.activity_interact_coefficient_1st(solv, solui, soluj, temp, state, model_func,
 			                                                     model_name)
 			
 			# 使用 UEM2 对比
@@ -257,7 +257,7 @@ class InteractionCoefficientWidget(QWidget):
 				"temperature": temp,
 				"state": state,
 				"model": model_name,
-				"sij_uem1": round(sij_uem1, 3),
+				"sij_model": round(sij_model_val, 3),
 				"sij_uem2": round(sij_uem2, 3),
 				"sij_experimental": sij_exp
 			}
@@ -310,7 +310,7 @@ class InteractionCoefficientWidget(QWidget):
 		result_text += f"温度: {results['temperature']} K\n"
 		result_text += f"状态: {results['state']}\n"
 		result_text += f"外推模型: {results['model']}\n\n"
-		result_text += f"模型系数: {results['sij_uem1']}\n"
+		result_text += f"{results['model']} 模型系数: {results['sij_model']}\n"
 		result_text += f"UEM2模型系数: {results['sij_uem2']}\n"
 		
 		if not np.isnan(results['sij_experimental']):
@@ -333,9 +333,9 @@ class InteractionCoefficientWidget(QWidget):
 		self.canvas.axes.clear()
 		
 		# 数据
-		models = ['UEM1', 'UEM2', '实验值']
+		models = [results['model'], 'UEM2', '实验值']
 		values = [
-			results['sij_uem1'],
+			results['sij_model'],
 			results['sij_uem2'],
 			results['sij_experimental'] if not np.isnan(results['sij_experimental']) else 0
 		]
