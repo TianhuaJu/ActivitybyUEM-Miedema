@@ -1,5 +1,5 @@
 Contribution Coefficient Log for Alloy System: C-Fe-Mg
-Extrapolation Model: UEM1 模型
+Extrapolation Model: UEM2_Adv 模型
 ============================================================
 
 # --- Calculation Record: 2025-09-24 22:04:11 ---
@@ -8,16 +8,16 @@ Extrapolation Model: UEM1 模型
 #--------------------------------------------------
 
 # For Binary Sub-system: C-Mg
-k=Fe, i=C   : 0.0000
-k=Fe, j=Mg  : 0.2733
+k=Fe, i=C   : 0.0010
+k=Fe, j=Mg  : 0.9947
 		 in C-Mg
 
 # For Binary Sub-system: Fe-Mg
-i=C, k=Fe   : 0.0000
-i=C, j=Mg   : 0.0000
+i=C, k=Fe   : 0.1855
+i=C, j=Mg   : 0.1771
 		 in Fe-Mg
 
 # For Binary Sub-system: Fe-C
-j=Mg, i=C   : 0.0000
-j=Mg, k=Fe  : 0.2751
+j=Mg, i=C   : 0.0009
+j=Mg, k=Fe  : 0.9947
 		 in Fe-C

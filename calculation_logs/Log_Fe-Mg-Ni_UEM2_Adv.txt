@@ -1,5 +1,5 @@
 Contribution Coefficient Log for Alloy System: Fe-Mg-Ni
-Extrapolation Model: UEM1 模型
+Extrapolation Model: UEM2_Adv 模型
 ============================================================
 
 # --- Calculation Record: 2025-09-24 22:03:49 ---
@@ -8,16 +8,16 @@ Extrapolation Model: UEM1 模型
 #--------------------------------------------------
 
 # For Binary Sub-system: Fe-Mg
-k=Ni, i=Fe  : 0.9437
-k=Ni, j=Mg  : 0.0338
+k=Ni, i=Fe  : 0.1846
+k=Ni, j=Mg  : 0.1361
 		 in Fe-Mg
 
 # For Binary Sub-system: Ni-Mg
-i=Fe, k=Ni  : 0.9774
-i=Fe, j=Mg  : 0.0030
+i=Fe, k=Ni  : 0.0000
+i=Fe, j=Mg  : 1.0000
 		 in Ni-Mg
 
 # For Binary Sub-system: Ni-Fe
-j=Mg, i=Fe  : 0.0528
-j=Mg, k=Ni  : 0.6238
+j=Mg, i=Fe  : 1.0000
+j=Mg, k=Ni  : 0.0000
 		 in Ni-Fe

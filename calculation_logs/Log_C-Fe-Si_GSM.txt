@@ -2,22 +2,22 @@ Contribution Coefficient Log for Alloy System: C-Fe-Si
 Extrapolation Model: GSM 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-19 11:13:53 ---
+# --- Calculation Record: 2025-09-24 21:15:34 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
 # For Binary Sub-system: C-Si
-k=Fe, i=C   : 0.2976
-k=Fe, j=Si  : 0.7024
+k=Fe, i=C   : 0.1013
+k=Fe, j=Si  : 0.8987
 		 in C-Si
 
 # For Binary Sub-system: Fe-Si
-i=C, k=Fe   : 0.1475
-i=C, j=Si   : 0.8525
+i=C, k=Fe   : 0.3592
+i=C, j=Si   : 0.6408
 		 in Fe-Si
 
 # For Binary Sub-system: Fe-C
-j=Si, i=C   : 0.7100
-j=Si, k=Fe  : 0.2900
+j=Si, i=C   : 0.1674
+j=Si, k=Fe  : 0.8326
 		 in Fe-C

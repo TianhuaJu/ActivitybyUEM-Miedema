@@ -220,7 +220,7 @@ class BinaryModel:
 		
 		return abs((f_ij - f_kj) / denominator)
 	
-	def get_graphic_center (self, k, i, phase_state="liquid"):
+	def get_graphic_center (self, k, i, T: float, phase_state="liquid"):
 		"""计算函数图像的中心坐标 (x, y)。"""
 		mki = BinaryModel()
 		mki.set_entropy(True)
@@ -260,10 +260,10 @@ class BinaryModel:
 		else:
 			return pi_half
 	
-	def get_d_ki (self, k, i, j):
+	def get_d_ki (self, k, i, j,T: float, phase_state: str):
 		"""计算组元 k 和 i 之间的属性差异。"""
-		xij, yij = self.get_graphic_center(i, j)
-		xkj, ykj = self.get_graphic_center(k, j)
+		xij, yij = self.get_graphic_center(i, j, T,phase_state)
+		xkj, ykj = self.get_graphic_center(k, j, T,phase_state)
 		
 		theta10 = math.atan2(xij, yij)
 		theta20 = math.atan2(xkj, ykj)
@@ -377,3 +377,13 @@ class BinaryModel:
 	def Toop_Kohler (self, k: str, i: str, j: str, T: float, phase_state: str):
 		asym = self._asym_component_choice(k, i, j, T, phase_state)
 		return 0.0 if asym == k or asym == i else 1.0
+	
+	def UEM2_Adv(self, k: str, i: str, j: str, T: float, phase_state: str):
+		
+		d_ki = self.get_d_ki(k,i,j, T,phase_state)
+		d_kj = self.get_d_ki(k,j,i, T,phase_state)
+		
+		return d_kj/(d_ki + d_kj)*math.exp(-d_ki)
+		
+		pass
+	

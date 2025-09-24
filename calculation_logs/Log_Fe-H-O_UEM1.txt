@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Fe-H-O
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-24 21:36:17 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: O-H
+k=Fe, i=O   : 0.0426
+k=Fe, j=H   : 0.0000
+		 in O-H
+
+# For Binary Sub-system: Fe-H
+i=O, k=Fe   : 0.0464
+i=O, j=H    : 0.0000
+		 in Fe-H
+
+# For Binary Sub-system: Fe-O
+j=H, i=O    : 0.0000
+j=H, k=Fe   : 0.0000
+		 in Fe-O

@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Fe-Ti
+Extrapolation Model: UEM2_Adv 模型
+============================================================
+
+# --- Calculation Record: 2025-09-24 21:25:17 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Ti
+k=Fe, i=C   : 1.0000
+k=Fe, j=Ti  : 0.0000
+		 in C-Ti
+
+# For Binary Sub-system: Fe-Ti
+i=C, k=Fe   : 1.0000
+i=C, j=Ti   : 0.0000
+		 in Fe-Ti
+
+# For Binary Sub-system: Fe-C
+j=Ti, i=C   : 0.0823
+j=Ti, k=Fe  : 0.5050
+		 in Fe-C

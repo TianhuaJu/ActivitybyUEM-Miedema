@@ -122,9 +122,9 @@ class TernaryMelts:
         
         return dd_f
     
-    def ln_y0 (self, solvent, solutei):
+    def ln_y0 (self, solvent:Element, solutei:Element):
         """Calculate ln(γ°i) = G^E_i/(RT)"""
-        fik = self.fab_func_contain_s(solvent, solutei, entropy_judge(solvent, solutei))
+        fik = self.fab_func_contain_s(solvent, solutei, entropy_judge(solvent.name, solutei.name))
         dhtrans = solutei.dh_trans
         
         lny0 = 1000 * fik * solutei.v * (1 + solutei.u * (solutei.phi - solvent.phi)) + 1000 * dhtrans
@@ -160,11 +160,11 @@ class TernaryMelts:
         return 1000.0 * (hij - hik - hjk + dhik + dhjk) / (Constants.R * self._temperature)
     
     #一阶活度相互作用系数，核心参数
-    def activity_interact_coefficient_1st (self, solv, solui, soluj, Tem: float, state: str, extra_model: extrap_func,
+    def activity_interact_coefficient_1st (self, solv:Element, solui:Element, soluj:Element, Tem: float, state: str, extra_model: extrap_func,
                                            extra_model_name="UEM1", full_alloy_str: str = ""):
         """Calculate first-order interaction coefficient"""
         import os
-        entropy_yesornot = entropy_judge(solv, solui, soluj)
+        entropy_yesornot = entropy_judge(solv.name, solui.name, soluj.name)
         
         fij = self.fab_func_contain_s(solui, soluj, entropy_yesornot)
         fik = self.fab_func_contain_s(solv, solui, entropy_yesornot)
@@ -200,7 +200,7 @@ class TernaryMelts:
         
         return 1000 * chemical_term / (Constants.R * Tem)
     
-    def roui_ii (self, solv, solui, Tem: float, state: str, extra_model, extra_model_name="UEM1"):
+    def roui_ii (self, solv:Element, solui:Element, Tem: float, state: str, extra_model, extra_model_name="UEM1"):
         """Calculate second-order self-interaction coefficient ρi^ii"""
         sii = self.activity_interact_coefficient_1st(solv, solui, solui, Tem, state, extra_model, extra_model_name)
         df10 = self.first_derivative_qx(solui, solv, 0)
@@ -210,7 +210,7 @@ class TernaryMelts:
         
         return rii
     
-    def roui_jj (self, solv, solui, soluj, Tem: float, state: str, extra_model: extrap_func, extra_model_name="UEM1"):
+    def roui_jj (self, solv:Element, solui:Element, soluj:Element, Tem: float, state: str, extra_model: extrap_func, extra_model_name="UEM1"):
         """Calculate second-order interaction coefficient ρi^jj"""
         sjj = self.activity_interact_coefficient_1st(solv, soluj, soluj, Tem, state, extra_model, extra_model_name)
         
@@ -231,7 +231,7 @@ class TernaryMelts:
         
         return ri_jj
     
-    def roui_ij (self, solv, solui, soluj, Tem: float, state: str, extra_model: extrap_func, extra_model_name="UEM1"):
+    def roui_ij (self, solv:Element, solui:Element, soluj:Element, Tem: float, state: str, extra_model: extrap_func, extra_model_name="UEM1"):
         """Calculate second-order cross-interaction coefficient ρi^ij"""
         sji = self.activity_interact_coefficient_1st(solv, solui, soluj, Tem, state, extra_model, extra_model_name)
         
@@ -250,7 +250,7 @@ class TernaryMelts:
         
         return (-sji + 1000 * (qij + qik + qjk) / (Constants.R * Tem))
     
-    def roui_jk (self, matrix, i, j, k, Tem: float, state: str, extra_model: extrap_func, extra_model_name="UEM1"):
+    def roui_jk (self, matrix:Element, i:Element, j:Element, k:Element, Tem: float, state: str, extra_model: extrap_func, extra_model_name="UEM1"):
         """Calculate cross-interaction parameter, the influence of components j,k on i"""
         skj = self.activity_interact_coefficient_1st(matrix, j, k, Tem, state, extra_model, extra_model_name)
         

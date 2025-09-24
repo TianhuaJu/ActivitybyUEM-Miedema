@@ -101,7 +101,7 @@ class InteractionCoefficientWidget(QWidget):
 		# 外推模型下拉框
 		input_layout.addWidget(QLabel("外推模型:"), row, 0, Qt.AlignRight)
 		self.model_combo = QComboBox()
-		self.model_combo.addItems(["UEM1", "UEM2", "GSM", "Muggianu"])
+		self.model_combo.addItems(["UEM1", "UEM2","UEM2_Adv", "GSM", "Muggianu","Toop-Kohler","Toop-Muggianu"])
 		input_layout.addWidget(self.model_combo, row, 1)
 		row += 1
 		
@@ -240,8 +240,8 @@ class InteractionCoefficientWidget(QWidget):
 			                                                     model_name)
 			
 			# 使用 UEM2 对比
-			uem2_func = self.get_model_function("UEM2")
-			sij_uem2 = ternary.activity_interact_coefficient_1st(solv, solui, soluj, temp, state, uem2_func, "UEM2-Adv")
+			uem1_func = self.get_model_function("UEM1")
+			sij_uem1 = ternary.activity_interact_coefficient_1st(solv, solui, soluj, temp, state, uem1_func, "UEM1")
 			
 			# 获取实验值
 			if state == "liquid":
@@ -258,7 +258,7 @@ class InteractionCoefficientWidget(QWidget):
 				"state": state,
 				"model": model_name,
 				"sij_model": round(sij_model_val, 3),
-				"sij_uem2": round(sij_uem2, 3),
+				"sij_uem1": round(sij_uem1, 3),
 				"sij_experimental": sij_exp
 			}
 			
@@ -289,6 +289,8 @@ class InteractionCoefficientWidget(QWidget):
 			return self.parent.binary_model.Toop_Muggianu
 		elif model_name == "Toop-Kohler":
 			return self.parent.binary_model.Toop_Kohler
+		elif model_name == "UEM2_Adv":
+			return self.parent.binary_model.UEM2_Adv
 		else:
 			return self.parent.binary_model.UEM1
 	
@@ -311,7 +313,7 @@ class InteractionCoefficientWidget(QWidget):
 		result_text += f"状态: {results['state']}\n"
 		result_text += f"外推模型: {results['model']}\n\n"
 		result_text += f"{results['model']} 模型系数: {results['sij_model']}\n"
-		result_text += f"UEM2模型系数: {results['sij_uem2']}\n"
+		result_text += f"UEM1模型系数: {results['sij_uem1']}\n"
 		
 		if not np.isnan(results['sij_experimental']):
 			exp_value = f"{results['sij_experimental']:.3f}"
@@ -333,10 +335,10 @@ class InteractionCoefficientWidget(QWidget):
 		self.canvas.axes.clear()
 		
 		# 数据
-		models = [results['model'], 'UEM2', '实验值']
+		models = [results['model'], 'UEM1', '实验值']
 		values = [
 			results['sij_model'],
-			results['sij_uem2'],
+			results['sij_uem1'],
 			results['sij_experimental'] if not np.isnan(results['sij_experimental']) else 0
 		]
 		

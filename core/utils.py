@@ -18,13 +18,16 @@ def entropy_judge(*elements: str) -> bool:
         return False
 
     s_set = set(elements)
+    
 
     if "O" in s_set:
         other_elements = s_set - {"O"}
         return bool(other_elements.intersection(Constants.non_metal_list))
     elif "H" in s_set or "N" in s_set:
+        
         return False
     else:
+         
         return True
 
 

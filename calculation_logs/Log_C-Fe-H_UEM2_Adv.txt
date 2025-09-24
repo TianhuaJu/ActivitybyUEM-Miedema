@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Fe-H
+Extrapolation Model: UEM2_Adv 模型
+============================================================
+
+# --- Calculation Record: 2025-09-24 22:03:25 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-H
+k=Fe, i=C   : 0.3792
+k=Fe, j=H   : 0.2154
+		 in C-H
+
+# For Binary Sub-system: Fe-H
+i=C, k=Fe   : 0.0523
+i=C, j=H    : 0.8830
+		 in Fe-H
+
+# For Binary Sub-system: Fe-C
+j=H, i=C    : 0.9057
+j=H, k=Fe   : 0.0305
+		 in Fe-C

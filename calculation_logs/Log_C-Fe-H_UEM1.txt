@@ -1,23 +1,23 @@
-Contribution Coefficient Log for Alloy System: C-Fe-Mg
+Contribution Coefficient Log for Alloy System: C-Fe-H
 Extrapolation Model: UEM1 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-24 22:04:11 ---
+# --- Calculation Record: 2025-09-24 22:03:25 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
-# For Binary Sub-system: C-Mg
+# For Binary Sub-system: C-H
 k=Fe, i=C   : 0.0000
-k=Fe, j=Mg  : 0.2733
-		 in C-Mg
+k=Fe, j=H   : 0.0000
+		 in C-H
 
-# For Binary Sub-system: Fe-Mg
+# For Binary Sub-system: Fe-H
 i=C, k=Fe   : 0.0000
-i=C, j=Mg   : 0.0000
-		 in Fe-Mg
+i=C, j=H    : 0.6049
+		 in Fe-H
 
 # For Binary Sub-system: Fe-C
-j=Mg, i=C   : 0.0000
-j=Mg, k=Fe  : 0.2751
+j=H, i=C    : 0.5952
+j=H, k=Fe   : 0.0000
 		 in Fe-C

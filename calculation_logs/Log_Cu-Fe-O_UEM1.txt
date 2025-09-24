@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Cu-Fe-O
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-24 21:36:32 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: O-Cu
+k=Fe, i=O   : 0.0029
+k=Fe, j=Cu  : 0.8021
+		 in O-Cu
+
+# For Binary Sub-system: Fe-Cu
+i=O, k=Fe   : 0.0127
+i=O, j=Cu   : 0.3086
+		 in Fe-Cu
+
+# For Binary Sub-system: Fe-O
+j=Cu, i=O   : 0.0625
+j=Cu, k=Fe  : 0.7165
+		 in Fe-O
