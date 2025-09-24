@@ -189,14 +189,14 @@ class TernaryMelts:
         vja = (1 + soluj.u * (soluj.phi - solui.phi) * aki_ij * solui.v /
                (aki_ij * solui.v + akj_ij * soluj.v)) * soluj.v
         
-        omaga_ij = fij * via * vja * (aki_ij + akj_ij) / (aki_ij * via + akj_ij * vja)
-        omaga_ik = fik * solui.v * (1 + solui.u * (solui.phi - solv.phi))
-        omaga_jk = fjk * soluj.v * (1 + soluj.u * (soluj.phi - solv.phi))
+        A_ij = fij * via * vja * (aki_ij + akj_ij) / (aki_ij * via + akj_ij * vja)
+        B_ik = fik * solui.v * (1 + solui.u * (solui.phi - solv.phi))
+        C_jk = fjk * soluj.v * (1 + soluj.u * (soluj.phi - solv.phi))
         
-        d_omaga_ik_j = aji_ik * omaga_ik * (1 - solui.v / solv.v * (1 + 2 * solui.u * (solui.phi - solv.phi)))
-        d_omaga_jk_i = aij_jk * omaga_jk * (1 - soluj.v / solv.v * (1 + 2 * soluj.u * (soluj.phi - solv.phi)))
+        D_ik = aji_ik * B_ik * (1 - solui.v / solv.v * (1 + 2 * solui.u * (solui.phi - solv.phi)))
+        E_jk = aij_jk * C_jk * (1 - soluj.v / solv.v * (1 + 2 * soluj.u * (soluj.phi - solv.phi)))
         
-        chemical_term = omaga_ij - omaga_jk - omaga_ik + d_omaga_ik_j + d_omaga_jk_i
+        chemical_term = A_ij - C_jk - B_ik + D_ik + E_jk
         
         return 1000 * chemical_term / (Constants.R * Tem)
     

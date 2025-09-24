@@ -2,14 +2,14 @@ Contribution Coefficient Log for Alloy System: C-Fe-Pb
 Extrapolation Model: UEM1 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-19 11:34:51 ---
+# --- Calculation Record: 2025-09-24 17:00:36 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
 # For Binary Sub-system: C-Pb
 k=Fe, i=C   : 0.0000
-k=Fe, j=Pb  : 0.0090
+k=Fe, j=Pb  : 0.0095
 		 in C-Pb
 
 # For Binary Sub-system: Fe-Pb
@@ -19,5 +19,5 @@ i=C, j=Pb   : 0.0000
 
 # For Binary Sub-system: Fe-C
 j=Pb, i=C   : 0.0000
-j=Pb, k=Fe  : 0.0088
+j=Pb, k=Fe  : 0.0086
 		 in Fe-C

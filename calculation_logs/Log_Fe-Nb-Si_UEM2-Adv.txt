@@ -2,22 +2,22 @@ Contribution Coefficient Log for Alloy System: Fe-Nb-Si
 Extrapolation Model: UEM2-Adv 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-19 00:47:16 ---
+# --- Calculation Record: 2025-09-24 09:27:28 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
 # For Binary Sub-system: Si-Nb
-k=Fe, i=Si  : 0.7627
-k=Fe, j=Nb  : 0.0000
+k=Fe, i=Si  : 0.3126
+k=Fe, j=Nb  : 0.3572
 		 in Si-Nb
 
 # For Binary Sub-system: Fe-Nb
-i=Si, k=Fe  : 0.7564
-i=Si, j=Nb  : 0.0000
+i=Si, k=Fe  : 0.0640
+i=Si, j=Nb  : 0.8624
 		 in Fe-Nb
 
 # For Binary Sub-system: Fe-Si
-j=Nb, i=Si  : 0.0005
-j=Nb, k=Fe  : 0.0000
+j=Nb, i=Si  : 0.8540
+j=Nb, k=Fe  : 0.0724
 		 in Fe-Si

@@ -108,7 +108,15 @@ class BinaryModel:
 		cas = ca * vaa / (ca * vaa + cb * vba)
 		cbs = cb * vba / (ca * vaa + cb * vba)
 		fb = cbs * (1 + self._lambda * (cas * cbs) ** 2)
-		dh_trans = self._ea.dh_trans * ca + self._eb.dh_trans * cb
+		dh_trans_a = 0
+		dh_trans_b = 0
+		if self._state == "liquid":
+			if self._ea.name not in ["Si", "Ge"]:
+				dh_trans_a = self._ea.dh_trans
+			if self._eb.name not in ["Si", "Ge"]:
+				dh_trans_b = self._eb.dh_trans
+		dh_trans = dh_trans_a * ca + dh_trans_b * cb
+		
 		return fb * f_ab * ca * vaa + dh_trans
 	
 	def elastic_a_in_b (self, a, b):
@@ -175,9 +183,7 @@ class BinaryModel:
 		return result
 	
 	def _get_dki_uem2 (self, k: str, i: str, j: str, t: float):
-		"""
-		根据提供的 C# 代码逻辑，为 UEM2 模型计算偏差函数 D_ki。
-		"""
+		
 		mij = BinaryModel()
 		mkj = BinaryModel()
 		
@@ -274,7 +280,11 @@ class BinaryModel:
 		return dki
 	
 	def kexi (self, solvent, solutei):
-		"""Calculate ξ^k_i for UEM1 model"""
+		"""Calculate ξ^k_i for UEM1 model
+			previous method for trans-ennergy for nonmetalic is rigly according to the method in doctor Thesis
+			In some previouscalculation, parameter for C is modified
+			 which is from the " Statiscal Thermodynamics of Alloys" by N. A. Gokcen
+		"""
 		fik = self.fab(solvent, solutei,self._state)
 		elements_lst = ["Si", "Ge"]
 		
@@ -292,7 +302,7 @@ class BinaryModel:
 			dhtrans_i = solutei.dh_trans
 			dhtrans_slv = solvent.dh_trans
 		
-		dhtrans = dhtrans_i-dhtrans_slv
+		dhtrans = dhtrans_i - dhtrans_slv
 		
 		lny0 = 1000 * fik * solutei.v * (1 + solutei.u * (solutei.phi - solvent.phi)) / \
 		       (Constants.R * self._temperature) + 1000 * dhtrans / (Constants.R * self._temperature)

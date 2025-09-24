@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Fe-Ni-Si
+Extrapolation Model: UEM2-Adv 模型
+============================================================
+
+# --- Calculation Record: 2025-09-24 09:27:11 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Si-Ni
+k=Fe, i=Si  : 0.0675
+k=Fe, j=Ni  : 0.7297
+		 in Si-Ni
+
+# For Binary Sub-system: Fe-Ni
+i=Si, k=Fe  : 0.2124
+i=Si, j=Ni  : 0.2407
+		 in Fe-Ni
+
+# For Binary Sub-system: Fe-Si
+j=Ni, i=Si  : 0.0756
+j=Ni, k=Fe  : 0.7217
+		 in Fe-Si

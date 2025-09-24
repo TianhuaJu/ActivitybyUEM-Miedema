@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ag-Fe-Nb
+Extrapolation Model: UEM2-Adv 模型
+============================================================
+
+# --- Calculation Record: 2025-09-24 09:28:19 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Ag-Nb
+k=Fe, i=Ag  : 0.0000
+k=Fe, j=Nb  : 0.7795
+		 in Ag-Nb
+
+# For Binary Sub-system: Fe-Nb
+i=Ag, k=Fe  : 0.0000
+i=Ag, j=Nb  : 0.0183
+		 in Fe-Nb
+
+# For Binary Sub-system: Fe-Ag
+j=Nb, i=Ag  : 0.0011
+j=Nb, k=Fe  : 0.7342
+		 in Fe-Ag
