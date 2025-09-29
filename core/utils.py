@@ -27,7 +27,7 @@ def entropy_judge(*elements: str) -> bool:
         
         return False
     else:
-         
+        
         return True
 
 
