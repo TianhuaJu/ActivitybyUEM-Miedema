@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: As-Ca-Ni
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 19:15:19 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: As-Ca
+k=Ni, i=As  : 0.5000
+k=Ni, j=Ca  : 0.5000
+		 in As-Ca
+
+# For Binary Sub-system: Ni-Ca
+i=As, k=Ni  : 0.5000
+i=As, j=Ca  : 0.5000
+		 in Ni-Ca
+
+# For Binary Sub-system: Ni-As
+j=Ca, i=As  : 0.5000
+j=Ca, k=Ni  : 0.5000
+		 in Ni-As

@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Al-N-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 12:10:32 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: N-Al
+k=Ni, i=N   : 0.0000
+k=Ni, j=Al  : 0.3551
+		 in N-Al
+
+# For Binary Sub-system: Ni-Al
+i=N, k=Ni   : 0.0000
+i=N, j=Al   : 0.0000
+		 in Ni-Al
+
+# For Binary Sub-system: Ni-N
+j=Al, i=N   : 0.0000
+j=Al, k=Ni  : 0.3560
+		 in Ni-N

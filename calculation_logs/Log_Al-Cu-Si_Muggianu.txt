@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Al-Cu-Si
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 10:37:24 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 805.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Si-Cu
+k=Al, i=Si  : 0.5000
+k=Al, j=Cu  : 0.5000
+		 in Si-Cu
+
+# For Binary Sub-system: Al-Cu
+i=Si, k=Al  : 0.5000
+i=Si, j=Cu  : 0.5000
+		 in Al-Cu
+
+# For Binary Sub-system: Al-Si
+j=Cu, i=Si  : 0.5000
+j=Cu, k=Al  : 0.5000
+		 in Al-Si

@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Al-Ni-Zr
+Extrapolation Model: Toop-Kohler 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 19:05:25 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Al-Zr
+k=Ni, i=Al  : 1.0000
+k=Ni, j=Zr  : 0.0000
+		 in Al-Zr
+
+# For Binary Sub-system: Ni-Zr
+i=Al, k=Ni  : 1.0000
+i=Al, j=Zr  : 0.0000
+		 in Ni-Zr
+
+# For Binary Sub-system: Ni-Al
+j=Zr, i=Al  : 0.0000
+j=Zr, k=Ni  : 0.0000
+		 in Ni-Al

@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ni-Si-Zr
+Extrapolation Model: Toop-Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 19:16:46 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Si-Zr
+k=Ni, i=Si  : 1.0000
+k=Ni, j=Zr  : 0.0000
+		 in Si-Zr
+
+# For Binary Sub-system: Ni-Zr
+i=Si, k=Ni  : 1.0000
+i=Si, j=Zr  : 0.0000
+		 in Ni-Zr
+
+# For Binary Sub-system: Ni-Si
+j=Zr, i=Si  : 0.5000
+j=Zr, k=Ni  : 0.5000
+		 in Ni-Si

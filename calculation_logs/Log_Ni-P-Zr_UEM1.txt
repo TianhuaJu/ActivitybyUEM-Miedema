@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ni-P-Zr
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 19:14:13 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: P-Zr
+k=Ni, i=P   : 0.0791
+k=Ni, j=Zr  : 0.0013
+		 in P-Zr
+
+# For Binary Sub-system: Ni-Zr
+i=P, k=Ni   : 0.0820
+i=P, j=Zr   : 0.0006
+		 in Ni-Zr
+
+# For Binary Sub-system: Ni-P
+j=Zr, i=P   : 0.0010
+j=Zr, k=Ni  : 0.0025
+		 in Ni-P

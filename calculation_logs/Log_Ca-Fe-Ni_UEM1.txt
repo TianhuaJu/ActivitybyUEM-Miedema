@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ca-Fe-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 21:18:32 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Ca-Fe
+k=Ni, i=Ca  : 0.0014
+k=Ni, j=Fe  : 0.9800
+		 in Ca-Fe
+
+# For Binary Sub-system: Ni-Fe
+i=Ca, k=Ni  : 0.1255
+i=Ca, j=Fe  : 0.0120
+		 in Ni-Fe
+
+# For Binary Sub-system: Ni-Ca
+j=Fe, i=Ca  : 0.0001
+j=Fe, k=Ni  : 0.9837
+		 in Ni-Ca

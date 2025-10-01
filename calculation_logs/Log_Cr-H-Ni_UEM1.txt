@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Cr-H-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 22:50:41 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: H-Cr
+k=Ni, i=H   : 0.0000
+k=Ni, j=Cr  : 0.9731
+		 in H-Cr
+
+# For Binary Sub-system: Ni-Cr
+i=H, k=Ni   : 0.0000
+i=H, j=Cr   : 0.0000
+		 in Ni-Cr
+
+# For Binary Sub-system: Ni-H
+j=Cr, i=H   : 0.0000
+j=Cr, k=Ni  : 0.9733
+		 in Ni-H

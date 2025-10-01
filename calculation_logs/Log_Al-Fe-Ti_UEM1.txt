@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Al-Fe-Ti
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 16:16:30 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Ti-Al
+k=Fe, i=Ti  : 0.1674
+k=Fe, j=Al  : 0.4156
+		 in Ti-Al
+
+# For Binary Sub-system: Fe-Al
+i=Ti, k=Fe  : 0.0249
+i=Ti, j=Al  : 0.9062
+		 in Fe-Al
+
+# For Binary Sub-system: Fe-Ti
+j=Al, i=Ti  : 0.8700
+j=Al, k=Fe  : 0.0594
+		 in Fe-Ti

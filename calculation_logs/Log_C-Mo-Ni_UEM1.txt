@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Mo-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 21:20:28 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Mo
+k=Ni, i=C   : 0.0000
+k=Ni, j=Mo  : 0.6309
+		 in C-Mo
+
+# For Binary Sub-system: Ni-Mo
+i=C, k=Ni   : 0.0000
+i=C, j=Mo   : 0.0000
+		 in Ni-Mo
+
+# For Binary Sub-system: Ni-C
+j=Mo, i=C   : 0.0000
+j=Mo, k=Ni  : 0.6355
+		 in Ni-C

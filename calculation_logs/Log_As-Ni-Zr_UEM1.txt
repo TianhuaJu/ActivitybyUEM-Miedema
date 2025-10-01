@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: As-Ni-Zr
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 19:14:53 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: As-Zr
+k=Ni, i=As  : 0.0126
+k=Ni, j=Zr  : 0.0019
+		 in As-Zr
+
+# For Binary Sub-system: Ni-Zr
+i=As, k=Ni  : 0.0001
+i=As, j=Zr  : 0.9711
+		 in Ni-Zr
+
+# For Binary Sub-system: Ni-As
+j=Zr, i=As  : 0.9728
+j=Zr, k=Ni  : 0.0000
+		 in Ni-As

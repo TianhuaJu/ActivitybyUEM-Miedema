@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Fe-Ni-Sc
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 19:04:43 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Fe-Sc
+k=Ni, i=Fe  : 0.9843
+k=Ni, j=Sc  : 0.0001
+		 in Fe-Sc
+
+# For Binary Sub-system: Ni-Sc
+i=Fe, k=Ni  : 0.9773
+i=Fe, j=Sc  : 0.0030
+		 in Ni-Sc
+
+# For Binary Sub-system: Ni-Fe
+j=Sc, i=Fe  : 0.2250
+j=Sc, k=Ni  : 0.0048
+		 in Ni-Fe

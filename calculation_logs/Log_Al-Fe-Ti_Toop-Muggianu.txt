@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Al-Fe-Ti
+Extrapolation Model: Toop-Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 12:29:11 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Ti-Al
+k=Fe, i=Ti  : 0.0000
+k=Fe, j=Al  : 1.0000
+		 in Ti-Al
+
+# For Binary Sub-system: Fe-Al
+i=Ti, k=Fe  : 0.5000
+i=Ti, j=Al  : 0.5000
+		 in Fe-Al
+
+# For Binary Sub-system: Fe-Ti
+j=Al, i=Ti  : 0.0000
+j=Al, k=Fe  : 1.0000
+		 in Fe-Ti

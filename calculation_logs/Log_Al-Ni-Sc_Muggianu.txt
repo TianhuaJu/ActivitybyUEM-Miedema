@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Al-Ni-Sc
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 19:05:04 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Al-Sc
+k=Ni, i=Al  : 0.5000
+k=Ni, j=Sc  : 0.5000
+		 in Al-Sc
+
+# For Binary Sub-system: Ni-Sc
+i=Al, k=Ni  : 0.5000
+i=Al, j=Sc  : 0.5000
+		 in Ni-Sc
+
+# For Binary Sub-system: Ni-Al
+j=Sc, i=Al  : 0.5000
+j=Sc, k=Ni  : 0.5000
+		 in Ni-Al

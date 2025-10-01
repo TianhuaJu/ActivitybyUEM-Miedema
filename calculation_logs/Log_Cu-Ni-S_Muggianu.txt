@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Cu-Ni-S
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 16:48:09 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: S-Cu
+k=Ni, i=S   : 0.5000
+k=Ni, j=Cu  : 0.5000
+		 in S-Cu
+
+# For Binary Sub-system: Ni-Cu
+i=S, k=Ni   : 0.5000
+i=S, j=Cu   : 0.5000
+		 in Ni-Cu
+
+# For Binary Sub-system: Ni-S
+j=Cu, i=S   : 0.5000
+j=Cu, k=Ni  : 0.5000
+		 in Ni-S

@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ni-O-S
+Extrapolation Model: UEM2_Adv 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 17:44:00 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: S-O
+k=Ni, i=S   : 0.3097
+k=Ni, j=O   : 0.1648
+		 in S-O
+
+# For Binary Sub-system: Ni-O
+i=S, k=Ni   : 0.3415
+i=S, j=O    : 0.1076
+		 in Ni-O
+
+# For Binary Sub-system: Ni-S
+j=O, i=S    : 0.1023
+j=O, k=Ni   : 0.1834
+		 in Ni-S

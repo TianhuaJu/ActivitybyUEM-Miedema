@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ni-O-S
+Extrapolation Model: Toop-Kohler 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 17:43:52 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: S-O
+k=Ni, i=S   : 1.0000
+k=Ni, j=O   : 0.0000
+		 in S-O
+
+# For Binary Sub-system: Ni-O
+i=S, k=Ni   : 1.0000
+i=S, j=O    : 0.0000
+		 in Ni-O
+
+# For Binary Sub-system: Ni-S
+j=O, i=S    : 0.0000
+j=O, k=Ni   : 0.0000
+		 in Ni-S

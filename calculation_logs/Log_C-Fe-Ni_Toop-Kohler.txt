@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Fe-Ni
+Extrapolation Model: Toop-Kohler 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 08:28:23 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Fe
+k=Ni, i=C   : 0.0000
+k=Ni, j=Fe  : 1.0000
+		 in C-Fe
+
+# For Binary Sub-system: Ni-Fe
+i=C, k=Ni   : 0.0000
+i=C, j=Fe   : 0.0000
+		 in Ni-Fe
+
+# For Binary Sub-system: Ni-C
+j=Fe, i=C   : 0.0000
+j=Fe, k=Ni  : 1.0000
+		 in Ni-C

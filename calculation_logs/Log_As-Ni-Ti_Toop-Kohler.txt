@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: As-Ni-Ti
+Extrapolation Model: Toop-Kohler 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 19:15:36 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: As-Ti
+k=Ni, i=As  : 0.0000
+k=Ni, j=Ti  : 1.0000
+		 in As-Ti
+
+# For Binary Sub-system: Ni-Ti
+i=As, k=Ni  : 0.0000
+i=As, j=Ti  : 0.0000
+		 in Ni-Ti
+
+# For Binary Sub-system: Ni-As
+j=Ti, i=As  : 0.0000
+j=Ti, k=Ni  : 1.0000
+		 in Ni-As

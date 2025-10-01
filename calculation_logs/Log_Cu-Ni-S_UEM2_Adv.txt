@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Cu-Ni-S
+Extrapolation Model: UEM2_Adv 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 08:47:53 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: S-Cu
+k=Ni, i=S   : 0.0000
+k=Ni, j=Cu  : 1.0000
+		 in S-Cu
+
+# For Binary Sub-system: Ni-Cu
+i=S, k=Ni   : 0.1319
+i=S, j=Cu   : 0.1447
+		 in Ni-Cu
+
+# For Binary Sub-system: Ni-S
+j=Cu, i=S   : 0.0000
+j=Cu, k=Ni  : 1.0000
+		 in Ni-S

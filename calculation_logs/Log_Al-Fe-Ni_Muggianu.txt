@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Al-Fe-Ni
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 12:11:46 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Fe-Al
+k=Ni, i=Fe  : 0.5000
+k=Ni, j=Al  : 0.5000
+		 in Fe-Al
+
+# For Binary Sub-system: Ni-Al
+i=Fe, k=Ni  : 0.5000
+i=Fe, j=Al  : 0.5000
+		 in Ni-Al
+
+# For Binary Sub-system: Ni-Fe
+j=Al, i=Fe  : 0.5000
+j=Al, k=Ni  : 0.5000
+		 in Ni-Fe

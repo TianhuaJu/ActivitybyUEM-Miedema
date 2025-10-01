@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Ni-Ti
+Extrapolation Model: UEM2_Adv 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 08:25:17 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Ti
+k=Ni, i=C   : 1.0000
+k=Ni, j=Ti  : 0.0000
+		 in C-Ti
+
+# For Binary Sub-system: Ni-Ti
+i=C, k=Ni   : 1.0000
+i=C, j=Ti   : 0.0000
+		 in Ni-Ti
+
+# For Binary Sub-system: Ni-C
+j=Ti, i=C   : 0.1997
+j=Ti, k=Ni  : 0.3784
+		 in Ni-C

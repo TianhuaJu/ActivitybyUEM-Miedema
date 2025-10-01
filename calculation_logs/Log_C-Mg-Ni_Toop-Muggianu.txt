@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Mg-Ni
+Extrapolation Model: Toop-Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 19:03:58 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Mg
+k=Ni, i=C   : 0.0000
+k=Ni, j=Mg  : 1.0000
+		 in C-Mg
+
+# For Binary Sub-system: Ni-Mg
+i=C, k=Ni   : 0.5000
+i=C, j=Mg   : 0.5000
+		 in Ni-Mg
+
+# For Binary Sub-system: Ni-C
+j=Mg, i=C   : 0.0000
+j=Mg, k=Ni  : 1.0000
+		 in Ni-C

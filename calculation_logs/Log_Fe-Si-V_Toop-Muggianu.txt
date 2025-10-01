@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Fe-Si-V
+Extrapolation Model: Toop-Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 12:27:42 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1833.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: V-Si
+k=Fe, i=V   : 1.0000
+k=Fe, j=Si  : 0.0000
+		 in V-Si
+
+# For Binary Sub-system: Fe-Si
+i=V, k=Fe   : 1.0000
+i=V, j=Si   : 0.0000
+		 in Fe-Si
+
+# For Binary Sub-system: Fe-V
+j=Si, i=V   : 0.5000
+j=Si, k=Fe  : 0.5000
+		 in Fe-V

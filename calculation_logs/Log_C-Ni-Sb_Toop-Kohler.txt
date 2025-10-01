@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Ni-Sb
+Extrapolation Model: Toop-Kohler 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 21:17:07 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Sb
+k=Ni, i=C   : 0.0000
+k=Ni, j=Sb  : 1.0000
+		 in C-Sb
+
+# For Binary Sub-system: Ni-Sb
+i=C, k=Ni   : 0.0000
+i=C, j=Sb   : 0.0000
+		 in Ni-Sb
+
+# For Binary Sub-system: Ni-C
+j=Sb, i=C   : 0.0000
+j=Sb, k=Ni  : 1.0000
+		 in Ni-C

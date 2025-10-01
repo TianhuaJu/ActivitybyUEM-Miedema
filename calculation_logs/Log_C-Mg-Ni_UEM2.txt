@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Mg-Ni
+Extrapolation Model: UEM2 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 19:03:37 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Mg
+k=Ni, i=C   : 0.0321
+k=Ni, j=Mg  : 0.7483
+		 in C-Mg
+
+# For Binary Sub-system: Ni-Mg
+i=C, k=Ni   : 0.1342
+i=C, j=Mg   : 0.1572
+		 in Ni-Mg
+
+# For Binary Sub-system: Ni-C
+j=Mg, i=C   : 0.0374
+j=Mg, k=Ni  : 0.7420
+		 in Ni-C

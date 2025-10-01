@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Al-Cu-Mn
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 10:37:24 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 805.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Cu-Mn
+k=Al, i=Cu  : 0.5000
+k=Al, j=Mn  : 0.5000
+		 in Cu-Mn
+
+# For Binary Sub-system: Al-Mn
+i=Cu, k=Al  : 0.5000
+i=Cu, j=Mn  : 0.5000
+		 in Al-Mn
+
+# For Binary Sub-system: Al-Cu
+j=Mn, i=Cu  : 0.5000
+j=Mn, k=Al  : 0.5000
+		 in Al-Cu

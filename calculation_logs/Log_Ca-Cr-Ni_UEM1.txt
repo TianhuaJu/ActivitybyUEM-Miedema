@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ca-Cr-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 21:18:48 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Ca-Cr
+k=Ni, i=Ca  : 0.0028
+k=Ni, j=Cr  : 0.9608
+		 in Ca-Cr
+
+# For Binary Sub-system: Ni-Cr
+i=Ca, k=Ni  : 0.1433
+i=Ca, j=Cr  : 0.0012
+		 in Ni-Cr
+
+# For Binary Sub-system: Ni-Ca
+j=Cr, i=Ca  : 0.0000
+j=Cr, k=Ni  : 0.9707
+		 in Ni-Ca

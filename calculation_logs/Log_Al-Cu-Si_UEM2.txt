@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Al-Cu-Si
+Extrapolation Model: UEM2 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 10:37:12 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 805.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Si-Cu
+k=Al, i=Si  : 0.7579
+k=Al, j=Cu  : 0.0844
+		 in Si-Cu
+
+# For Binary Sub-system: Al-Cu
+i=Si, k=Al  : 0.7417
+i=Si, j=Cu  : 0.1017
+		 in Al-Cu
+
+# For Binary Sub-system: Al-Si
+j=Cu, i=Si  : 0.3148
+j=Cu, k=Al  : 0.2557
+		 in Al-Si

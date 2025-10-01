@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Al-Cu-Mn
+Extrapolation Model: GSM 模型
+============================================================
+
+# --- Calculation Record: 2025-09-30 10:37:18 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 805.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Cu-Mn
+k=Al, i=Cu  : 0.1966
+k=Al, j=Mn  : 0.8034
+		 in Cu-Mn
+
+# For Binary Sub-system: Al-Mn
+i=Cu, k=Al  : 0.2035
+i=Cu, j=Mn  : 0.7965
+		 in Al-Mn
+
+# For Binary Sub-system: Al-Cu
+j=Mn, i=Cu  : 0.4892
+j=Mn, k=Al  : 0.5108
+		 in Al-Cu

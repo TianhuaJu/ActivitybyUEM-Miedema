@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ce-N-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-09-29 21:23:43 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: N-Ce
+k=Ni, i=N   : 0.0000
+k=Ni, j=Ce  : 0.0055
+		 in N-Ce
+
+# For Binary Sub-system: Ni-Ce
+i=N, k=Ni   : 0.0000
+i=N, j=Ce   : 0.0000
+		 in Ni-Ce
+
+# For Binary Sub-system: Ni-N
+j=Ce, i=N   : 0.0000
+j=Ce, k=Ni  : 0.0059
+		 in Ni-N
