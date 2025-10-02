@@ -1,5 +1,5 @@
 Contribution Coefficient Log for Alloy System: Ni-S-Si
-Extrapolation Model: UEM1 模型
+Extrapolation Model: UEM2 模型
 ============================================================
 
 # --- Calculation Record: 2025-10-01 11:11:30 ---
@@ -8,16 +8,16 @@ Extrapolation Model: UEM1 模型
 #--------------------------------------------------
 
 # For Binary Sub-system: S-Si
-k=Ni, i=S   : 0.0506
-k=Ni, j=Si  : 0.3029
+k=Ni, i=S   : 0.1836
+k=Ni, j=Si  : 0.1835
 		 in S-Si
 
 # For Binary Sub-system: Ni-Si
-i=S, k=Ni   : 0.0001
-i=S, j=Si   : 0.9988
+i=S, k=Ni   : 0.0097
+i=S, j=Si   : 0.9476
 		 in Ni-Si
 
 # For Binary Sub-system: Ni-S
-j=Si, i=S   : 0.9983
-j=Si, k=Ni  : 0.0004
+j=Si, i=S   : 0.9476
+j=Si, k=Ni  : 0.0097
 		 in Ni-S

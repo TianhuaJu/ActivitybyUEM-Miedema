@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Fe-Ge-S
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-01 11:09:21 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: S-Ge
+k=Fe, i=S   : 0.0195
+k=Fe, j=Ge  : 0.7738
+		 in S-Ge
+
+# For Binary Sub-system: Fe-Ge
+i=S, k=Fe   : 0.0001
+i=S, j=Ge   : 0.9993
+		 in Fe-Ge
+
+# For Binary Sub-system: Fe-S
+j=Ge, i=S   : 0.9970
+j=Ge, k=Fe  : 0.0022
+		 in Fe-S

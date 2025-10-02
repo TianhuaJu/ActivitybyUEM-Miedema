@@ -1,23 +1,23 @@
-Contribution Coefficient Log for Alloy System: Cr-Ni-S
+Contribution Coefficient Log for Alloy System: Ni-S-Te
 Extrapolation Model: Muggianu 模型
 ============================================================
 
-# --- Calculation Record: 2025-10-01 11:10:23 ---
+# --- Calculation Record: 2025-10-01 11:03:29 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
-# For Binary Sub-system: S-Cr
+# For Binary Sub-system: S-Te
 k=Ni, i=S   : 0.5000
-k=Ni, j=Cr  : 0.5000
-		 in S-Cr
+k=Ni, j=Te  : 0.5000
+		 in S-Te
 
-# For Binary Sub-system: Ni-Cr
+# For Binary Sub-system: Ni-Te
 i=S, k=Ni   : 0.5000
-i=S, j=Cr   : 0.5000
-		 in Ni-Cr
+i=S, j=Te   : 0.5000
+		 in Ni-Te
 
 # For Binary Sub-system: Ni-S
-j=Cr, i=S   : 0.5000
-j=Cr, k=Ni  : 0.5000
+j=Te, i=S   : 0.5000
+j=Te, k=Ni  : 0.5000
 		 in Ni-S
