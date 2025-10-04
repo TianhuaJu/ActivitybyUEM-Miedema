@@ -1,23 +1,23 @@
-Contribution Coefficient Log for Alloy System: Ni-O-S
+Contribution Coefficient Log for Alloy System: Fe-O-S
 Extrapolation Model: Muggianu 模型
 ============================================================
 
-# --- Calculation Record: 2025-10-04 23:16:34 ---
+# --- Calculation Record: 2025-10-04 23:16:42 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
 # For Binary Sub-system: S-O
-k=Ni, i=S   : 0.5000
-k=Ni, j=O   : 0.5000
+k=Fe, i=S   : 0.5000
+k=Fe, j=O   : 0.5000
 		 in S-O
 
-# For Binary Sub-system: Ni-O
-i=S, k=Ni   : 0.5000
+# For Binary Sub-system: Fe-O
+i=S, k=Fe   : 0.5000
 i=S, j=O    : 0.5000
-		 in Ni-O
+		 in Fe-O
 
-# For Binary Sub-system: Ni-S
+# For Binary Sub-system: Fe-S
 j=O, i=S    : 0.5000
-j=O, k=Ni   : 0.5000
-		 in Ni-S
+j=O, k=Fe   : 0.5000
+		 in Fe-S

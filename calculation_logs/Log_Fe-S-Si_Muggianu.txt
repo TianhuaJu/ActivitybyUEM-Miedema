@@ -1,23 +1,23 @@
-Contribution Coefficient Log for Alloy System: C-Fe-Si
+Contribution Coefficient Log for Alloy System: Fe-S-Si
 Extrapolation Model: Muggianu 模型
 ============================================================
 
-# --- Calculation Record: 2025-10-04 23:39:40 ---
+# --- Calculation Record: 2025-10-04 23:32:15 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
-# For Binary Sub-system: Si-C
+# For Binary Sub-system: Si-S
 k=Fe, i=Si  : 0.5000
-k=Fe, j=C   : 0.5000
-		 in Si-C
+k=Fe, j=S   : 0.5000
+		 in Si-S
 
-# For Binary Sub-system: Fe-C
+# For Binary Sub-system: Fe-S
 i=Si, k=Fe  : 0.5000
-i=Si, j=C   : 0.5000
-		 in Fe-C
+i=Si, j=S   : 0.5000
+		 in Fe-S
 
 # For Binary Sub-system: Fe-Si
-j=C, i=Si   : 0.5000
-j=C, k=Fe   : 0.5000
+j=S, i=Si   : 0.5000
+j=S, k=Fe   : 0.5000
 		 in Fe-Si
