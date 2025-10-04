@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ag-C-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 14:59:38 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Ag
+k=Ni, i=C   : 0.0000
+k=Ni, j=Ag  : 0.5037
+		 in C-Ag
+
+# For Binary Sub-system: Ni-Ag
+i=C, k=Ni   : 0.0000
+i=C, j=Ag   : 0.0000
+		 in Ni-Ag
+
+# For Binary Sub-system: Ni-C
+j=Ag, i=C   : 0.0000
+j=Ag, k=Ni  : 0.5047
+		 in Ni-C

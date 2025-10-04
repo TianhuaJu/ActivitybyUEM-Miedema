@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Ni-Se
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 14:47:33 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Se
+k=Ni, i=C   : 0.5000
+k=Ni, j=Se  : 0.5000
+		 in C-Se
+
+# For Binary Sub-system: Ni-Se
+i=C, k=Ni   : 0.5000
+i=C, j=Se   : 0.5000
+		 in Ni-Se
+
+# For Binary Sub-system: Ni-C
+j=Se, i=C   : 0.5000
+j=Se, k=Ni  : 0.5000
+		 in Ni-C

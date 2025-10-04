@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Ni-V
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 14:44:50 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-V
+k=Ni, i=C   : 0.0000
+k=Ni, j=V   : 0.6493
+		 in C-V
+
+# For Binary Sub-system: Ni-V
+i=C, k=Ni   : 0.0000
+i=C, j=V    : 0.0000
+		 in Ni-V
+
+# For Binary Sub-system: Ni-C
+j=V, i=C    : 0.0000
+j=V, k=Ni   : 0.6536
+		 in Ni-C

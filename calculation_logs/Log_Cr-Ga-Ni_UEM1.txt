@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Cr-Ga-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 15:12:15 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Cr-Ga
+k=Ni, i=Cr  : 0.9549
+k=Ni, j=Ga  : 0.0064
+		 in Cr-Ga
+
+# For Binary Sub-system: Ni-Ga
+i=Cr, k=Ni  : 0.6178
+i=Cr, j=Ga  : 0.3510
+		 in Ni-Ga
+
+# For Binary Sub-system: Ni-Cr
+j=Ga, i=Cr  : 0.9237
+j=Ga, k=Ni  : 0.0109
+		 in Ni-Cr

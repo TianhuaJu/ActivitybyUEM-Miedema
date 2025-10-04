@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Cr-Ni-Zn
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 15:11:57 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Cr-Zn
+k=Ni, i=Cr  : 0.8288
+k=Ni, j=Zn  : 0.1304
+		 in Cr-Zn
+
+# For Binary Sub-system: Ni-Zn
+i=Cr, k=Ni  : 0.7738
+i=Cr, j=Zn  : 0.1876
+		 in Ni-Zn
+
+# For Binary Sub-system: Ni-Cr
+j=Zn, i=Cr  : 0.5410
+j=Zn, k=Ni  : 0.3509
+		 in Ni-Cr

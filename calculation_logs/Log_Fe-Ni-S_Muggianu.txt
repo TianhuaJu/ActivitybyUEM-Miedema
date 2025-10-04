@@ -2,7 +2,7 @@ Contribution Coefficient Log for Alloy System: Fe-Ni-S
 Extrapolation Model: Muggianu 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-30 16:48:24 ---
+# --- Calculation Record: 2025-10-03 18:44:01 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------

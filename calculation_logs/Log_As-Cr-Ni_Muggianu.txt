@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: As-Cr-Ni
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 22:42:47 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Cr-As
+k=Ni, i=Cr  : 0.5000
+k=Ni, j=As  : 0.5000
+		 in Cr-As
+
+# For Binary Sub-system: Ni-As
+i=Cr, k=Ni  : 0.5000
+i=Cr, j=As  : 0.5000
+		 in Ni-As
+
+# For Binary Sub-system: Ni-Cr
+j=As, i=Cr  : 0.5000
+j=As, k=Ni  : 0.5000
+		 in Ni-Cr

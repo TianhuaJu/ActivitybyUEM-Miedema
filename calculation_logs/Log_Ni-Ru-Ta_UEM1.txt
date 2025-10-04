@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ni-Ru-Ta
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 11:30:25 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1000.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Ru-Ta
+k=Ni, i=Ru  : 0.9437
+k=Ni, j=Ta  : 0.0027
+		 in Ru-Ta
+
+# For Binary Sub-system: Ni-Ta
+i=Ru, k=Ni  : 0.9174
+i=Ru, j=Ta  : 0.0212
+		 in Ni-Ta
+
+# For Binary Sub-system: Ni-Ru
+j=Ta, i=Ru  : 0.3246
+j=Ta, k=Ni  : 0.0399
+		 in Ni-Ru

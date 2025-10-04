@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: N-Ni-W
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-04 00:14:45 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1823.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: N-W
+k=Ni, i=N   : 0.0000
+k=Ni, j=W   : 0.7810
+		 in N-W
+
+# For Binary Sub-system: Ni-W
+i=N, k=Ni   : 0.0000
+i=N, j=W    : 0.0000
+		 in Ni-W
+
+# For Binary Sub-system: Ni-N
+j=W, i=N    : 0.0000
+j=W, k=Ni   : 0.7820
+		 in Ni-N

@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Ni-Sc
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 14:44:16 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Sc
+k=Ni, i=C   : 0.5000
+k=Ni, j=Sc  : 0.5000
+		 in C-Sc
+
+# For Binary Sub-system: Ni-Sc
+i=C, k=Ni   : 0.5000
+i=C, j=Sc   : 0.5000
+		 in Ni-Sc
+
+# For Binary Sub-system: Ni-C
+j=Sc, i=C   : 0.5000
+j=Sc, k=Ni  : 0.5000
+		 in Ni-C

@@ -2,22 +2,22 @@ Contribution Coefficient Log for Alloy System: Ca-Cr-Ni
 Extrapolation Model: Muggianu 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-29 21:18:48 ---
+# --- Calculation Record: 2025-10-03 22:42:41 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
-# For Binary Sub-system: Ca-Cr
-k=Ni, i=Ca  : 0.5000
-k=Ni, j=Cr  : 0.5000
-		 in Ca-Cr
-
-# For Binary Sub-system: Ni-Cr
-i=Ca, k=Ni  : 0.5000
-i=Ca, j=Cr  : 0.5000
-		 in Ni-Cr
+# For Binary Sub-system: Cr-Ca
+k=Ni, i=Cr  : 0.5000
+k=Ni, j=Ca  : 0.5000
+		 in Cr-Ca
 
 # For Binary Sub-system: Ni-Ca
-j=Cr, i=Ca  : 0.5000
-j=Cr, k=Ni  : 0.5000
+i=Cr, k=Ni  : 0.5000
+i=Cr, j=Ca  : 0.5000
 		 in Ni-Ca
+
+# For Binary Sub-system: Ni-Cr
+j=Ca, i=Cr  : 0.5000
+j=Ca, k=Ni  : 0.5000
+		 in Ni-Cr

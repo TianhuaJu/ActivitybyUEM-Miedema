@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Au-Ni-O
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 14:17:17 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1823.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: O-Au
+k=Ni, i=O   : 0.0384
+k=Ni, j=Au  : 0.4732
+		 in O-Au
+
+# For Binary Sub-system: Ni-Au
+i=O, k=Ni   : 0.1292
+i=O, j=Au   : 0.0015
+		 in Ni-Au
+
+# For Binary Sub-system: Ni-O
+j=Au, i=O   : 0.0005
+j=Au, k=Ni  : 0.5538
+		 in Ni-O

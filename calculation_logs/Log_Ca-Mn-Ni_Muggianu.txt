@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ca-Mn-Ni
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 14:11:02 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Ca-Mn
+k=Ni, i=Ca  : 0.5000
+k=Ni, j=Mn  : 0.5000
+		 in Ca-Mn
+
+# For Binary Sub-system: Ni-Mn
+i=Ca, k=Ni  : 0.5000
+i=Ca, j=Mn  : 0.5000
+		 in Ni-Mn
+
+# For Binary Sub-system: Ni-Ca
+j=Mn, i=Ca  : 0.5000
+j=Mn, k=Ni  : 0.5000
+		 in Ni-Ca

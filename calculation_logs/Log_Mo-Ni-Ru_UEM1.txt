@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Mo-Ni-Ru
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 01:52:46 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Ru-Mo
+k=Ni, i=Ru  : 0.8838
+k=Ni, j=Mo  : 0.0527
+		 in Ru-Mo
+
+# For Binary Sub-system: Ni-Mo
+i=Ru, k=Ni  : 0.7235
+i=Ru, j=Mo  : 0.2207
+		 in Ni-Mo
+
+# For Binary Sub-system: Ni-Ru
+j=Mo, i=Ru  : 0.7013
+j=Mo, k=Ni  : 0.1371
+		 in Ni-Ru

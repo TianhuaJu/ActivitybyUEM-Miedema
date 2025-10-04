@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ca-H-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 15:19:50 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: H-Ca
+k=Ni, i=H   : 0.0000
+k=Ni, j=Ca  : 0.1641
+		 in H-Ca
+
+# For Binary Sub-system: Ni-Ca
+i=H, k=Ni   : 0.0000
+i=H, j=Ca   : 0.0000
+		 in Ni-Ca
+
+# For Binary Sub-system: Ni-H
+j=Ca, i=H   : 0.0000
+j=Ca, k=Ni  : 0.1771
+		 in Ni-H

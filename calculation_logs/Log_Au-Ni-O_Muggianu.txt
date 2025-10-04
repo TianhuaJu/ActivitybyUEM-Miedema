@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Au-Ni-O
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 14:17:17 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1823.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: O-Au
+k=Ni, i=O   : 0.5000
+k=Ni, j=Au  : 0.5000
+		 in O-Au
+
+# For Binary Sub-system: Ni-Au
+i=O, k=Ni   : 0.5000
+i=O, j=Au   : 0.5000
+		 in Ni-Au
+
+# For Binary Sub-system: Ni-O
+j=Au, i=O   : 0.5000
+j=Au, k=Ni  : 0.5000
+		 in Ni-O

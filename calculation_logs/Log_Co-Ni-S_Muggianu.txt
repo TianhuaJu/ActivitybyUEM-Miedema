@@ -2,9 +2,9 @@ Contribution Coefficient Log for Alloy System: Co-Ni-S
 Extrapolation Model: Muggianu 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-30 16:45:27 ---
+# --- Calculation Record: 2025-10-03 18:43:26 ---
 # Calculation Type: Fixed Point
-# Parameter 'temperature': 1813.00K
+# Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
 # For Binary Sub-system: S-Co

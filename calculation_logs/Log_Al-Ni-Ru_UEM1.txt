@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Al-Ni-Ru
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 01:54:55 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Ru-Al
+k=Ni, i=Ru  : 0.9267
+k=Ni, j=Al  : 0.0135
+		 in Ru-Al
+
+# For Binary Sub-system: Ni-Al
+i=Ru, k=Ni  : 0.1288
+i=Ru, j=Al  : 0.8610
+		 in Ni-Al
+
+# For Binary Sub-system: Ni-Ru
+j=Al, i=Ru  : 0.9882
+j=Al, k=Ni  : 0.0022
+		 in Ni-Ru
