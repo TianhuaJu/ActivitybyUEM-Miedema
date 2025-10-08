@@ -1,23 +1,23 @@
-Contribution Coefficient Log for Alloy System: Ni-Si-Zr
+Contribution Coefficient Log for Alloy System: Ni-Pb-Si
 Extrapolation Model: Toop-Kohler 模型
 ============================================================
 
-# --- Calculation Record: 2025-10-02 11:39:30 ---
+# --- Calculation Record: 2025-10-02 10:43:29 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
-# For Binary Sub-system: Zr-Si
-k=Ni, i=Zr  : 0.0000
+# For Binary Sub-system: Pb-Si
+k=Ni, i=Pb  : 0.0000
 k=Ni, j=Si  : 1.0000
-		 in Zr-Si
+		 in Pb-Si
 
 # For Binary Sub-system: Ni-Si
-i=Zr, k=Ni  : 0.0000
-i=Zr, j=Si  : 0.0000
+i=Pb, k=Ni  : 0.0000
+i=Pb, j=Si  : 0.0000
 		 in Ni-Si
 
-# For Binary Sub-system: Ni-Zr
-j=Si, i=Zr  : 0.0000
+# For Binary Sub-system: Ni-Pb
+j=Si, i=Pb  : 0.0000
 j=Si, k=Ni  : 1.0000
-		 in Ni-Zr
+		 in Ni-Pb

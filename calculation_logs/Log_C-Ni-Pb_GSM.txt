@@ -1,5 +1,5 @@
 Contribution Coefficient Log for Alloy System: C-Ni-Pb
-Extrapolation Model: UEM1 模型
+Extrapolation Model: GSM 模型
 ============================================================
 
 # --- Calculation Record: 2025-10-02 10:45:31 ---
@@ -8,16 +8,16 @@ Extrapolation Model: UEM1 模型
 #--------------------------------------------------
 
 # For Binary Sub-system: Pb-C
-k=Ni, i=Pb  : 0.1780
-k=Ni, j=C   : 0.0000
+k=Ni, i=Pb  : 0.8850
+k=Ni, j=C   : 0.1150
 		 in Pb-C
 
 # For Binary Sub-system: Ni-C
-i=Pb, k=Ni  : 0.1778
-i=Pb, j=C   : 0.0000
+i=Pb, k=Ni  : 0.8309
+i=Pb, j=C   : 0.1691
 		 in Ni-C
 
 # For Binary Sub-system: Ni-Pb
-j=C, i=Pb   : 0.0000
-j=C, k=Ni   : 0.0000
+j=C, i=Pb   : 0.6103
+j=C, k=Ni   : 0.3897
 		 in Ni-Pb

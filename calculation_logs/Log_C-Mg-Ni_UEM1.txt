@@ -2,7 +2,7 @@ Contribution Coefficient Log for Alloy System: C-Mg-Ni
 Extrapolation Model: UEM1 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-29 19:03:58 ---
+# --- Calculation Record: 2025-10-02 11:32:42 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------

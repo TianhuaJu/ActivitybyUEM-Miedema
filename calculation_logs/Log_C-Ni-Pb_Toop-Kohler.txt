@@ -1,19 +1,19 @@
 Contribution Coefficient Log for Alloy System: C-Ni-Pb
-Extrapolation Model: UEM1 模型
+Extrapolation Model: Toop-Kohler 模型
 ============================================================
 
-# --- Calculation Record: 2025-10-02 10:45:31 ---
+# --- Calculation Record: 2025-10-02 10:43:44 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
 # For Binary Sub-system: Pb-C
-k=Ni, i=Pb  : 0.1780
+k=Ni, i=Pb  : 1.0000
 k=Ni, j=C   : 0.0000
 		 in Pb-C
 
 # For Binary Sub-system: Ni-C
-i=Pb, k=Ni  : 0.1778
+i=Pb, k=Ni  : 1.0000
 i=Pb, j=C   : 0.0000
 		 in Ni-C
 

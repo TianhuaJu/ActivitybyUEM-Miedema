@@ -1,23 +1,23 @@
-Contribution Coefficient Log for Alloy System: C-Ni-Pb
+Contribution Coefficient Log for Alloy System: Fe-Ni-Pb
 Extrapolation Model: Muggianu 模型
 ============================================================
 
-# --- Calculation Record: 2025-10-02 10:43:13 ---
+# --- Calculation Record: 2025-10-02 10:42:39 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
-# For Binary Sub-system: Pb-C
+# For Binary Sub-system: Pb-Fe
 k=Ni, i=Pb  : 0.5000
-k=Ni, j=C   : 0.5000
-		 in Pb-C
+k=Ni, j=Fe  : 0.5000
+		 in Pb-Fe
 
-# For Binary Sub-system: Ni-C
+# For Binary Sub-system: Ni-Fe
 i=Pb, k=Ni  : 0.5000
-i=Pb, j=C   : 0.5000
-		 in Ni-C
+i=Pb, j=Fe  : 0.5000
+		 in Ni-Fe
 
 # For Binary Sub-system: Ni-Pb
-j=C, i=Pb   : 0.5000
-j=C, k=Ni   : 0.5000
+j=Fe, i=Pb  : 0.5000
+j=Fe, k=Ni  : 0.5000
 		 in Ni-Pb

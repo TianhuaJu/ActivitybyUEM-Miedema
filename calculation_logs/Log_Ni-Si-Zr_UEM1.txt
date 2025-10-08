@@ -2,22 +2,22 @@ Contribution Coefficient Log for Alloy System: Ni-Si-Zr
 Extrapolation Model: UEM1 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-29 19:16:46 ---
+# --- Calculation Record: 2025-10-02 11:39:30 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
-# For Binary Sub-system: Si-Zr
-k=Ni, i=Si  : 0.3816
-k=Ni, j=Zr  : 0.0006
-		 in Si-Zr
-
-# For Binary Sub-system: Ni-Zr
-i=Si, k=Ni  : 0.3641
-i=Si, j=Zr  : 0.0033
-		 in Ni-Zr
+# For Binary Sub-system: Zr-Si
+k=Ni, i=Zr  : 0.0006
+k=Ni, j=Si  : 0.3816
+		 in Zr-Si
 
 # For Binary Sub-system: Ni-Si
-j=Zr, i=Si  : 0.0111
-j=Zr, k=Ni  : 0.0020
+i=Zr, k=Ni  : 0.0020
+i=Zr, j=Si  : 0.0111
 		 in Ni-Si
+
+# For Binary Sub-system: Ni-Zr
+j=Si, i=Zr  : 0.0033
+j=Si, k=Ni  : 0.3641
+		 in Ni-Zr
