@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Co-H-Ni
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-04 00:28:53 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: H-Co
+k=Ni, i=H   : 0.5000
+k=Ni, j=Co  : 0.5000
+		 in H-Co
+
+# For Binary Sub-system: Ni-Co
+i=H, k=Ni   : 0.5000
+i=H, j=Co   : 0.5000
+		 in Ni-Co
+
+# For Binary Sub-system: Ni-H
+j=Co, i=H   : 0.5000
+j=Co, k=Ni  : 0.5000
+		 in Ni-H

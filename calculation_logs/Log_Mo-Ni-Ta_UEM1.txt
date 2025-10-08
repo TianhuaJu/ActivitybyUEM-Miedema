@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Mo-Ni-Ta
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 11:31:27 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1000.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Mo-Ta
+k=Ni, i=Mo  : 0.5303
+k=Ni, j=Ta  : 0.0252
+		 in Mo-Ta
+
+# For Binary Sub-system: Ni-Ta
+i=Mo, k=Ni  : 0.0770
+i=Mo, j=Ta  : 0.8308
+		 in Ni-Ta
+
+# For Binary Sub-system: Ni-Mo
+j=Ta, i=Mo  : 0.9157
+j=Ta, k=Ni  : 0.0040
+		 in Ni-Mo

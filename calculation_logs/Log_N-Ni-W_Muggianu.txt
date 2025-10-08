@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: N-Ni-W
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-04 00:14:45 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1823.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: N-W
+k=Ni, i=N   : 0.5000
+k=Ni, j=W   : 0.5000
+		 in N-W
+
+# For Binary Sub-system: Ni-W
+i=N, k=Ni   : 0.5000
+i=N, j=W    : 0.5000
+		 in Ni-W
+
+# For Binary Sub-system: Ni-N
+j=W, i=N    : 0.5000
+j=W, k=Ni   : 0.5000
+		 in Ni-N

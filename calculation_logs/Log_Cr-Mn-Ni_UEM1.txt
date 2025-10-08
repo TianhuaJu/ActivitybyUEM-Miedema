@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Cr-Mn-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 23:04:16 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Cr-Mn
+k=Ni, i=Cr  : 0.3935
+k=Ni, j=Mn  : 0.5865
+		 in Cr-Mn
+
+# For Binary Sub-system: Ni-Mn
+i=Cr, k=Ni  : 0.1020
+i=Cr, j=Mn  : 0.8928
+		 in Ni-Mn
+
+# For Binary Sub-system: Ni-Cr
+j=Mn, i=Cr  : 0.8503
+j=Mn, k=Ni  : 0.1447
+		 in Ni-Cr

@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Co-N-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 01:39:07 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Co-N
+k=Ni, i=Co  : 0.9994
+k=Ni, j=N   : 0.0000
+		 in Co-N
+
+# For Binary Sub-system: Ni-N
+i=Co, k=Ni  : 0.9994
+i=Co, j=N   : 0.0000
+		 in Ni-N
+
+# For Binary Sub-system: Ni-Co
+j=N, i=Co   : 0.0000
+j=N, k=Ni   : 0.0000
+		 in Ni-Co

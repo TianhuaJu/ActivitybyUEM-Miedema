@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Cr-Ge-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 15:12:37 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Cr-Ge
+k=Ni, i=Cr  : 0.9414
+k=Ni, j=Ge  : 0.0173
+		 in Cr-Ge
+
+# For Binary Sub-system: Ni-Ge
+i=Cr, k=Ni  : 0.9042
+i=Cr, j=Ge  : 0.0530
+		 in Ni-Ge
+
+# For Binary Sub-system: Ni-Cr
+j=Ge, i=Cr  : 0.4988
+j=Ge, k=Ni  : 0.1566
+		 in Ni-Cr

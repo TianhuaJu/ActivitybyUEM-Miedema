@@ -2,7 +2,7 @@ Contribution Coefficient Log for Alloy System: Ce-N-Ni
 Extrapolation Model: Muggianu 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-29 21:23:22 ---
+# --- Calculation Record: 2025-10-03 23:53:58 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------

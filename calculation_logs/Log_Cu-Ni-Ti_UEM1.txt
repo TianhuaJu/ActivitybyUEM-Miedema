@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Cu-Ni-Ti
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 13:41:18 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Ti-Cu
+k=Ni, i=Ti  : 0.0011
+k=Ni, j=Cu  : 0.9764
+		 in Ti-Cu
+
+# For Binary Sub-system: Ni-Cu
+i=Ti, k=Ni  : 0.0259
+i=Ti, j=Cu  : 0.5187
+		 in Ni-Cu
+
+# For Binary Sub-system: Ni-Ti
+j=Cu, i=Ti  : 0.0217
+j=Cu, k=Ni  : 0.9508
+		 in Ni-Ti

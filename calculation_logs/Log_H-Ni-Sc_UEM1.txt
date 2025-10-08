@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: H-Ni-Sc
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 15:20:05 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: H-Sc
+k=Ni, i=H   : 0.0000
+k=Ni, j=Sc  : 0.0149
+		 in H-Sc
+
+# For Binary Sub-system: Ni-Sc
+i=H, k=Ni   : 0.0000
+i=H, j=Sc   : 0.0000
+		 in Ni-Sc
+
+# For Binary Sub-system: Ni-H
+j=Sc, i=H   : 0.0000
+j=Sc, k=Ni  : 0.0174
+		 in Ni-H

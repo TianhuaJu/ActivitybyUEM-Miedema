@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Mg-Ni-O
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 23:53:30 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: O-Mg
+k=Ni, i=O   : 0.0233
+k=Ni, j=Mg  : 0.6592
+		 in O-Mg
+
+# For Binary Sub-system: Ni-Mg
+i=O, k=Ni   : 0.1380
+i=O, j=Mg   : 0.0002
+		 in Ni-Mg
+
+# For Binary Sub-system: Ni-O
+j=Mg, i=O   : 0.0000
+j=Mg, k=Ni  : 0.7324
+		 in Ni-O

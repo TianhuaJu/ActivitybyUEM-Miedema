@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Ga-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 14:46:55 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Ga
+k=Ni, i=C   : 0.0000
+k=Ni, j=Ga  : 0.2878
+		 in C-Ga
+
+# For Binary Sub-system: Ni-Ga
+i=C, k=Ni   : 0.0000
+i=C, j=Ga   : 0.0000
+		 in Ni-Ga
+
+# For Binary Sub-system: Ni-C
+j=Ga, i=C   : 0.0000
+j=Ga, k=Ni  : 0.2895
+		 in Ni-C

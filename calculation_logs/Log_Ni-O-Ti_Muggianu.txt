@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ni-O-Ti
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 23:53:15 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: O-Ti
+k=Ni, i=O   : 0.5000
+k=Ni, j=Ti  : 0.5000
+		 in O-Ti
+
+# For Binary Sub-system: Ni-Ti
+i=O, k=Ni   : 0.5000
+i=O, j=Ti   : 0.5000
+		 in Ni-Ti
+
+# For Binary Sub-system: Ni-O
+j=Ti, i=O   : 0.5000
+j=Ti, k=Ni  : 0.5000
+		 in Ni-O

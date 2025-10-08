@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: H-Mn-Ni
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 15:21:11 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: H-Mn
+k=Ni, i=H   : 0.5000
+k=Ni, j=Mn  : 0.5000
+		 in H-Mn
+
+# For Binary Sub-system: Ni-Mn
+i=H, k=Ni   : 0.5000
+i=H, j=Mn   : 0.5000
+		 in Ni-Mn
+
+# For Binary Sub-system: Ni-H
+j=Mn, i=H   : 0.5000
+j=Mn, k=Ni  : 0.5000
+		 in Ni-H

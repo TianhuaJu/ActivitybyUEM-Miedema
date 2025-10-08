@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Cr-Ni-Se
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 15:13:28 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Cr-Se
+k=Ni, i=Cr  : 0.5000
+k=Ni, j=Se  : 0.5000
+		 in Cr-Se
+
+# For Binary Sub-system: Ni-Se
+i=Cr, k=Ni  : 0.5000
+i=Cr, j=Se  : 0.5000
+		 in Ni-Se
+
+# For Binary Sub-system: Ni-Cr
+j=Se, i=Cr  : 0.5000
+j=Se, k=Ni  : 0.5000
+		 in Ni-Cr

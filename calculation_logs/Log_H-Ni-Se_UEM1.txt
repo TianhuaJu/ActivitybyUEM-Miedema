@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: H-Ni-Se
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 15:23:06 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: H-Se
+k=Ni, i=H   : 0.0000
+k=Ni, j=Se  : 0.2474
+		 in H-Se
+
+# For Binary Sub-system: Ni-Se
+i=H, k=Ni   : 0.0000
+i=H, j=Se   : 0.0000
+		 in Ni-Se
+
+# For Binary Sub-system: Ni-H
+j=Se, i=H   : 0.0000
+j=Se, k=Ni  : 0.2500
+		 in Ni-H

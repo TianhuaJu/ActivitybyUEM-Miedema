@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Ni-Tc
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 14:58:39 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Tc
+k=Ni, i=C   : 0.0000
+k=Ni, j=Tc  : 0.9618
+		 in C-Tc
+
+# For Binary Sub-system: Ni-Tc
+i=C, k=Ni   : 0.0000
+i=C, j=Tc   : 0.0000
+		 in Ni-Tc
+
+# For Binary Sub-system: Ni-C
+j=Tc, i=C   : 0.0000
+j=Tc, k=Ni  : 0.9620
+		 in Ni-C

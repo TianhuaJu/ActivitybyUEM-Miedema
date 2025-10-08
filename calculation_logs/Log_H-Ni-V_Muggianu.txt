@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: H-Ni-V
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-04 00:28:48 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: H-V
+k=Ni, i=H   : 0.5000
+k=Ni, j=V   : 0.5000
+		 in H-V
+
+# For Binary Sub-system: Ni-V
+i=H, k=Ni   : 0.5000
+i=H, j=V    : 0.5000
+		 in Ni-V
+
+# For Binary Sub-system: Ni-H
+j=V, i=H    : 0.5000
+j=V, k=Ni   : 0.5000
+		 in Ni-H

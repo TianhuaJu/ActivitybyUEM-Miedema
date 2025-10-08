@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Cr-Ga-Ni
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 15:12:15 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Cr-Ga
+k=Ni, i=Cr  : 0.5000
+k=Ni, j=Ga  : 0.5000
+		 in Cr-Ga
+
+# For Binary Sub-system: Ni-Ga
+i=Cr, k=Ni  : 0.5000
+i=Cr, j=Ga  : 0.5000
+		 in Ni-Ga
+
+# For Binary Sub-system: Ni-Cr
+j=Ga, i=Cr  : 0.5000
+j=Ga, k=Ni  : 0.5000
+		 in Ni-Cr

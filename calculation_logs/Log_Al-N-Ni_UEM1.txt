@@ -2,9 +2,9 @@ Contribution Coefficient Log for Alloy System: Al-N-Ni
 Extrapolation Model: UEM1 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-30 12:10:32 ---
+# --- Calculation Record: 2025-10-04 00:16:25 ---
 # Calculation Type: Fixed Point
-# Parameter 'temperature': 1873.00K
+# Parameter 'temperature': 1823.00K
 #--------------------------------------------------
 
 # For Binary Sub-system: N-Al

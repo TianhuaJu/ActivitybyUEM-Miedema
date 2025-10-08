@@ -2,22 +2,22 @@ Contribution Coefficient Log for Alloy System: C-Ni-O
 Extrapolation Model: Muggianu 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-30 11:11:00 ---
+# --- Calculation Record: 2025-10-03 14:17:57 ---
 # Calculation Type: Fixed Point
-# Parameter 'temperature': 1873.00K
+# Parameter 'temperature': 2223.00K
 #--------------------------------------------------
 
-# For Binary Sub-system: C-O
-k=Ni, i=C   : 0.5000
-k=Ni, j=O   : 0.5000
-		 in C-O
-
-# For Binary Sub-system: Ni-O
-i=C, k=Ni   : 0.5000
-i=C, j=O    : 0.5000
-		 in Ni-O
+# For Binary Sub-system: O-C
+k=Ni, i=O   : 0.5000
+k=Ni, j=C   : 0.5000
+		 in O-C
 
 # For Binary Sub-system: Ni-C
-j=O, i=C    : 0.5000
-j=O, k=Ni   : 0.5000
+i=O, k=Ni   : 0.5000
+i=O, j=C    : 0.5000
 		 in Ni-C
+
+# For Binary Sub-system: Ni-O
+j=C, i=O    : 0.5000
+j=C, k=Ni   : 0.5000
+		 in Ni-O

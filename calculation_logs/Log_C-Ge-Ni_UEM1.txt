@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: C-Ge-Ni
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 14:47:09 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: C-Ge
+k=Ni, i=C   : 0.0000
+k=Ni, j=Ge  : 0.4786
+		 in C-Ge
+
+# For Binary Sub-system: Ni-Ge
+i=C, k=Ni   : 0.0000
+i=C, j=Ge   : 0.0000
+		 in Ni-Ge
+
+# For Binary Sub-system: Ni-C
+j=Ge, i=C   : 0.0000
+j=Ge, k=Ni  : 0.4773
+		 in Ni-C

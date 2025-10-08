@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ca-Fe-O
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-04 23:19:25 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: O-Ca
+k=Fe, i=O   : 0.5000
+k=Fe, j=Ca  : 0.5000
+		 in O-Ca
+
+# For Binary Sub-system: Fe-Ca
+i=O, k=Fe   : 0.5000
+i=O, j=Ca   : 0.5000
+		 in Fe-Ca
+
+# For Binary Sub-system: Fe-O
+j=Ca, i=O   : 0.5000
+j=Ca, k=Fe  : 0.5000
+		 in Fe-O

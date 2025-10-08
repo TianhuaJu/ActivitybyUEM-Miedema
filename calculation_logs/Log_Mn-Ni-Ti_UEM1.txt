@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Mn-Ni-Ti
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 13:41:58 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Ti-Mn
+k=Ni, i=Ti  : 0.0012
+k=Ni, j=Mn  : 0.9748
+		 in Ti-Mn
+
+# For Binary Sub-system: Ni-Mn
+i=Ti, k=Ni  : 0.0237
+i=Ti, j=Mn  : 0.5547
+		 in Ni-Mn
+
+# For Binary Sub-system: Ni-Ti
+j=Mn, i=Ti  : 0.0269
+j=Mn, k=Ni  : 0.9435
+		 in Ni-Ti

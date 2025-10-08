@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Ge-H-Ni
+Extrapolation Model: Muggianu 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 15:22:41 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: H-Ge
+k=Ni, i=H   : 0.5000
+k=Ni, j=Ge  : 0.5000
+		 in H-Ge
+
+# For Binary Sub-system: Ni-Ge
+i=H, k=Ni   : 0.5000
+i=H, j=Ge   : 0.5000
+		 in Ni-Ge
+
+# For Binary Sub-system: Ni-H
+j=Ge, i=H   : 0.5000
+j=Ge, k=Ni  : 0.5000
+		 in Ni-H

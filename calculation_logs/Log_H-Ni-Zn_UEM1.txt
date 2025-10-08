@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: H-Ni-Zn
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-03 15:22:13 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: H-Zn
+k=Ni, i=H   : 0.0000
+k=Ni, j=Zn  : 0.8571
+		 in H-Zn
+
+# For Binary Sub-system: Ni-Zn
+i=H, k=Ni   : 0.0000
+i=H, j=Zn   : 0.0000
+		 in Ni-Zn
+
+# For Binary Sub-system: Ni-H
+j=Zn, i=H   : 0.0000
+j=Zn, k=Ni  : 0.8597
+		 in Ni-H
