@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Mn-Ni-Pb
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-10 16:15:29 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Mn-Pb
+k=Ni, i=Mn  : 0.9739
+k=Ni, j=Pb  : 0.0039
+		 in Mn-Pb
+
+# For Binary Sub-system: Ni-Pb
+i=Mn, k=Ni  : 0.9674
+i=Mn, j=Pb  : 0.0090
+		 in Ni-Pb
+
+# For Binary Sub-system: Ni-Mn
+j=Pb, i=Mn  : 0.2912
+j=Pb, k=Ni  : 0.1250
+		 in Ni-Mn

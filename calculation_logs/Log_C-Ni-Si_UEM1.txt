@@ -2,14 +2,14 @@ Contribution Coefficient Log for Alloy System: C-Ni-Si
 Extrapolation Model: UEM1 模型
 ============================================================
 
-# --- Calculation Record: 2025-10-02 10:42:02 ---
+# --- Calculation Record: 2025-10-10 16:16:20 ---
 # Calculation Type: Fixed Point
 # Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
 # For Binary Sub-system: C-Si
 k=Ni, i=C   : 0.0000
-k=Ni, j=Si  : 0.4192
+k=Ni, j=Si  : 0.4800
 		 in C-Si
 
 # For Binary Sub-system: Ni-Si
@@ -19,5 +19,5 @@ i=C, j=Si   : 0.0000
 
 # For Binary Sub-system: Ni-C
 j=Si, i=C   : 0.0000
-j=Si, k=Ni  : 0.4182
+j=Si, k=Ni  : 0.4791
 		 in Ni-C

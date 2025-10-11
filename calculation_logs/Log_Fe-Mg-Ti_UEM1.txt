@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Fe-Mg-Ti
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-10 16:20:05 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: Mg-Ti
+k=Fe, i=Mg  : 0.1550
+k=Fe, j=Ti  : 0.3083
+		 in Mg-Ti
+
+# For Binary Sub-system: Fe-Ti
+i=Mg, k=Fe  : 0.1352
+i=Mg, j=Ti  : 0.3815
+		 in Fe-Ti
+
+# For Binary Sub-system: Fe-Mg
+j=Ti, i=Mg  : 0.3276
+j=Ti, k=Fe  : 0.2309
+		 in Fe-Mg

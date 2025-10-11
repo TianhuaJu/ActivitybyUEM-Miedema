@@ -1,0 +1,23 @@
+Contribution Coefficient Log for Alloy System: Cr-Fe-O
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-10 18:22:23 ---
+# Calculation Type: Fixed Point
+# Parameter 'temperature': 1873.00K
+#--------------------------------------------------
+
+# For Binary Sub-system: O-Cr
+k=Fe, i=O   : 0.0012
+k=Fe, j=Cr  : 0.9934
+		 in O-Cr
+
+# For Binary Sub-system: Fe-Cr
+i=O, k=Fe   : 0.0296
+i=O, j=Cr   : 0.8373
+		 in Fe-Cr
+
+# For Binary Sub-system: Fe-O
+j=Cr, i=O   : 0.0322
+j=Cr, k=Fe  : 0.9614
+		 in Fe-O

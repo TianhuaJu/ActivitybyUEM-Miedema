@@ -2,22 +2,22 @@ Contribution Coefficient Log for Alloy System: Fe-Mn-Si
 Extrapolation Model: GSM 模型
 ============================================================
 
-# --- Calculation Record: 2025-09-18 17:29:54 ---
+# --- Calculation Record: 2025-10-10 16:12:52 ---
 # Calculation Type: Fixed Point
-# Parameter 'temperature': 1200.00K
+# Parameter 'temperature': 1873.00K
 #--------------------------------------------------
 
 # For Binary Sub-system: Mn-Si
-k=Fe, i=Mn  : 0.7548
-k=Fe, j=Si  : 0.2452
+k=Fe, i=Mn  : 0.8936
+k=Fe, j=Si  : 0.1064
 		 in Mn-Si
 
 # For Binary Sub-system: Fe-Si
-i=Mn, k=Fe  : 0.7264
-i=Mn, j=Si  : 0.2736
+i=Mn, k=Fe  : 0.7828
+i=Mn, j=Si  : 0.2172
 		 in Fe-Si
 
 # For Binary Sub-system: Fe-Mn
-j=Si, i=Mn  : 0.5368
-j=Si, k=Fe  : 0.4632
+j=Si, i=Mn  : 0.6998
+j=Si, k=Fe  : 0.3002
 		 in Fe-Mn
