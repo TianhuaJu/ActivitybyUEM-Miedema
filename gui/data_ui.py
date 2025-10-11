@@ -10,6 +10,7 @@ from PyQt5.QtWidgets import (QWidget, QSplitter, QVBoxLayout, QGroupBox, QGridLa
                              QApplication, QMainWindow, QProgressBar, QTextEdit, QDialog,
                              QDialogButtonBox)
 
+
 # 尝试导入pycalphad，如果失败则TDB功能不可用
 try:
 	from pycalphad import Database
@@ -19,6 +20,18 @@ except ImportError:
 	PYCALPHAD_AVAILABLE = False
 	print("警告: pycalphad 库未安装，TDB数据库功能将不可用。请使用 'pip install pycalphad' 安装。")
 
+def resource_path(relative_path: str) -> str:
+    """
+    获取资源的绝对路径，兼容开发模式和PyInstaller打包后的模式。
+    """
+    try:
+        # PyInstaller 会创建一个临时文件夹，并将路径存储在 _MEIPASS 中
+        base_path = sys._MEIPASS
+    except Exception:
+        # 在开发模式下，_MEIPASS 属性不存在，使用文件所在的绝对路径
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 # === 新增：密码输入对话框 ===
 class PasswordDialog(QDialog):
@@ -325,6 +338,7 @@ class DatabaseManagerTab(QWidget):
 		self.db_type = "未知"
 		self.quick_status_label = None
 		self.init_ui()
+		self.try_load_default_database()
 	
 	def init_ui (self):
 		"""初始化用户界面"""
@@ -788,7 +802,7 @@ class DatabaseManagerTab(QWidget):
 	# ... (其余所有方法保持不变) ...
 	def browse_database_file (self):
 		"""浏览并选择数据库文件"""
-		default_path = os.path.join(os.getcwd(), "database/data")
+		default_path = resource_path("database/data")
 		if not os.path.exists(default_path):
 			default_path = os.getcwd()
 		
@@ -818,6 +832,24 @@ class DatabaseManagerTab(QWidget):
 			
 			self.load_db_btn.setEnabled(True)
 	
+	
+	def try_load_default_database (self):
+		"""尝试在启动时自动加载默认数据库"""
+		try:
+			# 定义默认数据库的相对路径 (与你的 .spec 文件中一致)
+			default_db_relative_path = "database/data/DataBase.db"
+			default_db_abs_path = resource_path(default_db_relative_path)
+			
+			if os.path.exists(default_db_abs_path):
+				# 如果找到了文件，就自动执行加载流程
+				self.db_path = default_db_abs_path
+				self.db_path_label.setText(os.path.basename(self.db_path))
+				self.status_label.setText(f"已找到 {self.db_type}")
+				self.status_label.setStyleSheet("font-weight: bold; color: #f59e0b; font-size: 14px;")
+				self.load_db_btn.setEnabled(True)
+				self.load_and_apply_database()  # 直接调用加载方法
+		except Exception as e:
+			print(f"自动加载默认数据库失败: {e}")
 	def on_table_selected (self, table_name: str):
 		"""当选择表时更新预览"""
 		if not table_name or not hasattr(self.parent_app, 'db_connector') or not self.parent_app.db_connector:

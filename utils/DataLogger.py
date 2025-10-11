@@ -17,15 +17,10 @@ def log_contribution_coefficients (
 	根据用户指定的最终精确格式，将贡献系数记录到日志文件中。
 	"""
 	try:
-		# --- 文件名生成逻辑 (此部分已正确，无需修改) ---
-		if full_alloy_context:
-			canonical_name = get_canonical_alloy_name(full_alloy_context)
-		else:
-			canonical_name = get_canonical_alloy_name(ternary_system)
 		
-		filename = f"Log_{canonical_name}_{model_name}.txt"
 		
-		# --- 目录和路径逻辑 (无需修改) ---
+		filename = f"ContributionCoefficients({model_name}).txt"
+		
 		current_dir = os.path.dirname(os.path.abspath(__file__))
 		project_root = os.path.dirname(current_dir)
 		log_path = os.path.join(project_root, LOG_DIRECTORY)
@@ -40,28 +35,26 @@ def log_contribution_coefficients (
 		
 		content = []
 		# Header
-		content.append(f"Contribution Coefficient Log for Alloy System: {canonical_name}")
+		
 		content.append(f"Extrapolation Model: {model_name} 模型")
 		content.append("=" * 60)
 		
 		# Calculation Record
 		content.append(f"\n# --- Calculation Record: {timestamp} ---")
-		content.append(f"# Calculation Type: Fixed Point")
-		content.append(f"# Parameter 'temperature': {temperature:.2f}K")
+		content.append(f"Alloy System:  {ternary_system}")
+		content.append(f"T =  {temperature:.2f} K")
 		content.append("#" + "-" * 50)
 		
 		# 遍历贡献系数数据来格式化输出
 		for subsystem, contributions in contribution_data.items():
-			content.append(f"\n# For Binary Sub-system: {subsystem}")
-			for contributor, value in contributions.items():
-				# 使用 f-string 的格式化功能来创建对齐的列
-				# {contributor:<12} 表示左对齐，并占用12个字符的宽度
-				line = f"{contributor:<12}: {value:.4f}"
-				content.append(line)
-			content.append(f"\t\t in {subsystem}")  # 此处的对齐保持不变
+			
+			parts = [f"{contributor:<12}: {value:.4f}" for contributor, value in contributions.items()]
+			line = "\t\t".join(parts) + f"\t\t in ({subsystem})"
+			content.append(line)
+				
 		
 		# 写入文件
-		with open(filepath, "w", encoding="utf-8") as f:
+		with open(filepath, "a", encoding="utf-8") as f:
 			f.write("\n".join(content))
 	
 	except Exception as e:

@@ -36,7 +36,7 @@ DisableProgramGroupPage=yes
 ; Uncomment the following line to run in non administrative install mode (install for current user only).
 ;PrivilegesRequired=lowest
 OutputBaseFilename=AlloyActApp_Pro_mysetup
-SetupIconFile=E:\Users\jthua\Alloyact_Pro\resources\AlloyActApp.ico
+SetupIconFile=E:\user\jthua\Github\ActivitybyUEMandMiedema\resources\AlloyActApp.ico
 SolidCompression=yes
 WizardStyle=modern
 
@@ -47,8 +47,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "E:\Users\jthua\Alloyact_Pro\dist\AlloyActApp\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "E:\Users\jthua\Alloyact_Pro\dist\AlloyActApp\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "E:\user\jthua\Github\ActivitybyUEMandMiedema\dist\AlloyActApp\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "E:\user\jthua\Github\ActivitybyUEMandMiedema\dist\AlloyActApp\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Registry]

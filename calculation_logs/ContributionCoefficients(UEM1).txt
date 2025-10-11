@@ -1,0 +1,46 @@
+Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-11 16:51:34 ---
+Alloy Constituent:Fe-C-Si
+T =  1873.00 K
+#--------------------------------------------------
+Fe-C        : 0.0000		Fe-Si       : 0.5839		 in (C-Si)
+C-Fe        : 0.0000		C-Si        : 0.0000		 in (Fe-Si)
+Si-C        : 0.0000		Si-Fe       : 0.5816		 in (Fe-C)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-11 16:52:56 ---
+Alloy Constituent:Fe-C-Si
+T =  1873.00 K
+#--------------------------------------------------
+Fe-C        : 0.0000		Fe-Si       : 0.5839		 in (C-Si)
+C-Fe        : 0.0000		C-Si        : 0.0000		 in (Fe-Si)
+Si-C        : 0.0000		Si-Fe       : 0.5816		 in (Fe-C)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-11 16:54:37 ---
+Alloy Constituent:Fe-C-Si
+T =  1873.00 K
+#--------------------------------------------------
+Fe-C        : 0.0000		Fe-Si       : 0.5839		 in (C-Si)
+C-Fe        : 0.0000		C-Si        : 0.0000		 in (Fe-Si)
+Si-C        : 0.0000		Si-Fe       : 0.5816		 in (Fe-C)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-11 16:57:06 ---
+Alloy Constituent:Fe-C-Si
+T =  1873.00 K
+#--------------------------------------------------
+Fe-C        : 0.0000		Fe-Si       : 0.5839		 in (C-Si)
+C-Fe        : 0.0000		C-Si        : 0.0000		 in (Fe-Si)
+Si-C        : 0.0000		Si-Fe       : 0.5816		 in (Fe-C)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2025-10-11 16:57:13 ---
+Alloy Constituent:Fe-C-Mn
+T =  1873.00 K
+#--------------------------------------------------
+Fe-C        : 0.0000		Fe-Mn       : 0.9991		 in (C-Mn)
+C-Fe        : 0.0000		C-Mn        : 0.0000		 in (Fe-Mn)
+Mn-C        : 0.0000		Mn-Fe       : 0.9991		 in (Fe-C)

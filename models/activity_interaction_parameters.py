@@ -351,16 +351,16 @@ class TernaryMelts:
             
             contribution_data_for_log = {
                 f"{solui.name}-{soluj.name}": {
-                    f"k={solv.name}, i={solui.name}": aki_ij,
-                    f"k={solv.name}, j={soluj.name}": akj_ij
+                    f"{solv.name}-{solui.name}": aki_ij,
+                    f"{solv.name}-{soluj.name}": akj_ij
                 },
                 f"{solv.name}-{soluj.name}": {
-                    f"i={solui.name}, k={solv.name}": aik_jk,
-                    f"i={solui.name}, j={soluj.name}": aij_jk
+                    f"{solui.name}-{solv.name}": aik_jk,
+                    f"{solui.name}-{soluj.name}": aij_jk
                 },
                 f"{solv.name}-{solui.name}": {
-                    f"j={soluj.name}, i={solui.name}": aji_ik,
-                    f"j={soluj.name}, k={solv.name}": ajk_ik
+                    f"{soluj.name}-{solui.name}": aji_ik,
+                    f"{soluj.name}-{solv.name}": ajk_ik
                 }
             }
             
