@@ -236,12 +236,18 @@ class InteractionCoefficientWidget(QWidget):
 			ternary = TernaryMelts(temp, state)
 			
 			# 计算相互作用系数
-			sij_model_val = ternary.activity_interact_coefficient_1st(solv, solui, soluj, temp, state, model_func,
-			                                                     model_name)
 			
-			# 使用 UEM2 对比
-			uem1_func = self.get_model_function("UEM1")
-			sij_uem1 = ternary.activity_interact_coefficient_1st(solv, solui, soluj, temp, state, uem1_func, "UEM1")
+			#if the model is only UEM1, excute only one time, else comparing to UEM1
+			if (model_name == "UEM1"):
+				uem1_func = self.get_model_function("UEM1")
+				sij_uem1 = ternary.activity_interact_coefficient_1st(solv, solui, soluj, temp, state, uem1_func, "UEM1")
+				sij_model_val = sij_uem1
+			else:
+				uem1_func = self.get_model_function("UEM1")
+				sij_model_val = ternary.activity_interact_coefficient_1st(solv, solui, soluj, temp, state, model_func,
+				                                                          model_name)
+				sij_uem1 = ternary.activity_interact_coefficient_1st(solv, solui, soluj, temp, state, uem1_func, "UEM1")
+			
 			
 			# 获取实验值
 			if state == "liquid":
