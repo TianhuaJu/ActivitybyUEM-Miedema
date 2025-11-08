@@ -35,6 +35,8 @@ from gui.data_ui import DatabaseManagerTab
 from gui.ActivityCalculationWidget import ActivityCalculationWidget
 from gui.InteractionCoefficientWidget import InteractionCoefficientWidget
 from gui.SecondOrderCoefficientWidget import SecondOrderCoefficientWidget
+from gui.ThermodynamicPropertiesWidget import ThermodynamicPropertiesWidget
+from gui.PhaseDiagramWidget import PhaseDiagramWidget
 
 
 class MplCanvas(FigureCanvas):
@@ -213,9 +215,15 @@ class AlloyActProGUI(QMainWindow):
 		"""创建高级分析选项卡"""
 		# 温度变化分析选项卡
 		self.create_temperature_variation_tab()
-		
+
 		# 浓度变化分析选项卡
 		self.create_concentration_variation_tab()
+
+		# 热力学性质计算选项卡
+		self.create_thermodynamic_properties_tab()
+
+		# 相图计算选项卡
+		self.create_phase_diagram_tab()
 	
 	def create_temperature_variation_tab (self):
 		"""创建温度变化分析选项卡"""
@@ -257,12 +265,22 @@ class AlloyActProGUI(QMainWindow):
 		"""创建二阶相互作用系数计算选项卡"""
 		self.second_order_widget = SecondOrderCoefficientWidget(self)
 		self.tabs.addTab(self.second_order_widget, "二阶相互作用系数")
-		
+
+	def create_thermodynamic_properties_tab(self):
+		"""创建热力学性质计算选项卡"""
+		self.thermo_properties_widget = ThermodynamicPropertiesWidget()
+		self.tabs.addTab(self.thermo_properties_widget, "热力学性质")
+
+	def create_phase_diagram_tab(self):
+		"""创建相图计算选项卡"""
+		self.phase_diagram_widget = PhaseDiagramWidget()
+		self.tabs.addTab(self.phase_diagram_widget, "相图计算")
+
 	def show_about (self):
 		"""显示关于对话框"""
 		about_text = """
         <h3>AlloyAct Pro - 合金热力学计算器</h3>
-        <p><b>版本:</b> 2.0</p>
+        <p><b>版本:</b> 2.1 (扩展版)</p>
         <p><b>功能特性:</b></p>
         <ul>
         <li>活度和活度系数计算</li>
@@ -271,9 +289,14 @@ class AlloyActProGUI(QMainWindow):
         <li>温度变化分析</li>
         <li>浓度变化分析</li>
         <li>多种外推模型支持 (UEM1, UEM2, GSM, Muggianu, etc)</li>
+        <li><b>新增:</b> 完整热力学性质计算 (活度、化学势、摩尔焓、吉布斯自由能)</li>
+        <li><b>新增:</b> 液相线/固相线温度计算</li>
+        <li><b>新增:</b> 相图绘制与分析</li>
+        <li><b>新增:</b> 基于SGTE Unary Database的纯物质热力学数据</li>
         </ul>
         <p><b>开发团队:</b> 合金热力学计算实验室</p>
         <p><b>技术支持:</b> <a href="mailto:jutianhua@gxu.edu.cn">jutianhua@gxu.edu.cn</a></p>
+        <p><b>扩展开发:</b> Claude AI Assistant (2025)</p>
         """
 		QMessageBox.about(self, "关于 AlloyAct Pro", about_text)
 		
