@@ -49,6 +49,7 @@ class ThermodynamicPropertiesWidget(QWidget):
 
         self.thermo_calc = ThermodynamicProperties()
         self.results_data = None
+        self.calculation_count = 0  # 计算批次计数器
         self.setup_ui()
 
     def setup_ui(self):
@@ -174,9 +175,9 @@ class ThermodynamicPropertiesWidget(QWidget):
         table_layout = QVBoxLayout(table_group)
 
         self.results_table = QTableWidget()
-        self.results_table.setColumnCount(6)
+        self.results_table.setColumnCount(7)
         self.results_table.setHorizontalHeaderLabels([
-            "组分", "摩尔分数", "ln(γ)", "活度系数 γ", "活度 a", "化学势 μ (kJ/mol)"
+            "批次/模型", "组分", "摩尔分数", "ln(γ)", "活度系数 γ", "活度 a", "化学势 μ (kJ/mol)"
         ])
         table_layout.addWidget(self.results_table)
 
@@ -221,7 +222,8 @@ class ThermodynamicPropertiesWidget(QWidget):
             self.results_data = results
 
             # 显示结果
-            self.display_results(results, composition, temperature, phase_state)
+            self.display_results(results, composition, temperature, phase_state,
+                               extrap_model, activity_model)
 
             # 启用导出按钮
             self.export_button.setEnabled(True)
@@ -233,7 +235,8 @@ class ThermodynamicPropertiesWidget(QWidget):
         finally:
             self.calculate_button.setEnabled(True)
 
-    def display_results(self, results, composition, temperature, phase_state):
+    def display_results(self, results, composition, temperature, phase_state,
+                       extrap_model, activity_model):
         """显示计算结果"""
         from datetime import datetime
 
@@ -241,13 +244,15 @@ class ThermodynamicPropertiesWidget(QWidget):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         text_output = "\n" + "=" * 70 + "\n"
-        text_output += f"计算时间: {timestamp}\n"
+        text_output += f"【计算时间】 {timestamp}\n"
         text_output += "热力学性质计算结果\n"
         text_output += "=" * 70 + "\n\n"
 
         text_output += f"合金成分: {composition}\n"
         text_output += f"温度: {temperature} K ({temperature-273.15:.2f} °C)\n"
-        text_output += f"相态: {phase_state}\n\n"
+        text_output += f"相态: {phase_state}\n"
+        text_output += f"外推模型: {extrap_model}\n"
+        text_output += f"活度模型: {activity_model}\n\n"
 
         text_output += "=" * 70 + "\n"
         text_output += "合金整体性质:\n"
@@ -272,6 +277,10 @@ class ThermodynamicPropertiesWidget(QWidget):
         # 2. 填充表格 - 追加行而非覆盖
         comp_props = results['component_properties']
 
+        # 增加计算批次计数
+        self.calculation_count += 1
+        batch_label = f"#{self.calculation_count}\n[{extrap_model}/{activity_model}]"
+
         # 获取当前行数，准备追加
         current_row_count = self.results_table.rowCount()
 
@@ -293,16 +302,17 @@ class ThermodynamicPropertiesWidget(QWidget):
             text_output += f"{activity if activity is not None else 'N/A':<12} "
             text_output += f"{mu/1000 if mu is not None else 'N/A':<15}\n"
 
-            # 表格输出
-            self.results_table.setItem(row, 0, QTableWidgetItem(comp))
-            self.results_table.setItem(row, 1, QTableWidgetItem(f"{x_i:.4f}"))
-            self.results_table.setItem(row, 2, QTableWidgetItem(
-                f"{ln_gamma:.4f}" if ln_gamma is not None else "N/A"))
+            # 表格输出 - 注意列索引从0开始，现在多了一列
+            self.results_table.setItem(row, 0, QTableWidgetItem(batch_label))
+            self.results_table.setItem(row, 1, QTableWidgetItem(comp))
+            self.results_table.setItem(row, 2, QTableWidgetItem(f"{x_i:.4f}"))
             self.results_table.setItem(row, 3, QTableWidgetItem(
-                f"{gamma:.4f}" if gamma is not None else "N/A"))
+                f"{ln_gamma:.4f}" if ln_gamma is not None else "N/A"))
             self.results_table.setItem(row, 4, QTableWidgetItem(
-                f"{activity:.4e}" if activity is not None else "N/A"))
+                f"{gamma:.4f}" if gamma is not None else "N/A"))
             self.results_table.setItem(row, 5, QTableWidgetItem(
+                f"{activity:.4e}" if activity is not None else "N/A"))
+            self.results_table.setItem(row, 6, QTableWidgetItem(
                 f"{mu/1000:.2f}" if mu is not None else "N/A"))
 
             row += 1
@@ -332,6 +342,7 @@ class ThermodynamicPropertiesWidget(QWidget):
             self.results_text.clear()
             self.results_table.setRowCount(0)
             self.results_data = None
+            self.calculation_count = 0  # 重置计算批次计数器
             self.export_button.setEnabled(False)
 
     def export_results(self):
