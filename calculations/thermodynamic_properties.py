@@ -403,8 +403,8 @@ class ThermodynamicProperties:
                 x_b = composition[elem_b]
 
                 # 使用BinaryModel计算
-                self.binary_model.set_alloystate(phase_state)
-                self.binary_model.set_tem(temperature)
+                self.binary_model.set_state(phase_state)
+                self.binary_model.set_temperature(temperature)
 
                 H_mix = self.binary_model.binary_model(
                     a=elem_a,
@@ -428,8 +428,8 @@ class ThermodynamicProperties:
 
                     if x_i > 0 and x_j > 0:
                         # 计算二元混合焓
-                        self.binary_model.set_alloystate(phase_state)
-                        self.binary_model.set_tem(temperature)
+                        self.binary_model.set_state(phase_state)
+                        self.binary_model.set_temperature(temperature)
 
                         # 归一化到二元体系
                         x_sum = x_i + x_j

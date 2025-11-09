@@ -137,6 +137,11 @@ class ThermodynamicPropertiesWidget(QWidget):
         self.calculate_button.clicked.connect(self.perform_calculation)
         button_layout.addWidget(self.calculate_button)
 
+        self.clear_button = QPushButton("清除历史")
+        self.clear_button.setMinimumHeight(40)
+        self.clear_button.clicked.connect(self.clear_history)
+        button_layout.addWidget(self.clear_button)
+
         self.export_button = QPushButton("导出结果")
         self.export_button.setMinimumHeight(40)
         self.export_button.clicked.connect(self.export_results)
@@ -230,8 +235,13 @@ class ThermodynamicPropertiesWidget(QWidget):
 
     def display_results(self, results, composition, temperature, phase_state):
         """显示计算结果"""
-        # 1. 显示文本结果
-        text_output = "=" * 70 + "\n"
+        from datetime import datetime
+
+        # 1. 显示文本结果 - 追加而非覆盖
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        text_output = "\n" + "=" * 70 + "\n"
+        text_output += f"计算时间: {timestamp}\n"
         text_output += "热力学性质计算结果\n"
         text_output += "=" * 70 + "\n\n"
 
@@ -259,11 +269,16 @@ class ThermodynamicPropertiesWidget(QWidget):
         text_output += f"{'组分':<8} {'X_i':<10} {'ln(γ_i)':<12} {'γ_i':<12} {'a_i':<12} {'μ_i (kJ/mol)':<15}\n"
         text_output += "-" * 70 + "\n"
 
-        # 2. 填充表格
+        # 2. 填充表格 - 追加行而非覆盖
         comp_props = results['component_properties']
-        self.results_table.setRowCount(len(comp_props))
 
-        row = 0
+        # 获取当前行数，准备追加
+        current_row_count = self.results_table.rowCount()
+
+        # 添加新行
+        self.results_table.setRowCount(current_row_count + len(comp_props))
+
+        row = current_row_count
         for comp, props in comp_props.items():
             x_i = props.get('mole_fraction', 0)
             ln_gamma = props.get('ln_gamma')
@@ -292,10 +307,32 @@ class ThermodynamicPropertiesWidget(QWidget):
 
             row += 1
 
-        text_output += "=" * 70 + "\n"
+        text_output += "=" * 70 + "\n\n"
 
-        self.results_text.setText(text_output)
+        # 追加结果而非覆盖
+        self.results_text.append(text_output)
+
+        # 滚动到底部显示最新结果
+        scrollbar = self.results_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
         self.results_table.resizeColumnsToContents()
+
+    def clear_history(self):
+        """清除历史计算记录"""
+        reply = QMessageBox.question(
+            self,
+            "确认清除",
+            "确定要清除所有历史计算记录吗？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            self.results_text.clear()
+            self.results_table.setRowCount(0)
+            self.results_data = None
+            self.export_button.setEnabled(False)
 
     def export_results(self):
         """导出结果"""
