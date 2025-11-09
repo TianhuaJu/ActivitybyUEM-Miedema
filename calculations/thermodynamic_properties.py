@@ -25,6 +25,8 @@ from typing import Dict, Optional, Tuple, List
 import sys
 import os
 
+# (注意：相图计算所需的 'from scipy.optimize import root' 已被移除)
+
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -49,6 +51,19 @@ class ThermodynamicProperties:
         # 常数
         self.R = Constants.R  # J/(mol*K)
 
+    # ================================================================
+    # =================== 符号转换辅助函数 ===================
+    # ================================================================
+    @staticmethod
+    def _to_standard_symbol(symbol: str) -> str:
+        """
+        将TDB的大写符号 (例如 'FE') 转换为 Miedema 的标准符号 (例如 'Fe')。
+        """
+        if not symbol or len(symbol) == 0:
+            return symbol
+        # .capitalize() 正确处理 'FE' -> 'Fe' 和 'C' -> 'C'
+        return symbol.capitalize()
+
     def calculate_activity(self,
                           composition: Dict[str, float],
                           component: str,
@@ -59,20 +74,7 @@ class ThermodynamicProperties:
                           activity_model: str = 'Wagner') -> Optional[float]:
         """
         计算组分的活度
-
         a_i = γ_i * X_i
-
-        Args:
-            composition: 成分字典 {'FE': 0.7, 'C': 0.03, 'SI': 0.27}
-            component: 要计算的组分
-            temperature: 温度 (K)
-            phase_state: 相态 ('liquid' 或 'solid')
-            solvent: 溶剂（如果为None，自动选择含量最高的组分）
-            extrapolation_model: 外推模型
-            activity_model: 活度模型
-
-        Returns:
-            活度 a_i
         """
         # 获取活度系数
         ln_gamma = self.calculate_ln_activity_coefficient(
@@ -108,20 +110,11 @@ class ThermodynamicProperties:
                                          activity_model: str = 'Wagner') -> Optional[float]:
         """
         计算活度系数的对数 ln(γ_i)
-
-        Args:
-            composition: 成分字典
-            component: 要计算的组分
-            temperature: 温度 (K)
-            phase_state: 相态
-            solvent: 溶剂
-            extrapolation_model: 外推模型
-            activity_model: 活度模型
-
-        Returns:
-            ln(γ_i)
+        
+        修正：此函数现在充当翻译器，
+        将大写符号 (FE) 转换为标准符号 (Fe) 后再传递给 activity_calculator。
         """
-        # 确定溶剂（选择摩尔分数最大的组分）
+        # 1. 确定溶剂 (仍然使用大写符号) - 添加验证以避免错误
         if solvent is None:
             if not composition:
                 raise ValueError("Composition dictionary is empty")
@@ -131,11 +124,22 @@ class ThermodynamicProperties:
             if not valid_components:
                 raise ValueError("No valid components with positive mole fractions")
 
-            # 选择摩尔分数最大的组分作为溶剂
+            # 自动选择含量最大的组分
             solvent = max(valid_components.items(), key=lambda x: x[1])[0]
 
+        # 2. --- (修正: 转换为标准符号) ---
+        #    这是 Miedema/Activity 计算栈所需要的
+        try:
+            comp_dict_std = {self._to_standard_symbol(k): v for k, v in composition.items()}
+            component_std = self._to_standard_symbol(component)
+            solvent_std = self._to_standard_symbol(solvent)
+        except Exception as e:
+            print(f"Error standardizing symbols: {e}")
+            return None
+        # --- (修正结束) ---
+
         # 设置活度计算器（直接设置内部字典）
-        self.activity_calculator._comp_dict = composition.copy()
+        self.activity_calculator._comp_dict = comp_dict_std.copy()
 
         # 选择外推模型函数
         from models.extrapolation_models import BinaryModel
@@ -154,10 +158,11 @@ class ThermodynamicProperties:
         extrap_func = extrap_func_map.get(extrapolation_model, bm.UEM1)
 
         try:
+            # 3. 使用标准符号 (Fe, C, Si) 调用 get_ln_gamma
             ln_gamma = self.activity_calculator.get_ln_gamma(
-                comp_dict=composition,
-                component_to_calculate=component,
-                solvent=solvent,
+                comp_dict=comp_dict_std,
+                component_to_calculate=component_std,
+                solvent=solvent_std,
                 Tem=temperature,
                 state=phase_state,
                 extra_model=extrap_func,
@@ -166,7 +171,8 @@ class ThermodynamicProperties:
             )
             return ln_gamma
         except Exception as e:
-            print(f"Error calculating ln(γ) for {component}: {e}")
+            # 使用两个符号进行日志记录，以方便调试
+            print(f"Error calculating ln(γ) for {component} (as {component_std}): {e}")
             return None
 
     def calculate_chemical_potential(self,
@@ -179,21 +185,7 @@ class ThermodynamicProperties:
                                      activity_model: str = 'Wagner') -> Optional[float]:
         """
         计算化学势
-
         μ_i = μ°_i(T) + RT ln(a_i)
-        其中 μ°_i(T) = G°_i(T) (纯物质的摩尔Gibbs能)
-
-        Args:
-            composition: 成分字典
-            component: 要计算的组分
-            temperature: 温度 (K)
-            phase_state: 相态
-            solvent: 溶剂
-            extrapolation_model: 外推模型
-            activity_model: 活度模型
-
-        Returns:
-            化学势 μ_i (J/mol)
         """
         # 1. 获取纯物质的Gibbs能 μ°_i(T)
         phase_map = {
@@ -202,6 +194,7 @@ class ThermodynamicProperties:
         }
         tdb_phase = phase_map.get(phase_state.lower(), 'LIQUID')
 
+        # (正确) 使用大写符号 (FE) 调用 TDB 解析器
         mu_0 = self.tdb_parser.get_gibbs_energy(component, tdb_phase, temperature)
         if mu_0 is None:
             print(f"Warning: Could not find G° for {component} in {tdb_phase} phase")
@@ -233,21 +226,7 @@ class ThermodynamicProperties:
                                  extrapolation_model: str = 'UEM1') -> Optional[float]:
         """
         计算合金的摩尔焓
-
         H_alloy = Σ(X_i * H°_i) + H^E
-
-        其中:
-        - H°_i: 纯组分i的摩尔焓（从TDB）
-        - H^E: 过剩焓（混合焓，从Miedema模型）
-
-        Args:
-            composition: 成分字典
-            temperature: 温度 (K)
-            phase_state: 相态
-            extrapolation_model: 外推模型（用于计算H^E）
-
-        Returns:
-            摩尔焓 H (J/mol)
         """
         # 1. 理想混合焓: Σ(X_i * H°_i)
         H_ideal = 0.0
@@ -258,6 +237,7 @@ class ThermodynamicProperties:
         tdb_phase = phase_map.get(phase_state.lower(), 'LIQUID')
 
         for component, x_i in composition.items():
+            # (正确) 使用大写符号 (FE) 调用 TDB 解析器
             H_i = self.tdb_parser.get_enthalpy(component, tdb_phase, temperature)
             if H_i is None:
                 print(f"Warning: Could not find H° for {component}")
@@ -273,7 +253,6 @@ class ThermodynamicProperties:
         )
 
         if H_excess is None:
-            # 如果无法计算过剩焓，仅返回理想项
             print("Warning: Could not calculate excess enthalpy, using ideal mixing only")
             H_excess = 0.0
 
@@ -291,25 +270,12 @@ class ThermodynamicProperties:
                                activity_model: str = 'Wagner') -> Optional[float]:
         """
         计算合金的摩尔Gibbs自由能
-
-        G_alloy = Σ(X_i * G°_i) + RT * Σ(X_i * ln(a_i))
-                = Σ(X_i * μ_i)
-
-        Args:
-            composition: 成分字典
-            temperature: 温度 (K)
-            phase_state: 相态
-            solvent: 溶剂
-            extrapolation_model: 外推模型
-            activity_model: 活度模型
-
-        Returns:
-            Gibbs能 G (J/mol)
+        G_alloy = Σ(X_i * μ_i)
         """
         G_total = 0.0
 
         for component, x_i in composition.items():
-            # 计算每个组分的化学势
+            # (正确) 使用大写符号 (FE) 调用，内部函数将处理转换
             mu_i = self.calculate_chemical_potential(
                 composition=composition,
                 component=component,
@@ -336,23 +302,8 @@ class ThermodynamicProperties:
                          activity_model: str = 'Wagner') -> Optional[float]:
         """
         计算合金的摩尔熵
-
         S = (H - G) / T
-
-        或者: S = Σ(X_i * S°_i) + S^config + S^E
-
-        Args:
-            composition: 成分字典
-            temperature: 温度 (K)
-            phase_state: 相态
-            solvent: 溶剂
-            extrapolation_model: 外推模型
-            activity_model: 活度模型
-
-        Returns:
-            摩尔熵 S (J/(mol*K))
         """
-        # 方法1: 从 S = (H - G) / T 计算
         H = self.calculate_molar_enthalpy(
             composition=composition,
             temperature=temperature,
@@ -371,6 +322,9 @@ class ThermodynamicProperties:
 
         if H is None or G is None:
             return None
+        
+        if temperature == 0:
+            return None # 避免除以零
 
         S = (H - G) / temperature
 
@@ -383,77 +337,68 @@ class ThermodynamicProperties:
                                    extrapolation_model: str = 'UEM1') -> Optional[float]:
         """
         使用Miedema模型计算过剩焓（混合焓）
-
-        对于多元体系:
-        H^E = ΣΣ X_i X_j H_ij + 高阶项
-
-        Args:
-            composition: 成分字典
-            temperature: 温度 (K)
-            phase_state: 相态
-            extrapolation_model: 外推模型
-
-        Returns:
-            过剩焓 H^E (J/mol)
+        
+        修正：此函数现在充当翻译器，
+        将大写符号 (FE) 转换为标准符号 (Fe) 后再传递给 binary_model。
         """
         try:
-            components = list(composition.keys())
+            # --- (修正: 转换为标准符号) ---
+            comp_std = {self._to_standard_symbol(k): v for k, v in composition.items()}
+            components = list(comp_std.keys())
+            # --- (修正结束) ---
+            
             n = len(components)
 
-            # 如果是纯物质，过剩焓为0
             if n == 1:
                 return 0.0
 
-            # 二元体系：直接使用Miedema模型
             if n == 2:
-                elem_a = components[0]
-                elem_b = components[1]
-                x_a = composition[elem_a]
-                x_b = composition[elem_b]
+                elem_a = components[0] # 'Fe'
+                elem_b = components[1] # 'C'
+                x_a = comp_std[elem_a]
+                x_b = comp_std[elem_b]
 
-                # 使用BinaryModel计算
                 self.binary_model.set_state(phase_state)
                 self.binary_model.set_temperature(temperature)
 
                 H_mix = self.binary_model.binary_model(
-                    a=elem_a,
-                    b=elem_b,
+                    a=elem_a, # (正确) 传递 'Fe'
+                    b=elem_b, # (正确) 传递 'C'
                     xa=x_a,
                     xb=x_b
                 )
-
                 return H_mix
 
-            # 三元及以上体系：使用外推方法
-            # 简化计算：所有二元对的加权和（Muggianu对称外推）
             H_excess = 0.0
-
             for i in range(n):
                 for j in range(i+1, n):
-                    elem_i = components[i]
-                    elem_j = components[j]
-                    x_i = composition[elem_i]
-                    x_j = composition[elem_j]
+                    elem_i = components[i] # 'Fe'
+                    elem_j = components[j] # 'C'
+                    x_i = comp_std[elem_i]
+                    x_j = comp_std[elem_j]
 
                     if x_i > 0 and x_j > 0:
-                        # 计算二元混合焓
                         self.binary_model.set_state(phase_state)
                         self.binary_model.set_temperature(temperature)
 
-                        # 归一化到二元体系
                         x_sum = x_i + x_j
+                        if x_sum == 0: continue # 避免除以零
+                        
                         x_i_norm = x_i / x_sum
                         x_j_norm = x_j / x_sum
 
                         H_ij = self.binary_model.binary_model(
-                            a=elem_i,
-                            b=elem_j,
+                            a=elem_i, # (正确) 传递 'Fe'
+                            b=elem_j, # (正确) 传递 'C'
                             xa=x_i_norm,
                             xb=x_j_norm
                         )
+                        
+                        if H_ij is not None and math.isfinite(H_ij):
+                            H_excess += x_i * x_j * H_ij / x_sum
+                        else:
+                            print(f"Warning: H_ij for {elem_i}-{elem_j} was None or infinite, skipping.")
 
-                        # 加权贡献（Muggianu）
-                        H_excess += x_i * x_j * H_ij / x_sum
 
             return H_excess
 
@@ -470,69 +415,34 @@ class ThermodynamicProperties:
                                  activity_model: str = 'Wagner') -> Dict[str, Dict]:
         """
         计算所有热力学性质
-
-        Args:
-            composition: 成分字典
-            temperature: 温度 (K)
-            phase_state: 相态
-            solvent: 溶剂
-            extrapolation_model: 外推模型
-            activity_model: 活度模型
-
-        Returns:
-            结果字典，格式:
-            {
-                'component_properties': {
-                    'FE': {'ln_gamma': ..., 'gamma': ..., 'activity': ..., 'mu': ...},
-                    'C': {...},
-                    ...
-                },
-                'alloy_properties': {
-                    'H': ...,  # 摩尔焓
-                    'G': ...,  # Gibbs能
-                    'S': ...,  # 熵
-                    'T': ...,  # 温度
-                    'phase': ...,  # 相态
-                }
-            }
         """
         results = {
             'component_properties': {},
             'alloy_properties': {}
         }
 
-        # 计算每个组分的性质
+        # (正确) 所有调用都使用大写符号，内部函数会处理转换
         for component in composition.keys():
             comp_results = {}
-
-            # 活度系数
             ln_gamma = self.calculate_ln_activity_coefficient(
                 composition, component, temperature, phase_state,
                 solvent, extrapolation_model, activity_model
             )
             comp_results['ln_gamma'] = ln_gamma
             comp_results['gamma'] = math.exp(ln_gamma) if ln_gamma is not None else None
-
-            # 活度
             activity = self.calculate_activity(
                 composition, component, temperature, phase_state,
                 solvent, extrapolation_model, activity_model
             )
             comp_results['activity'] = activity
-
-            # 化学势
             mu = self.calculate_chemical_potential(
                 composition, component, temperature, phase_state,
                 solvent, extrapolation_model, activity_model
             )
             comp_results['mu'] = mu
-
-            # 摩尔分数
             comp_results['mole_fraction'] = composition[component]
-
             results['component_properties'][component] = comp_results
 
-        # 计算合金整体性质
         H = self.calculate_molar_enthalpy(
             composition, temperature, phase_state, extrapolation_model
         )
@@ -555,6 +465,8 @@ class ThermodynamicProperties:
 
         return results
 
+    # --- (已移除: 液相线/固相线计算方法) ---
+
 
 # 测试代码
 if __name__ == "__main__":
@@ -566,6 +478,7 @@ if __name__ == "__main__":
     thermo = ThermodynamicProperties()
 
     # 测试成分：Fe-C-Si合金 (类似钢)
+    # (正确) 使用大写符号，符合 TDB
     composition = {
         'FE': 0.70,
         'C': 0.03,
@@ -602,11 +515,18 @@ if __name__ == "__main__":
         activity = props['activity']
         mu = props['mu']
 
+        # --- (修正: 格式化字符串以处理 None) ---
+        ln_gamma_str = f"{ln_gamma:<12.4f}" if ln_gamma is not None else f"{'N/A':<12}"
+        gamma_str = f"{gamma:<12.4f}" if gamma is not None else f"{'N/A':<12}"
+        activity_str = f"{activity:<12.4f}" if activity is not None else f"{'N/A':<12}"
+        mu_str = f"{mu/1000:<15.2f}" if mu is not None else f"{'N/A':<15}"
+
         print(f"{comp:<10} {x_i:<10.4f} "
-              f"{ln_gamma if ln_gamma else 'N/A':<12} "
-              f"{gamma if gamma else 'N/A':<12} "
-              f"{activity if activity else 'N/A':<12} "
-              f"{mu/1000 if mu else 'N/A':<15}")
+              f"{ln_gamma_str} "
+              f"{gamma_str} "
+              f"{activity_str} "
+              f"{mu_str}")
+        # --- (修正结束) ---
 
     # 显示合金性质
     print("\n" + "=" * 70)
@@ -618,15 +538,21 @@ if __name__ == "__main__":
     G = alloy_props['G']
     S = alloy_props['S']
 
-    if H is not None:
+    if H is not None and math.isfinite(H):
         print(f"Molar Enthalpy (H):        {H/1000:.2f} kJ/mol")
-    if G is not None:
+    else:
+        print(f"Molar Enthalpy (H):        N/A (Calculation failed)")
+
+    if G is not None and math.isfinite(G):
         print(f"Gibbs Free Energy (G):     {G/1000:.2f} kJ/mol")
-    if S is not None:
+    else:
+        print(f"Gibbs Free Energy (G):     N/A (Calculation failed)")
+        
+    if S is not None and math.isfinite(S):
         print(f"Molar Entropy (S):         {S:.4f} J/(mol*K)")
-    if H is not None and S is not None:
-        print(f"T*S:                       {temperature*S/1000:.2f} kJ/mol")
-    if H is not None and G is not None:
-        print(f"H - G:                     {(H-G)/1000:.2f} kJ/mol")
+    else:
+        print(f"Molar Entropy (S):         N/A (Calculation failed)")
 
     print("=" * 70)
+    
+    # --- (已移除: 液相线/固相线测试代码) ---
