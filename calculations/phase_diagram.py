@@ -123,25 +123,33 @@ class PhaseDiagram:
             液相线温度 (K)
         """
         try:
+            # 检查成分是否有效
+            if not composition or sum(composition.values()) == 0:
+                return None
+
             # 方法1: 加权平均熔点（简化方法）
-            T_liquidus_avg = 0.0
-            total_weight = 0.0
+            # T_liquidus ≈ Σ(X_i * T_melt_i) / Σ(X_i) for components with known T_melt
+            T_weighted_sum = 0.0
+            x_sum = 0.0  # 有熔点数据的组分的摩尔分数总和
 
             for component, x_i in composition.items():
-                T_melt = self.get_melting_point(component)
-                if T_melt is not None:
-                    T_liquidus_avg += x_i * T_melt
-                    total_weight += x_i
+                if x_i > 0:  # 只考虑非零组分
+                    T_melt = self.get_melting_point(component)
+                    if T_melt is not None:
+                        T_weighted_sum += x_i * T_melt
+                        x_sum += x_i
 
-            if total_weight > 0:
-                T_liquidus_avg /= total_weight
-            else:
+            # 如果没有任何组分有熔点数据，返回None
+            if x_sum == 0:
                 return None
+
+            # 加权平均
+            T_liquidus = T_weighted_sum / x_sum
 
             # 方法2: 使用Gibbs能最小化（更精确，但计算量大）
             # 这里先使用简化方法
 
-            return T_liquidus_avg
+            return T_liquidus
 
         except Exception as e:
             print(f"Error calculating liquidus temperature: {e}")
@@ -167,11 +175,17 @@ class PhaseDiagram:
             固相线温度 (K)
         """
         try:
+            # 检查成分是否有效
+            if not composition or sum(composition.values()) == 0:
+                return None
+
             # 简化方法: 使用最低熔点作为固相线温度的估计
+            # 固相线 ≈ min(T_melt_i) for all components with X_i > threshold
             T_solidus = float('inf')
+            threshold = 0.001  # 降低阈值到0.1%，避免忽略重要的低熔点组分
 
             for component, x_i in composition.items():
-                if x_i > 0.01:  # 忽略微量组分
+                if x_i > threshold:  # 只忽略极微量组分
                     T_melt = self.get_melting_point(component)
                     if T_melt is not None and T_melt < T_solidus:
                         T_solidus = T_melt
@@ -264,7 +278,9 @@ class PhaseDiagram:
     def calculate_binary_phase_diagram(self,
                                        component_a: str,
                                        component_b: str,
-                                       n_points: int = 20) -> Dict[str, List]:
+                                       n_points: int = 20,
+                                       extrapolation_model: str = 'UEM1',
+                                       activity_model: str = 'Wagner') -> Dict[str, List]:
         """
         计算二元相图
 
@@ -272,6 +288,8 @@ class PhaseDiagram:
             component_a: 组分A
             component_b: 组分B
             n_points: 采样点数
+            extrapolation_model: 外推模型
+            activity_model: 活度模型
 
         Returns:
             相图数据
@@ -298,8 +316,12 @@ class PhaseDiagram:
             if len(composition) == 0:
                 continue
 
-            T_liq = self.calculate_liquidus_temperature(composition)
-            T_sol = self.calculate_solidus_temperature(composition)
+            T_liq = self.calculate_liquidus_temperature(
+                composition, extrapolation_model, activity_model
+            )
+            T_sol = self.calculate_solidus_temperature(
+                composition, extrapolation_model, activity_model
+            )
 
             results['x_b'].append(x_b)
             results['T_liquidus'].append(T_liq)

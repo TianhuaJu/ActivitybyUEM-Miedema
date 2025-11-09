@@ -100,6 +100,32 @@ class PhaseDiagramWidget(QWidget):
 
         layout.addWidget(mode_group)
 
+        # 模型参数分组
+        model_group = QGroupBox("计算模型")
+        model_layout = QGridLayout(model_group)
+        model_layout.setSpacing(15)
+        model_layout.setContentsMargins(20, 25, 20, 20)
+
+        row = 0
+
+        # 外推模型
+        model_layout.addWidget(QLabel("外推模型:"), row, 0, Qt.AlignRight)
+        self.extrap_model_combo = QComboBox()
+        self.extrap_model_combo.addItems([
+            "UEM1", "UEM2", "UEM2-Adv", "GSM",
+            "Muggianu", "Toop-Muggianu", "Toop-Kohler"
+        ])
+        model_layout.addWidget(self.extrap_model_combo, row, 1)
+        row += 1
+
+        # 活度模型
+        model_layout.addWidget(QLabel("活度模型:"), row, 0, Qt.AlignRight)
+        self.activity_model_combo = QComboBox()
+        self.activity_model_combo.addItems(["Wagner", "Darken", "Elliott"])
+        model_layout.addWidget(self.activity_model_combo, row, 1)
+
+        layout.addWidget(model_group)
+
         # 输入参数分组
         self.input_group = QGroupBox("输入参数")
         self.input_layout = QGridLayout(self.input_group)
@@ -256,15 +282,25 @@ class PhaseDiagramWidget(QWidget):
             QMessageBox.warning(self, "输入错误", "无法解析合金成分！")
             return
 
+        # 获取模型参数
+        extrap_model = self.extrap_model_combo.currentText()
+        activity_model = self.activity_model_combo.currentText()
+
         # 计算
-        T_liquidus = self.phase_calc.calculate_liquidus_temperature(composition)
-        T_solidus = self.phase_calc.calculate_solidus_temperature(composition)
+        T_liquidus = self.phase_calc.calculate_liquidus_temperature(
+            composition, extrap_model, activity_model
+        )
+        T_solidus = self.phase_calc.calculate_solidus_temperature(
+            composition, extrap_model, activity_model
+        )
 
         # 显示结果
         text_output = "=" * 70 + "\n"
         text_output += "液相线/固相线温度计算结果\n"
         text_output += "=" * 70 + "\n\n"
-        text_output += f"合金成分: {composition}\n\n"
+        text_output += f"合金成分: {composition}\n"
+        text_output += f"外推模型: {extrap_model}\n"
+        text_output += f"活度模型: {activity_model}\n\n"
 
         if T_liquidus:
             text_output += f"液相线温度: {T_liquidus:.2f} K ({T_liquidus-273.15:.2f} °C)\n"
@@ -304,16 +340,24 @@ class PhaseDiagramWidget(QWidget):
             QMessageBox.warning(self, "输入错误", "请输入组分A和组分B！")
             return
 
+        # 获取模型参数
+        extrap_model = self.extrap_model_combo.currentText()
+        activity_model = self.activity_model_combo.currentText()
+
         # 计算相图
         self.results_text.setText("正在计算二元相图，请稍候...")
         phase_data = self.phase_calc.calculate_binary_phase_diagram(
-            comp_a, comp_b, n_points=n_points
+            comp_a, comp_b, n_points=n_points,
+            extrapolation_model=extrap_model,
+            activity_model=activity_model
         )
 
         # 显示结果
         text_output = "=" * 70 + "\n"
         text_output += f"二元相图: {comp_a}-{comp_b}\n"
         text_output += "=" * 70 + "\n\n"
+        text_output += f"外推模型: {extrap_model}\n"
+        text_output += f"活度模型: {activity_model}\n\n"
         text_output += f"{'X_' + comp_b:<10} {'T_liquidus (K)':<15} {'T_solidus (K)':<15}\n"
         text_output += "-" * 70 + "\n"
 
@@ -355,6 +399,10 @@ class PhaseDiagramWidget(QWidget):
 
         base_composition = parse_composition_static(base_comp_str) if base_comp_str else {}
 
+        # 获取模型参数
+        extrap_model = self.extrap_model_combo.currentText()
+        activity_model = self.activity_model_combo.currentText()
+
         # 计算曲线
         self.results_text.setText("正在计算成分变化曲线，请稍候...")
         curve_data = self.phase_calc.calculate_phase_diagram_curve(
@@ -362,14 +410,18 @@ class PhaseDiagramWidget(QWidget):
             variable_component=var_comp,
             x_min=x_min,
             x_max=x_max,
-            n_points=n_points
+            n_points=n_points,
+            extrapolation_model=extrap_model,
+            activity_model=activity_model
         )
 
         # 显示结果
         text_output = "=" * 70 + "\n"
         text_output += f"成分变化曲线: 变化组分 {var_comp}\n"
         text_output += "=" * 70 + "\n\n"
-        text_output += f"基础成分: {base_composition}\n\n"
+        text_output += f"基础成分: {base_composition}\n"
+        text_output += f"外推模型: {extrap_model}\n"
+        text_output += f"活度模型: {activity_model}\n\n"
         text_output += f"{'X_' + var_comp:<10} {'T_liquidus (K)':<15} {'T_solidus (K)':<15}\n"
         text_output += "-" * 70 + "\n"
 

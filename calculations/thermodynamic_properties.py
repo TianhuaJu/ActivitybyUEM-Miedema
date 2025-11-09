@@ -121,9 +121,18 @@ class ThermodynamicProperties:
         Returns:
             ln(γ_i)
         """
-        # 确定溶剂
+        # 确定溶剂（选择摩尔分数最大的组分）
         if solvent is None:
-            solvent = max(composition.items(), key=lambda x: x[1])[0]
+            if not composition:
+                raise ValueError("Composition dictionary is empty")
+
+            # 过滤掉摩尔分数为0或负数的组分
+            valid_components = {k: v for k, v in composition.items() if v > 0}
+            if not valid_components:
+                raise ValueError("No valid components with positive mole fractions")
+
+            # 选择摩尔分数最大的组分作为溶剂
+            solvent = max(valid_components.items(), key=lambda x: x[1])[0]
 
         # 设置活度计算器（直接设置内部字典）
         self.activity_calculator._comp_dict = composition.copy()
