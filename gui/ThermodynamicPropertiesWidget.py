@@ -19,7 +19,7 @@ from datetime import datetime
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QLabel, QLineEdit, QComboBox, QPushButton,
                              QSplitter, QFrame, QGroupBox, QTextEdit,
-                             QMessageBox, QTableWidget, QTableWidgetItem)
+                             QMessageBox, QTableWidget, QTableWidgetItem, QProgressBar)
 from PyQt5.QtCore import Qt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -163,6 +163,12 @@ class ThermodynamicPropertiesWidget(QWidget):
         results_group = QGroupBox("计算结果")
         results_layout = QVBoxLayout(results_group)
 
+        # 添加进度条（用于显示计算进行中）
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setRange(0, 0)  # 不确定模式（循环动画）
+        results_layout.addWidget(self.progress_bar)
+
         self.results_text = QTextEdit()
         self.results_text.setReadOnly(True)
         self.results_text.setMinimumHeight(200)
@@ -205,9 +211,14 @@ class ThermodynamicPropertiesWidget(QWidget):
             extrap_model = self.extrap_model_combo.currentText()
             activity_model = self.activity_model_combo.currentText()
 
-            # 显示计算中
+            # 显示计算中和进度条
             self.results_text.setText("正在计算中，请稍候...")
             self.calculate_button.setEnabled(False)
+            self.progress_bar.setVisible(True)
+
+            # 强制更新GUI
+            from PyQt5.QtWidgets import QApplication
+            QApplication.processEvents()
 
             # 执行计算
             results = self.thermo_calc.calculate_all_properties(
@@ -234,6 +245,7 @@ class ThermodynamicPropertiesWidget(QWidget):
 
         finally:
             self.calculate_button.setEnabled(True)
+            self.progress_bar.setVisible(False)
 
     def display_results(self, results, composition, temperature, phase_state,
                        extrap_model, activity_model):

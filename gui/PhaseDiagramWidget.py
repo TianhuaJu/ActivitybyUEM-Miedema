@@ -18,8 +18,8 @@ from datetime import datetime
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QLabel, QLineEdit, QComboBox, QPushButton,
                              QSplitter, QFrame, QGroupBox, QTextEdit,
-                             QMessageBox, QRadioButton, QButtonGroup)
-from PyQt5.QtCore import Qt
+                             QMessageBox, QRadioButton, QButtonGroup, QProgressBar)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
@@ -238,6 +238,12 @@ class PhaseDiagramWidget(QWidget):
         results_group = QGroupBox("计算结果")
         results_layout = QVBoxLayout(results_group)
 
+        # 添加进度条
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setTextVisible(True)
+        results_layout.addWidget(self.progress_bar)
+
         self.results_text = QTextEdit()
         self.results_text.setReadOnly(True)
         self.results_text.setMinimumHeight(150)
@@ -358,14 +364,29 @@ class PhaseDiagramWidget(QWidget):
         activity_model = self.activity_model_combo.currentText()
         solid_model_type = self.solid_model_combo.currentText()
 
-        # 计算相图
+        # 显示进度条
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, n_points)
+        self.progress_bar.setValue(0)
         self.results_text.setText("正在计算二元相图，请稍候...")
+
+        # 定义进度回调函数
+        from PyQt5.QtWidgets import QApplication
+        def update_progress(current, total):
+            self.progress_bar.setValue(current)
+            QApplication.processEvents()  # 强制更新GUI
+
+        # 计算相图
         phase_data = self.phase_calc.calculate_binary_phase_diagram(
             comp_a, comp_b, n_points=n_points,
             extrapolation_model=extrap_model,
             activity_model=activity_model,
-            solid_model_type=solid_model_type
+            solid_model_type=solid_model_type,
+            progress_callback=update_progress
         )
+
+        # 隐藏进度条
+        self.progress_bar.setVisible(False)
 
         # 显示结果
         text_output = "=" * 70 + "\n"
@@ -420,8 +441,19 @@ class PhaseDiagramWidget(QWidget):
         activity_model = self.activity_model_combo.currentText()
         solid_model_type = self.solid_model_combo.currentText()
 
-        # 计算曲线
+        # 显示进度条
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, n_points)
+        self.progress_bar.setValue(0)
         self.results_text.setText("正在计算成分变化曲线，请稍候...")
+
+        # 定义进度回调函数
+        from PyQt5.QtWidgets import QApplication
+        def update_progress(current, total):
+            self.progress_bar.setValue(current)
+            QApplication.processEvents()  # 强制更新GUI
+
+        # 计算曲线
         curve_data = self.phase_calc.calculate_phase_diagram_curve(
             base_composition=base_composition,
             variable_component=var_comp,
@@ -430,8 +462,12 @@ class PhaseDiagramWidget(QWidget):
             n_points=n_points,
             extrapolation_model=extrap_model,
             activity_model=activity_model,
-            solid_model_type=solid_model_type
+            solid_model_type=solid_model_type,
+            progress_callback=update_progress
         )
+
+        # 隐藏进度条
+        self.progress_bar.setVisible(False)
 
         # 显示结果
         text_output = "=" * 70 + "\n"

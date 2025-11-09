@@ -776,7 +776,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         GUI兼容性方法：计算液相线温度（简化接口）
 
         Args:
-            composition: 液相成分字典，如 {'FE': 0.97, 'C': 0.03}
+            composition: 液相成分字典，如 {'Fe': 0.97, 'C': 0.03}
             extrapolation_model: 外推模型
             activity_model: 活度模型
             solid_model_type: 固相模型类型 ('SOLID_SOLUTION' 或 'PURE_SOLID')
@@ -785,12 +785,15 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             液相线温度 (K)，如果计算失败返回 None
         """
         try:
-            # 自动生成 solid_phase_map
-            solid_phase_map = self._get_default_solid_phase_map(composition)
+            # 统一转为大写符号（TDB数据库使用大写）
+            composition_upper = {k.upper(): v for k, v in composition.items()}
+
+            # 自动生成 solid_phase_map（使用大写符号）
+            solid_phase_map = self._get_default_solid_phase_map(composition_upper)
 
             # 调用完整的 calculate_liquidus 方法
             result = self.calculate_liquidus(
-                composition=composition,
+                composition=composition_upper,
                 solid_phase_map=solid_phase_map,
                 extrapolation_model=extrapolation_model,
                 activity_model=activity_model,
@@ -804,6 +807,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 
         except Exception as e:
             print(f"Error calculating liquidus temperature: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def calculate_solidus_temperature(self,
@@ -815,7 +820,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         GUI兼容性方法：计算固相线温度（简化接口）
 
         Args:
-            composition: 固相成分字典
+            composition: 固相成分字典，如 {'Fe': 0.97, 'C': 0.03}
             extrapolation_model: 外推模型
             activity_model: 活度模型
             solid_model_type: 固相模型类型 ('SOLID_SOLUTION' 或 'PURE_SOLID')
@@ -824,12 +829,15 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             固相线温度 (K)，如果计算失败返回 None
         """
         try:
-            # 自动生成 solid_phase_map
-            solid_phase_map = self._get_default_solid_phase_map(composition)
+            # 统一转为大写符号（TDB数据库使用大写）
+            composition_upper = {k.upper(): v for k, v in composition.items()}
+
+            # 自动生成 solid_phase_map（使用大写符号）
+            solid_phase_map = self._get_default_solid_phase_map(composition_upper)
 
             # 调用完整的 calculate_solidus 方法
             result = self.calculate_solidus(
-                composition=composition,
+                composition=composition_upper,
                 solid_phase_map=solid_phase_map,
                 extrapolation_model=extrapolation_model,
                 activity_model=activity_model,
@@ -843,6 +851,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 
         except Exception as e:
             print(f"Error calculating solidus temperature: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def calculate_binary_phase_diagram(self,
@@ -851,7 +861,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                                        n_points: int = 20,
                                        extrapolation_model: str = 'UEM1',
                                        activity_model: str = 'Wagner',
-                                       solid_model_type: str = 'PURE_SOLID') -> Dict[str, List]:
+                                       solid_model_type: str = 'PURE_SOLID',
+                                       progress_callback=None) -> Dict[str, List]:
         """
         GUI兼容性方法：计算二元相图
 
@@ -862,6 +873,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             extrapolation_model: 外推模型
             activity_model: 活度模型
             solid_model_type: 固相模型类型
+            progress_callback: 可选的进度回调函数 progress_callback(current, total)
 
         Returns:
             包含 'x_b', 'T_liquidus', 'T_solidus' 的字典
@@ -875,7 +887,11 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         import numpy as np
         x_b_values = np.linspace(0.0, 1.0, n_points)
 
-        for x_b in x_b_values:
+        for i, x_b in enumerate(x_b_values):
+            # 更新进度
+            if progress_callback:
+                progress_callback(i + 1, len(x_b_values))
+
             x_a = 1.0 - x_b
             composition = {
                 component_a.upper(): x_a,
@@ -909,19 +925,24 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                                       n_points: int = 20,
                                       extrapolation_model: str = 'UEM1',
                                       activity_model: str = 'Wagner',
-                                      solid_model_type: str = 'PURE_SOLID') -> Dict[str, List]:
+                                      solid_model_type: str = 'PURE_SOLID',
+                                      progress_callback=None) -> Dict[str, List]:
         """
         GUI兼容性方法：计算成分变化曲线
 
+        保证基础成分的含量比例保持不变，变化组分含量变化，
+        基础成分的总含量 = 1 - 变化组分的含量
+
         Args:
-            base_composition: 基础成分（不含变化组分）
-            variable_component: 变化的组分
+            base_composition: 基础成分（不含变化组分），如 {'Fe': 0.97}
+            variable_component: 变化的组分，如 'C'
             x_min: 变化组分的最小摩尔分数
             x_max: 变化组分的最大摩尔分数
             n_points: 采样点数
             extrapolation_model: 外推模型
             activity_model: 活度模型
             solid_model_type: 固相模型类型
+            progress_callback: 可选的进度回调函数 progress_callback(current, total)
 
         Returns:
             包含 'x', 'T_liquidus', 'T_solidus' 的字典
@@ -932,28 +953,43 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             'T_solidus': []
         }
 
-        base_total = sum(base_composition.values())
+        # 转为大写并移除variable_component（如果存在）
+        variable_component_upper = variable_component.upper()
+        base_composition_upper = {}
+        for comp, x_i in base_composition.items():
+            comp_upper = comp.upper()
+            if comp_upper != variable_component_upper:
+                base_composition_upper[comp_upper] = x_i
+
+        # 计算基础成分的总量（用于归一化）
+        base_total = sum(base_composition_upper.values())
         if base_total <= 0:
-            base_composition = {}
+            # 如果没有基础成分，只能计算纯变化组分
+            base_composition_upper = {}
 
         import numpy as np
         x_values = np.linspace(x_min, x_max, n_points)
 
-        for x_var in x_values:
-            current_comp = {variable_component.upper(): x_var}
+        for i, x_var in enumerate(x_values):
+            # 更新进度
+            if progress_callback:
+                progress_callback(i + 1, len(x_values))
+
+            # 计算当前成分
+            current_comp = {variable_component_upper: x_var}
             remaining = 1.0 - x_var
 
-            # 按比例分配剩余成分
-            for comp, x_i in base_composition.items():
-                if comp.upper() != variable_component.upper():
-                    if base_total > 0:
-                        current_comp[comp.upper()] = x_i / base_total * remaining
-                    else:
-                        current_comp[comp.upper()] = 0.0
+            # 按初始比例分配基础成分
+            if base_total > 0:
+                for comp, x_i in base_composition_upper.items():
+                    # x_i / base_total 是该组分在基础成分中的比例
+                    # 乘以 remaining 得到在总成分中的摩尔分数
+                    current_comp[comp] = (x_i / base_total) * remaining
 
-            # 归一化
+            # 验证归一化（应该已经是1.0）
             total = sum(current_comp.values())
-            if total > 0:
+            if abs(total - 1.0) > 1e-6:
+                # 如果有误差，重新归一化
                 current_comp = {k: v/total for k, v in current_comp.items()}
 
             T_liq = self.calculate_liquidus_temperature(
