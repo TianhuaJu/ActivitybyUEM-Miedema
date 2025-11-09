@@ -5,8 +5,6 @@ import re
 import sqlite3
 import sys
 
-import models.extrapolation_models
-
 
 def get_database_path ():
 	"""获取数据库路径，适配开发环境和PyInstaller打包环境"""
@@ -504,8 +502,10 @@ class Melt:
 		else:
 			'''calculate eki by UEM1'''
 			try:
+				# 延迟导入以避免循环依赖
+				from models.extrapolation_models import BinaryModel
 				ski = TernaryMelts().activity_interact_coefficient_1st(solv, element_i, element_k, tem, "Liquid",
-				                                                       models.extrapolation_models.BinaryModel.UEM1)
+				                                                       BinaryModel.UEM1)
 				eki = self._first_order_m_to_w(ski, Element(element_k), Element(solv))
 				return eki
 			except Exception as e:
