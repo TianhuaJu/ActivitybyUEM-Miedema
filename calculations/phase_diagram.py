@@ -727,6 +727,252 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         
         return {"status": "success", "T_solidus": T_solidus_eutectic, "solid_composition": solid_composition, "liquid_composition_eq": final_liquid_comp_eutectic}
 
+    # ================================================================
+    # =================== GUI 兼容性包装方法 ===================
+    # ================================================================
+
+    def _get_default_solid_phase_map(self, composition: Dict[str, float]) -> Dict[str, str]:
+        """
+        为给定的成分生成默认的固相映射
+        基于常见元素的标准固相
+        """
+        # 常见元素的默认固相
+        default_phases = {
+            'FE': 'BCC_A2',      # 铁素体 (α-Fe)
+            'C': 'GRAPHITE',     # 石墨
+            'CR': 'BCC_A2',      # Cr也是BCC
+            'NI': 'FCC_A1',      # 镍（面心立方）
+            'MN': 'CBCC_A12',    # 锰
+            'SI': 'DIAMOND_A4',  # 硅（金刚石结构）
+            'MO': 'BCC_A2',      # 钼
+            'W': 'BCC_A2',       # 钨
+            'CO': 'HCP_A3',      # 钴（密排六方）
+            'CU': 'FCC_A1',      # 铜
+            'AL': 'FCC_A1',      # 铝
+            'TI': 'HCP_A3',      # 钛
+            'V': 'BCC_A2',       # 钒
+            'NB': 'BCC_A2',      # 铌
+            'ZR': 'HCP_A3',      # 锆
+        }
+
+        solid_phase_map = {}
+        for element in composition.keys():
+            elem_upper = element.upper()
+            if elem_upper in default_phases:
+                solid_phase_map[elem_upper] = default_phases[elem_upper]
+            else:
+                # 未知元素默认使用BCC_A2
+                solid_phase_map[elem_upper] = 'BCC_A2'
+                print(f"Warning: 未知元素 {elem_upper}，默认使用 BCC_A2 作为固相")
+
+        return solid_phase_map
+
+    def calculate_liquidus_temperature(self,
+                                      composition: Dict[str, float],
+                                      extrapolation_model: str = 'UEM1',
+                                      activity_model: str = 'Wagner',
+                                      solid_model_type: str = 'PURE_SOLID') -> Optional[float]:
+        """
+        GUI兼容性方法：计算液相线温度（简化接口）
+
+        Args:
+            composition: 液相成分字典，如 {'FE': 0.97, 'C': 0.03}
+            extrapolation_model: 外推模型
+            activity_model: 活度模型
+            solid_model_type: 固相模型类型 ('SOLID_SOLUTION' 或 'PURE_SOLID')
+
+        Returns:
+            液相线温度 (K)，如果计算失败返回 None
+        """
+        try:
+            # 自动生成 solid_phase_map
+            solid_phase_map = self._get_default_solid_phase_map(composition)
+
+            # 调用完整的 calculate_liquidus 方法
+            result = self.calculate_liquidus(
+                composition=composition,
+                solid_phase_map=solid_phase_map,
+                extrapolation_model=extrapolation_model,
+                activity_model=activity_model,
+                solid_model_type=solid_model_type
+            )
+
+            if result['status'] == 'success':
+                return result['T_liquidus']
+            else:
+                return None
+
+        except Exception as e:
+            print(f"Error calculating liquidus temperature: {e}")
+            return None
+
+    def calculate_solidus_temperature(self,
+                                     composition: Dict[str, float],
+                                     extrapolation_model: str = 'UEM1',
+                                     activity_model: str = 'Wagner',
+                                     solid_model_type: str = 'PURE_SOLID') -> Optional[float]:
+        """
+        GUI兼容性方法：计算固相线温度（简化接口）
+
+        Args:
+            composition: 固相成分字典
+            extrapolation_model: 外推模型
+            activity_model: 活度模型
+            solid_model_type: 固相模型类型 ('SOLID_SOLUTION' 或 'PURE_SOLID')
+
+        Returns:
+            固相线温度 (K)，如果计算失败返回 None
+        """
+        try:
+            # 自动生成 solid_phase_map
+            solid_phase_map = self._get_default_solid_phase_map(composition)
+
+            # 调用完整的 calculate_solidus 方法
+            result = self.calculate_solidus(
+                composition=composition,
+                solid_phase_map=solid_phase_map,
+                extrapolation_model=extrapolation_model,
+                activity_model=activity_model,
+                solid_model_type=solid_model_type
+            )
+
+            if result['status'] == 'success':
+                return result['T_solidus']
+            else:
+                return None
+
+        except Exception as e:
+            print(f"Error calculating solidus temperature: {e}")
+            return None
+
+    def calculate_binary_phase_diagram(self,
+                                       component_a: str,
+                                       component_b: str,
+                                       n_points: int = 20,
+                                       extrapolation_model: str = 'UEM1',
+                                       activity_model: str = 'Wagner',
+                                       solid_model_type: str = 'PURE_SOLID') -> Dict[str, List]:
+        """
+        GUI兼容性方法：计算二元相图
+
+        Args:
+            component_a: 组分A
+            component_b: 组分B
+            n_points: 采样点数
+            extrapolation_model: 外推模型
+            activity_model: 活度模型
+            solid_model_type: 固相模型类型
+
+        Returns:
+            包含 'x_b', 'T_liquidus', 'T_solidus' 的字典
+        """
+        results = {
+            'x_b': [],
+            'T_liquidus': [],
+            'T_solidus': []
+        }
+
+        import numpy as np
+        x_b_values = np.linspace(0.0, 1.0, n_points)
+
+        for x_b in x_b_values:
+            x_a = 1.0 - x_b
+            composition = {
+                component_a.upper(): x_a,
+                component_b.upper(): x_b
+            }
+
+            # 过滤掉极小的值
+            composition = {k: v for k, v in composition.items() if v > 1e-6}
+
+            if len(composition) == 0:
+                continue
+
+            T_liq = self.calculate_liquidus_temperature(
+                composition, extrapolation_model, activity_model, solid_model_type
+            )
+            T_sol = self.calculate_solidus_temperature(
+                composition, extrapolation_model, activity_model, solid_model_type
+            )
+
+            results['x_b'].append(x_b)
+            results['T_liquidus'].append(T_liq)
+            results['T_solidus'].append(T_sol)
+
+        return results
+
+    def calculate_phase_diagram_curve(self,
+                                      base_composition: Dict[str, float],
+                                      variable_component: str,
+                                      x_min: float = 0.0,
+                                      x_max: float = 1.0,
+                                      n_points: int = 20,
+                                      extrapolation_model: str = 'UEM1',
+                                      activity_model: str = 'Wagner',
+                                      solid_model_type: str = 'PURE_SOLID') -> Dict[str, List]:
+        """
+        GUI兼容性方法：计算成分变化曲线
+
+        Args:
+            base_composition: 基础成分（不含变化组分）
+            variable_component: 变化的组分
+            x_min: 变化组分的最小摩尔分数
+            x_max: 变化组分的最大摩尔分数
+            n_points: 采样点数
+            extrapolation_model: 外推模型
+            activity_model: 活度模型
+            solid_model_type: 固相模型类型
+
+        Returns:
+            包含 'x', 'T_liquidus', 'T_solidus' 的字典
+        """
+        results = {
+            'x': [],
+            'T_liquidus': [],
+            'T_solidus': []
+        }
+
+        base_total = sum(base_composition.values())
+        if base_total <= 0:
+            base_composition = {}
+
+        import numpy as np
+        x_values = np.linspace(x_min, x_max, n_points)
+
+        for x_var in x_values:
+            current_comp = {variable_component.upper(): x_var}
+            remaining = 1.0 - x_var
+
+            # 按比例分配剩余成分
+            for comp, x_i in base_composition.items():
+                if comp.upper() != variable_component.upper():
+                    if base_total > 0:
+                        current_comp[comp.upper()] = x_i / base_total * remaining
+                    else:
+                        current_comp[comp.upper()] = 0.0
+
+            # 归一化
+            total = sum(current_comp.values())
+            if total > 0:
+                current_comp = {k: v/total for k, v in current_comp.items()}
+
+            T_liq = self.calculate_liquidus_temperature(
+                current_comp, extrapolation_model, activity_model, solid_model_type
+            )
+            T_sol = self.calculate_solidus_temperature(
+                current_comp, extrapolation_model, activity_model, solid_model_type
+            )
+
+            results['x'].append(x_var)
+            results['T_liquidus'].append(T_liq if T_liq else None)
+            results['T_solidus'].append(T_sol if T_sol else None)
+
+        return results
+
+
+# 为GUI向后兼容性添加类别名
+PhaseDiagram = PhaseDiagramCalculator
+
 
 # ================================================================
 # =================== V3.3 测试代码 (展示模型切换) =================

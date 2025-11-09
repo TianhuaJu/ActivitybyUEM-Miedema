@@ -123,6 +123,17 @@ class PhaseDiagramWidget(QWidget):
         self.activity_model_combo = QComboBox()
         self.activity_model_combo.addItems(["Wagner", "Darken", "Elliott"])
         model_layout.addWidget(self.activity_model_combo, row, 1)
+        row += 1
+
+        # 固相模型类型
+        model_layout.addWidget(QLabel("固相模型:"), row, 0, Qt.AlignRight)
+        self.solid_model_combo = QComboBox()
+        self.solid_model_combo.addItems(["PURE_SOLID", "SOLID_SOLUTION"])
+        self.solid_model_combo.setToolTip(
+            "PURE_SOLID: 液相与纯固相平衡（共晶系统）\n"
+            "SOLID_SOLUTION: 液相与固溶体平衡（连续固溶体）"
+        )
+        model_layout.addWidget(self.solid_model_combo, row, 1)
 
         layout.addWidget(model_group)
 
@@ -285,13 +296,14 @@ class PhaseDiagramWidget(QWidget):
         # 获取模型参数
         extrap_model = self.extrap_model_combo.currentText()
         activity_model = self.activity_model_combo.currentText()
+        solid_model_type = self.solid_model_combo.currentText()
 
         # 计算
         T_liquidus = self.phase_calc.calculate_liquidus_temperature(
-            composition, extrap_model, activity_model
+            composition, extrap_model, activity_model, solid_model_type
         )
         T_solidus = self.phase_calc.calculate_solidus_temperature(
-            composition, extrap_model, activity_model
+            composition, extrap_model, activity_model, solid_model_type
         )
 
         # 显示结果
@@ -300,7 +312,8 @@ class PhaseDiagramWidget(QWidget):
         text_output += "=" * 70 + "\n\n"
         text_output += f"合金成分: {composition}\n"
         text_output += f"外推模型: {extrap_model}\n"
-        text_output += f"活度模型: {activity_model}\n\n"
+        text_output += f"活度模型: {activity_model}\n"
+        text_output += f"固相模型: {solid_model_type}\n\n"
 
         if T_liquidus:
             text_output += f"液相线温度: {T_liquidus:.2f} K ({T_liquidus-273.15:.2f} °C)\n"
@@ -343,13 +356,15 @@ class PhaseDiagramWidget(QWidget):
         # 获取模型参数
         extrap_model = self.extrap_model_combo.currentText()
         activity_model = self.activity_model_combo.currentText()
+        solid_model_type = self.solid_model_combo.currentText()
 
         # 计算相图
         self.results_text.setText("正在计算二元相图，请稍候...")
         phase_data = self.phase_calc.calculate_binary_phase_diagram(
             comp_a, comp_b, n_points=n_points,
             extrapolation_model=extrap_model,
-            activity_model=activity_model
+            activity_model=activity_model,
+            solid_model_type=solid_model_type
         )
 
         # 显示结果
@@ -357,7 +372,8 @@ class PhaseDiagramWidget(QWidget):
         text_output += f"二元相图: {comp_a}-{comp_b}\n"
         text_output += "=" * 70 + "\n\n"
         text_output += f"外推模型: {extrap_model}\n"
-        text_output += f"活度模型: {activity_model}\n\n"
+        text_output += f"活度模型: {activity_model}\n"
+        text_output += f"固相模型: {solid_model_type}\n\n"
         text_output += f"{'X_' + comp_b:<10} {'T_liquidus (K)':<15} {'T_solidus (K)':<15}\n"
         text_output += "-" * 70 + "\n"
 
@@ -402,6 +418,7 @@ class PhaseDiagramWidget(QWidget):
         # 获取模型参数
         extrap_model = self.extrap_model_combo.currentText()
         activity_model = self.activity_model_combo.currentText()
+        solid_model_type = self.solid_model_combo.currentText()
 
         # 计算曲线
         self.results_text.setText("正在计算成分变化曲线，请稍候...")
@@ -412,7 +429,8 @@ class PhaseDiagramWidget(QWidget):
             x_max=x_max,
             n_points=n_points,
             extrapolation_model=extrap_model,
-            activity_model=activity_model
+            activity_model=activity_model,
+            solid_model_type=solid_model_type
         )
 
         # 显示结果
@@ -421,7 +439,8 @@ class PhaseDiagramWidget(QWidget):
         text_output += "=" * 70 + "\n\n"
         text_output += f"基础成分: {base_composition}\n"
         text_output += f"外推模型: {extrap_model}\n"
-        text_output += f"活度模型: {activity_model}\n\n"
+        text_output += f"活度模型: {activity_model}\n"
+        text_output += f"固相模型: {solid_model_type}\n\n"
         text_output += f"{'X_' + var_comp:<10} {'T_liquidus (K)':<15} {'T_solidus (K)':<15}\n"
         text_output += "-" * 70 + "\n"
 
