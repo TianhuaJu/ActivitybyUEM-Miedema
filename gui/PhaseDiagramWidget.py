@@ -47,6 +47,7 @@ class PhaseDiagramWidget(QWidget):
         super().__init__()
 
         self.phase_calc = PhaseDiagram()
+        self.calculation_count = 0  # 计算批次计数器
         self.setup_ui()
 
     def setup_ui(self):
@@ -159,6 +160,11 @@ class PhaseDiagramWidget(QWidget):
         self.export_button.clicked.connect(self.export_results)
         self.export_button.setEnabled(False)
         button_layout.addWidget(self.export_button)
+
+        self.clear_button = QPushButton("清除历史")
+        self.clear_button.setMinimumHeight(40)
+        self.clear_button.clicked.connect(self.clear_history)
+        button_layout.addWidget(self.clear_button)
 
         layout.addLayout(button_layout)
         layout.addStretch()
@@ -312,8 +318,13 @@ class PhaseDiagramWidget(QWidget):
             composition, extrap_model, activity_model, solid_model_type
         )
 
-        # 显示结果
-        text_output = "=" * 70 + "\n"
+        # 增加计算批次计数
+        self.calculation_count += 1
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 显示结果 - 追加而非覆盖
+        text_output = "\n" + "=" * 70 + "\n"
+        text_output += f"【计算批次 #{self.calculation_count}】 {timestamp}\n"
         text_output += "液相线/固相线温度计算结果\n"
         text_output += "=" * 70 + "\n\n"
         text_output += f"合金成分: {composition}\n"
@@ -336,7 +347,12 @@ class PhaseDiagramWidget(QWidget):
 
         text_output += "=" * 70 + "\n"
 
-        self.results_text.setText(text_output)
+        # 追加结果
+        self.results_text.append(text_output)
+
+        # 滚动到底部显示最新结果
+        scrollbar = self.results_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
 
         # 绘制示意图
         self.chart_canvas.axes.clear()
@@ -388,13 +404,19 @@ class PhaseDiagramWidget(QWidget):
         # 隐藏进度条
         self.progress_bar.setVisible(False)
 
-        # 显示结果
-        text_output = "=" * 70 + "\n"
+        # 增加计算批次计数
+        self.calculation_count += 1
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 显示结果 - 追加而非覆盖
+        text_output = "\n" + "=" * 70 + "\n"
+        text_output += f"【计算批次 #{self.calculation_count}】 {timestamp}\n"
         text_output += f"二元相图: {comp_a}-{comp_b}\n"
         text_output += "=" * 70 + "\n\n"
         text_output += f"外推模型: {extrap_model}\n"
         text_output += f"活度模型: {activity_model}\n"
-        text_output += f"固相模型: {solid_model_type}\n\n"
+        text_output += f"固相模型: {solid_model_type}\n"
+        text_output += f"采样点数: {n_points}\n\n"
         text_output += f"{'X_' + comp_b:<10} {'T_liquidus (K)':<15} {'T_solidus (K)':<15}\n"
         text_output += "-" * 70 + "\n"
 
@@ -406,7 +428,13 @@ class PhaseDiagramWidget(QWidget):
             text_output += f"{T_sol if T_sol else 'N/A':<15}\n"
 
         text_output += "=" * 70 + "\n"
-        self.results_text.setText(text_output)
+
+        # 追加结果
+        self.results_text.append(text_output)
+
+        # 滚动到底部显示最新结果
+        scrollbar = self.results_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
 
         # 绘制相图
         self.chart_canvas.axes.clear()
@@ -469,14 +497,21 @@ class PhaseDiagramWidget(QWidget):
         # 隐藏进度条
         self.progress_bar.setVisible(False)
 
-        # 显示结果
-        text_output = "=" * 70 + "\n"
+        # 增加计算批次计数
+        self.calculation_count += 1
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 显示结果 - 追加而非覆盖
+        text_output = "\n" + "=" * 70 + "\n"
+        text_output += f"【计算批次 #{self.calculation_count}】 {timestamp}\n"
         text_output += f"成分变化曲线: 变化组分 {var_comp}\n"
         text_output += "=" * 70 + "\n\n"
         text_output += f"基础成分: {base_composition}\n"
+        text_output += f"变化范围: {x_min:.3f} ~ {x_max:.3f}\n"
         text_output += f"外推模型: {extrap_model}\n"
         text_output += f"活度模型: {activity_model}\n"
-        text_output += f"固相模型: {solid_model_type}\n\n"
+        text_output += f"固相模型: {solid_model_type}\n"
+        text_output += f"采样点数: {n_points}\n\n"
         text_output += f"{'X_' + var_comp:<10} {'T_liquidus (K)':<15} {'T_solidus (K)':<15}\n"
         text_output += "-" * 70 + "\n"
 
@@ -488,7 +523,13 @@ class PhaseDiagramWidget(QWidget):
             text_output += f"{T_sol if T_sol else 'N/A':<15}\n"
 
         text_output += "=" * 70 + "\n"
-        self.results_text.setText(text_output)
+
+        # 追加结果
+        self.results_text.append(text_output)
+
+        # 滚动到底部显示最新结果
+        scrollbar = self.results_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
 
         # 绘制曲线
         self.chart_canvas.axes.clear()
@@ -507,6 +548,26 @@ class PhaseDiagramWidget(QWidget):
         self.chart_canvas.axes.grid(True, alpha=0.3)
 
         self.chart_canvas.draw()
+
+    def clear_history(self):
+        """清除历史计算记录"""
+        reply = QMessageBox.question(
+            self,
+            "确认清除",
+            "确定要清除所有历史计算记录吗？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            self.results_text.clear()
+            self.calculation_count = 0
+            self.chart_canvas.axes.clear()
+            self.chart_canvas.axes.set_title("相图")
+            self.chart_canvas.axes.set_xlabel("成分")
+            self.chart_canvas.axes.set_ylabel("温度 (K)")
+            self.chart_canvas.axes.grid(True, alpha=0.3)
+            self.chart_canvas.draw()
 
     def export_results(self):
         """导出结果"""
