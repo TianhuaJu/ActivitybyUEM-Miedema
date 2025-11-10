@@ -307,12 +307,12 @@ class ThermodynamicPropertiesWidget(QWidget):
             activity = props.get('activity')
             mu = props.get('mu')
 
-            # 文本输出
+            # 文本输出 - 统一格式化以匹配表格
             text_output += f"{comp:<8} {x_i:<10.4f} "
-            text_output += f"{ln_gamma if ln_gamma is not None else 'N/A':<12} "
-            text_output += f"{gamma if gamma is not None else 'N/A':<12} "
-            text_output += f"{activity if activity is not None else 'N/A':<12} "
-            text_output += f"{mu/1000 if mu is not None else 'N/A':<15}\n"
+            text_output += f"{ln_gamma:<12.4f} " if ln_gamma is not None else f"{'N/A':<12} "
+            text_output += f"{gamma:<12.4f} " if gamma is not None else f"{'N/A':<12} "
+            text_output += f"{activity:<12.4e} " if activity is not None else f"{'N/A':<12} "
+            text_output += f"{mu/1000:<15.2f}\n" if mu is not None else f"{'N/A':<15}\n"
 
             # 表格输出 - 注意列索引从0开始，现在多了一列
             self.results_table.setItem(row, 0, QTableWidgetItem(batch_label))
