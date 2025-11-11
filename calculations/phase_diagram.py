@@ -294,11 +294,30 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             lookup_phase = 'LIQUID'
         elif tdb_phase == 'SOLID':
             activity_phase_state = 'solid'
-            # 固相使用参考相的 Gibbs 能量
-            lookup_phase = self.tdb_parser.get_reference_phase(component)
-            if not lookup_phase:
-                print(f"  (Warning) 无法获取 {component} 的参考相")
-                return None
+            # 固相溶液：根据合金的主要元素推断固相结构
+            # 找出成分中含量最高的元素（溶剂）
+            solvent = max(composition.items(), key=lambda x: x[1])[0] if composition else None
+
+            # 根据溶剂元素推断固相结构
+            if solvent:
+                solvent_ref_phase = self.tdb_parser.get_reference_phase(solvent)
+                if solvent_ref_phase:
+                    # 使用溶剂的参考相作为固溶体的相结构
+                    # 例如：Fe -> BCC_A2, Ni -> FCC_A1
+                    lookup_phase = solvent_ref_phase
+                    print(f"  (Info) 固相溶液相结构推断为: {lookup_phase} (基于溶剂 {solvent})")
+                else:
+                    # 回退：对于待计算的组分，使用其自身的参考相
+                    lookup_phase = self.tdb_parser.get_reference_phase(component)
+                    if not lookup_phase:
+                        print(f"  (Warning) 无法推断固相结构，无法获取 {component} 的参考相")
+                        return None
+            else:
+                # 没有溶剂（不应该发生）
+                lookup_phase = self.tdb_parser.get_reference_phase(component)
+                if not lookup_phase:
+                    print(f"  (Warning) 无法获取 {component} 的参考相")
+                    return None
         else:
             # 兼容旧的调用方式（如果有的话）
             activity_phase_state = 'liquid' if tdb_phase == 'LIQUID' else 'solid'
