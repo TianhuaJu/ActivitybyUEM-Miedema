@@ -179,11 +179,15 @@ class SolubilityWidget(QWidget):
         self.input_layout.addWidget(self.precipitate_combo, row, 1)
         row += 1
 
-        self.input_layout.addWidget(QLabel("溶液相:"), row, 0, Qt.AlignRight)
+        solution_label = QLabel("溶液相:")
+        solution_label.setToolTip("选择溶质溶解的相:\nLIQUID - 液相\nBCC_A2/FCC_A1/HCP_A3 - 固相溶体")
+        self.input_layout.addWidget(solution_label, row, 0, Qt.AlignRight)
         self.solution_phase_combo = QComboBox()
         self.solution_phase_combo.addItems([
-            "LIQUID", "BCC_A2", "FCC_A1", "HCP_A3", "DIAMOND_A4"
+            "LIQUID (液相)", "BCC_A2 (体心立方)", "FCC_A1 (面心立方)",
+            "HCP_A3 (密排六方)", "DIAMOND_A4 (金刚石)"
         ])
+        self.solution_phase_combo.setToolTip("液相和固相溶体均采用UEM-Miedema框架计算")
         self.input_layout.addWidget(self.solution_phase_combo, row, 1)
         row += 1
 
@@ -229,6 +233,15 @@ class SolubilityWidget(QWidget):
     def on_mode_changed(self):
         """模式切换时更新输入字段"""
         self.create_input_fields()
+
+    def _extract_phase_name(self, phase_text: str) -> str:
+        """从带说明的相名称中提取实际的相名称
+        例如: "LIQUID (液相)" -> "LIQUID"
+              "BCC_A2 (体心立方)" -> "BCC_A2"
+        """
+        if '(' in phase_text:
+            return phase_text.split('(')[0].strip()
+        return phase_text.strip()
 
     def create_results_panel(self):
         """创建结果面板"""
@@ -282,7 +295,7 @@ class SolubilityWidget(QWidget):
         # 获取输入参数
         solute = self.solute_input.text().strip().upper()
         precipitate = self.precipitate_combo.currentText()
-        solution_phase = self.solution_phase_combo.currentText()
+        solution_phase = self._extract_phase_name(self.solution_phase_combo.currentText())
         temperature = float(self.temperature_input.text())
         base_alloy_str = self.base_alloy_input.text().strip()
 
@@ -365,7 +378,7 @@ class SolubilityWidget(QWidget):
         # 获取输入参数
         solute = self.solute_input.text().strip().upper()
         precipitate = self.precipitate_combo.currentText()
-        solution_phase = self.solution_phase_combo.currentText()
+        solution_phase = self._extract_phase_name(self.solution_phase_combo.currentText())
         temperature = float(self.temperature_input.text())
         fixed_base = self.fixed_base_input.text().strip().upper()
         variable_comp = self.variable_comp_input.text().strip().upper()

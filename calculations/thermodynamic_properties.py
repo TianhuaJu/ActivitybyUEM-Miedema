@@ -81,19 +81,13 @@ class ThermodynamicProperties:
                                          activity_model: str = 'Wagner') -> Optional[float]:
         """
         计算活度系数的对数 ln(γ_i)
-        
-        (V2.1 修正) 区分液相和固相模型。
-        - 'liquid': 使用 UEM/Wagner/Miedema (来自 activity_calculator)
-        - 'solid':  使用理想溶液模型 (ln(γ) = 0)
+
+        (V2.2 扩展) 支持液相和固相溶体。
+        - 'liquid': 使用 UEM/Wagner/Miedema 模型 (state='liquid')
+        - 'solid':  使用 UEM/Wagner/Miedema 模型 (state='solid')
+
+        固相溶体和液相均通过 UEM-Miedema 框架计算活度系数。
         """
-        
-        # --- [V2.1 关键修正] ---
-        # 检查 phase_state。如果 'solid'，我们假设理想溶液模型
-        # 因为 UEM/Wagner/Miedema 模型是为液相设计的
-        if phase_state.lower() == 'solid':
-            # print(f"(Debug) Using IDEAL model for SOLID phase ln(γ) for {component}")
-            return 0.0
-        # --- [修改结束] ---
 
         # 1. 确定溶剂 (仍然使用大写符号)
         if solvent is None:
