@@ -274,24 +274,37 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                               extrapolation_model: str,
                               activity_model: str) -> Optional[float]:
         """
-        计算化学势的内部辅助函数 (V3.1 固溶体版本)。
+        计算化学势的内部辅助函数 (V3.2 固溶体版本)。
         用于计算任何 *溶液相* (液相或固溶体) 的化学势。
         mu_i = G_i_0 + R*T*ln(x_i) + R*T*ln(gamma_i)
+
+        关键修改：固相统一使用 phase_state='solid' 调用 UEM-Miedema 框架
         """
+        # 1. 获取标准 Gibbs 能量
         mu_0 = self.tdb_parser.get_gibbs_energy(component, tdb_phase, temperature)
-        if mu_0 is None: return None
-        
-        # 确定活度计算是在液相还是固相中进行
+        if mu_0 is None:
+            print(f"  (Warning) 无法获取 {component} 在 {tdb_phase} 相的标准 Gibbs 能量 @ {temperature}K")
+            return None
+
+        # 2. 确定相态：液相或固相（统一处理所有固相）
         activity_phase_state = 'liquid' if tdb_phase == 'LIQUID' else 'solid'
-        
+
+        # 3. 计算活度系数（使用 UEM-Miedema 框架，传入 phase_state）
         ln_gamma = self.calculate_ln_activity_coefficient(
             composition, component, temperature, activity_phase_state,
             None, extrapolation_model, activity_model
         )
-        if ln_gamma is None: return None
-        
+        if ln_gamma is None:
+            print(f"  (Warning) 无法计算 {component} 的活度系数 @ phase_state={activity_phase_state}")
+            return None
+
+        # 4. 计算化学势
         x_i = self._check_bounds(composition.get(component, 0.0))
         mu = mu_0 + self.R * temperature * (math.log(x_i) + ln_gamma)
+
+        # 调试输出
+        # print(f"  (Debug) μ_{component} @ {tdb_phase}({activity_phase_state}): G°={mu_0:.2f}, ln(γ)={ln_gamma:.4f}, x={x_i:.4e}, μ={mu:.2f}")
+
         return mu
 
     def _auto_generate_solute_guess(self,
@@ -765,20 +778,27 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             dict: 求解结果
         """
         
-        print(f"(Info) 开始计算 {solute_element} 在 {solution_phase} 相中的溶解度 @ {temperature}K...")
+        # 确定相态类型（液相或固相）
+        phase_type = "液态" if solution_phase == "LIQUID" else "固态"
+        phase_state = "liquid" if solution_phase == "LIQUID" else "solid"
+
+        print(f"(Info) 开始计算 {solute_element} 在 {phase_type} {solution_phase} 相中的溶解度 @ {temperature}K...")
         print(f"       (基础合金: {base_alloy_composition})")
         print(f"       (析出相: {precipitating_phase})")
-        
+        print(f"       (相态: {phase_state}, 外推模型: {extrapolation_model}, 活度模型: {activity_model})")
+
         # 1. 归一化基础合金成分
         base_total = sum(base_alloy_composition.values())
         if base_total == 0:
             raise ValueError("基础合金成分不能为空")
         normalized_base_comp = {elem: x / base_total for elem, x in base_alloy_composition.items()}
-        
+
         # 2. 获取析出相的纯固相 Gibbs 能量
         g_precipitate_pure = self.tdb_parser.get_gibbs_energy(solute_element, precipitating_phase, temperature)
         if g_precipitate_pure is None:
             raise RuntimeError(f"无法获取析出相 {solute_element} 在 {precipitating_phase} 相的纯 Gibbs 能量")
+
+        print(f"       G°_{solute_element},{precipitating_phase} = {g_precipitate_pure:.2f} J/mol")
         
         # 3. 定义残差函数 f(x_solute) = mu_solution - g_precipitate
         def _solubility_residual (x_solute: float) -> float:
