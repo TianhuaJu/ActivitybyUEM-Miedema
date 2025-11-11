@@ -37,11 +37,6 @@ class ActivityCoefficient:
         if total > 0 and len(self._comp_dict) > 1:
             self._comp_dict = {key: value / total for key, value in self._comp_dict.items()}
 
-    @property
-    def melts_dict(self) -> Dict[str, float]:
-        """返回标准化的摩尔成分字典。"""
-        return self._comp_dict
-
     def _calculate_ln_yi(self, comp_dict, solvent, solute_i, Tem: float, state: str,
                          geo_model: extrap_func, geo_model_name: str, activity_model_type: str, full_alloy_str: str = "") -> float:
         """内部通用计算方法。"""

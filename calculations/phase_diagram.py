@@ -776,7 +776,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         normalized_base_comp = {elem: x / base_total for elem, x in base_alloy_composition.items()}
         
         # 2. 获取析出相的纯固相 Gibbs 能量
-        g_precipitate_pure = self._get_pure_property(solute_element, precipitating_phase, temperature, 101325, 'G')
+        g_precipitate_pure = self.tdb_parser.get_gibbs_energy(solute_element, precipitating_phase, temperature)
         if g_precipitate_pure is None:
             raise RuntimeError(f"无法获取析出相 {solute_element} 在 {precipitating_phase} 相的纯 Gibbs 能量")
         

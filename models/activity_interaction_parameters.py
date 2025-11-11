@@ -27,24 +27,7 @@ class TernaryMelts:
     
     def set_state (self, state):
         self._state = state
-    
-    def fab_pure (self, ei, ej, s=False):
-        """Calculate pure Fab without entropy term"""
-        alpha = 0.73 if self._state == "liquid" else 1.0
-        
-        if ei.hybrid_factor != "other" or ej.hybrid_factor != "other":
-            rp = 0.0 if ei.hybrid_factor == ej.hybrid_factor else ei.hybrid_value * ej.hybrid_value
-        else:
-            rp = 0.0
-        
-        p = Constants.P_TT if (ei.is_trans_group and ej.is_trans_group) else \
-            (Constants.P_TN if (ei.is_trans_group or ej.is_trans_group) else Constants.P_NN)
-        
-        fij = 2 * p * (Constants.QtoP * (ei.n_ws - ej.n_ws) ** 2 - (ei.phi - ej.phi) ** 2 - alpha * rp) / \
-              (1 / ei.n_ws + 1 / ej.n_ws)
-        
-        return fij
-    
+
     def fab_func_contain_s (self, ei, ej, s=False):
         """Calculate Fab including entropy term"""
         alpha = 0.73 if self._state == "liquid" else 1.0
@@ -130,35 +113,7 @@ class TernaryMelts:
         lny0 = 1000 * fik * solutei.v * (1 + solutei.u * (solutei.phi - solvent.phi)) + 1000 * dhtrans
         
         return lny0 / (Constants.R * self._temperature)
-    
-    def present_model1_aip_elac (self, solv, solui, soluj, contri_func, geo_model, mode="Normal"):
-        """Calculate elastic contribution to first-order interaction parameter"""
-        
-        binary = BinaryModel()
-        
-        alphai_jk = contri_func(solui.name, soluj.name, solv.name, mode)
-        alphaj_ik = contri_func(soluj.name, solui.name, solv.name, mode)
-        alphai_kj = contri_func(solui.name, solv.name, soluj.name, mode)
-        alphaj_ki = contri_func(soluj.name, solv.name, solui.name, mode)
-        alphak_ij = contri_func(solv.name, solui.name, soluj.name, mode)
-        alphak_ji = contri_func(solv.name, soluj.name, solui.name, mode)
-        
-        hj_in_i = binary.elastic_a_in_b(soluj.name, solui.name)
-        hi_in_j = binary.elastic_a_in_b(solui.name, soluj.name)
-        hi_in_k = binary.elastic_a_in_b(solui.name, solv.name)
-        hk_in_i = binary.elastic_a_in_b(solv.name, solui.name)
-        hj_in_k = binary.elastic_a_in_b(soluj.name, solv.name)
-        hk_in_j = binary.elastic_a_in_b(solv.name, soluj.name)
-        
-        hik = hi_in_k
-        hjk = hj_in_k
-        dhik = alphaj_ik * (hk_in_i - hi_in_k)
-        dhjk = alphai_jk * (hk_in_j - hj_in_k)
-        
-        hij = alphak_ij / (alphak_ij + alphak_ji) * hj_in_i + alphak_ji / (alphak_ij + alphak_ji) * hi_in_j
-        
-        return 1000.0 * (hij - hik - hjk + dhik + dhjk) / (Constants.R * self._temperature)
-    
+
     #一阶活度相互作用系数，核心参数
     def activity_interact_coefficient_1st (self, solv:Element, solui:Element, soluj:Element, Tem: float, state: str, extra_model: extrap_func,
                                            extra_model_name="UEM1", full_alloy_str: str = ""):
