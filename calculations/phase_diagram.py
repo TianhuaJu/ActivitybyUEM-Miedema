@@ -726,11 +726,129 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         final_liquid_comp_eutectic = {solvent: final_liquid_solvent, **final_liquid_solutes}
         
         return {"status": "success", "T_solidus": T_solidus_eutectic, "solid_composition": solid_composition, "liquid_composition_eq": final_liquid_comp_eutectic}
-
+    
     # ================================================================
-    # =================== GUI 兼容性包装方法 ===================
+    # =================== 新增：溶解度计算器，液相中的溶解度 ===================
     # ================================================================
+    def calculate_solubility (self,
+                              base_alloy_composition: Dict[str, float],
+                              solute_element: str,
+                              solution_phase: str,
+                              precipitating_phase: str,
+                              temperature: float,
+                              extrapolation_model: str = 'UEM1',
+                              activity_model: str = 'Wagner',
+                              min_solubility: float = 1e-9,
+                              max_solubility: float = 0.999) -> dict:
+        """
+        (V4.2 - 新增) 计算指定溶质在多元溶液相中的溶解度极限。
 
+        这适用于:
+        1. 固溶体溶解度:
+           e.g., C 在 BCC_A2(Fe,Si) 中的溶解度 (平衡相: GRAPHITE)
+        2. 液相溶解度:
+           e.g., C 在 LIQUID(Fe,Si) 中的溶解度 (平衡相: GRAPHITE)
+
+        算法:
+        求解 $X_i$ 使得 μ_i^Solution(T, X_Solution) = G^0_i,Precipitate(T)
+
+        Args:
+            base_alloy_composition (Dict): 基础合金（溶剂）的成分, e.g., {'FE': 0.7, 'SI': 0.3}
+            solute_element (str): 待计算溶解度的溶质, e.g., 'C'
+            solution_phase (str): 溶质溶解于的相, e.g., 'BCC_A2' 或 'LIQUID'
+            precipitating_phase (str): 溶质析出时形成的纯固相, e.g., 'GRAPHITE'
+            temperature (float): 固定的温度 (K)
+            min_solubility (float): 求解器下限
+            max_solubility (float): 求解器上限 (必须 < 1.0)
+
+        Returns:
+            dict: 求解结果
+        """
+        
+        print(f"(Info) 开始计算 {solute_element} 在 {solution_phase} 相中的溶解度 @ {temperature}K...")
+        print(f"       (基础合金: {base_alloy_composition})")
+        print(f"       (析出相: {precipitating_phase})")
+        
+        # 1. 归一化基础合金成分
+        base_total = sum(base_alloy_composition.values())
+        if base_total == 0:
+            raise ValueError("基础合金成分不能为空")
+        normalized_base_comp = {elem: x / base_total for elem, x in base_alloy_composition.items()}
+        
+        # 2. 获取析出相的纯固相 Gibbs 能量
+        g_precipitate_pure = self._get_pure_property(solute_element, precipitating_phase, temperature, 101325, 'G')
+        if g_precipitate_pure is None:
+            raise RuntimeError(f"无法获取析出相 {solute_element} 在 {precipitating_phase} 相的纯 Gibbs 能量")
+        
+        # 3. 定义残差函数 f(x_solute) = mu_solution - g_precipitate
+        def _solubility_residual (x_solute: float) -> float:
+            """
+            计算: μ_solute^Solution_Phase - G_solute^Precipitate_Phase
+            """
+            x_solute = self._check_bounds(x_solute, epsilon=min_solubility)
+            
+            # a. 根据 x_solute 重建当前的总成分
+            total_solvent_fraction = 1.0 - x_solute
+            current_solution_comp = {
+                elem: x_base * total_solvent_fraction
+                for elem, x_base in normalized_base_comp.items()
+            }
+            current_solution_comp[solute_element] = x_solute
+            
+            # b. 计算溶质在“溶液相”中的化学势
+            #    (使用通用的 _get_chemical_potential 辅助函数)
+            mu_in_solution = self._get_chemical_potential(
+                    composition=current_solution_comp,
+                    component=solute_element,
+                    temperature=temperature,
+                    tdb_phase=solution_phase,  # e.g., 'BCC_A2' 或 'LIQUID'
+                    extrapolation_model=extrapolation_model,
+                    activity_model=activity_model
+            )
+            
+            if mu_in_solution is None:
+                raise ValueError(f"无法在 T={temperature}K, x_{solute_element}={x_solute} 时计算化学势")
+            
+            # c. 返回差值
+            return mu_in_solution - g_precipitate_pure
+        
+        # 4. 求解
+        try:
+            # 检查边界
+            f_low = _solubility_residual(min_solubility)
+            f_high = _solubility_residual(max_solubility)
+            
+            if f_low * f_high >= 0:
+                if f_low < 0 and f_high < 0:
+                    # 在 x=0.999 时 mu_liq 仍低于 g_sol_pure，表明完全溶解
+                    print(f"  (Info) {solute_element} 在 {solution_phase} 中完全溶解。")
+                    return {"status": "fully_soluble", "solubility": 1.0, "T": temperature}
+                else:  # f_low > 0
+                    # 在 x=1e-9 时 mu_liq 就已高于 g_sol_pure，表明几乎不溶
+                    print(f"  (Info) {solute_element} 在 {solution_phase} 中几乎不溶。")
+                    return {"status": "insoluble", "solubility": 0.0, "T": temperature}
+            
+            # 调用 brentq 求解
+            solubility = brentq(_solubility_residual, min_solubility, max_solubility, xtol=1e-6)
+            
+            return {
+                "status": "success",
+                "T": temperature,
+                "solute": solute_element,
+                "solution_phase": solution_phase,
+                "precipitating_phase": precipitating_phase,
+                "solubility_mole_fraction": solubility,  # This is X_i
+                "base_alloy": normalized_base_comp
+            }
+        except Exception as e:
+            raise RuntimeError(f"计算 {solution_phase} 中 {solute_element} 的溶解度失败: {e}")
+    # ================================================================
+    # =================== 新增：溶解度计算器 ，固溶体中的溶解度===================
+    # ================================================================
+    
+    
+    
+    
     def _get_default_solid_phase_map(self, composition: Dict[str, float]) -> Dict[str, str]:
         """
         为给定的成分生成默认的固相映射
@@ -1009,112 +1127,138 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 # 为GUI向后兼容性添加类别名
 PhaseDiagram = PhaseDiagramCalculator
 
-
 # ================================================================
-# =================== V3.3 测试代码 (展示模型切换) =================
+# =================== 测试代码 ===================
 # ================================================================
 if __name__ == "__main__":
     
     pd_calc = PhaseDiagramCalculator()
     
+    # ... (原有的 Fe-Cr 和 Fe-C-Si 液相线测试) ...
+    
     # ================================================================
-    # =Example 1: Binary Test (Fe-Cr)
+    # =================== 1. 二元测试 (Fe-Cr) ===================
     # ================================================================
     
     print("\n" + "=" * 70)
-    print("Binary Calculation Test (Fe-Cr) @ {'FE': 0.5, 'CR': 0.5}")
+    print("Binary Pure Solid Test (Fe-Cr)")
+    print("[V4.1 Note] 使用纯固体模型计算 (模拟共晶系统)")
     print("=" * 70)
     
     binary_comp = {'FE': 0.5, 'CR': 0.5}
     binary_solid_map = {'FE': 'BCC_A2', 'CR': 'BCC_A2'}
     
-    # --- 测试 1.1: 固溶体模型 (V3.1 Logic) ---
-    print("\n--- 测试 1.1: 'SOLID_SOLUTION' (V3.1 逻辑) ---")
     try:
-        liq_result_ss = pd_calc.calculate_liquidus(
-            composition=binary_comp,
-            solid_phase_map=binary_solid_map,
-            solid_model_type='SOLID_SOLUTION' # <-- 显式调用
+        liquidus_result = pd_calc.calculate_liquidus(
+                composition=binary_comp,
+                solid_phase_map=binary_solid_map,
+                is_solid_solution=False  # (重要) 强制使用纯固相模型
         )
-        print(f"  [Liquidus-SS] T_liquidus: {liq_result_ss['T_liquidus']:.2f} K")
-        print("                  Eq. Solid Comp:", {k: round(v, 4) for k,v in liq_result_ss['solid_composition_eq'].items()})
-
-        sol_result_ss = pd_calc.calculate_solidus(
-            composition=binary_comp,
-            solid_phase_map=binary_solid_map,
-            solid_model_type='SOLID_SOLUTION'
-        )
-        print(f"  [Solidus-SS]  T_solidus: {sol_result_ss['T_solidus']:.2f} K")
-        print("                  Eq. Liquid Comp:", {k: round(v, 4) for k,v in sol_result_ss['liquid_composition_eq'].items()})
-    except Exception as e:
-        print(f"  计算 Fe-Cr (SS) 失败: {e}")
-
-    # --- 测试 1.2: 纯固体模型 (V3.2 Logic) ---
-    print("\n--- 测试 1.2: 'PURE_SOLID' (V3.2 逻辑) ---")
-    try:
-        liq_result_pure = pd_calc.calculate_liquidus(
-            composition=binary_comp,
-            solid_phase_map=binary_solid_map,
-            solid_model_type='PURE_SOLID' # <-- 切换模型
-        )
-        print(f"  [Liquidus-Pure] T_liquidus: {liq_result_pure['T_liquidus']:.2f} K")
-        print("                    Eq. Solid Comp (纯相):", {k: round(v, 4) for k,v in liq_result_pure['solid_composition_eq'].items()})
-
-        sol_result_pure = pd_calc.calculate_solidus(
-            composition=binary_comp,
-            solid_phase_map=binary_solid_map,
-            solid_model_type='PURE_SOLID'
-        )
-        print(f"  [Solidus-Pure]  T_solidus (Eutectic): {sol_result_pure['T_solidus']:.2f} K")
-        print("                    Eq. Liquid Comp (共晶):", {k: round(v, 4) for k,v in sol_result_pure['liquid_composition_eq'].items()})
-    except Exception as e:
-        print(f"  计算 Fe-Cr (Pure) 失败: {e}")
+        print(f"\n--- [V4] 液相线 (凝固点) @ {binary_comp} ---")
+        print(f"  T_liquidus: {liquidus_result['T_liquidus']:.2f} K")
+        print(f"  (首先析出的组分: {liquidus_result['precipitating_component']})")
+        print(f"  (析出相: {liquidus_result['primary_solid_phase']})")
         
+        print("\n  所有组元的单独平衡温度:")
+        for comp, temp in liquidus_result['component_equilibrium_temps'].items():
+            print(f"    T({comp}): {temp:.2f} K")
+    
+    except Exception as e:
+        print(f"计算 Fe-Cr 液相线 (纯固相模型) 失败: {e}")
+    
     print("=" * 70)
     
     # ================================================================
-    # =================== 2. Multicomponent Test (Fe-C-Si) ===================
+    # =================== 2. 多元测试 (Fe-C-Si) ===================
     # ================================================================
     
     print("\n" + "=" * 70)
-    print("Multicomponent Calculation Test (Fe-C-Si)")
+    print("Multicomponent Pure Solid Test (Fe-C-Si)")
+    print("[V4.1 Note] 使用纯固体模型计算")
     print("=" * 70)
-
-    liq_comp = {'FE': 0.95, 'C': 0.02, 'SI': 0.03}
-    solid_map = {'FE': 'BCC_A2', 'C': 'GRAPHITE', 'SI': 'DIAMOND_A4'}
     
-    # --- 测试 2.1: 固溶体模型 (V3.1 Logic) ---
-    print("\n--- 测试 2.1: 'SOLID_SOLUTION' (V3.1 逻辑) ---")
+    liq_comp = {
+        'FE': 0.95,
+        'C': 0.02,
+        'SI': 0.03
+    }
+    
+    solid_map_pure = {
+        'FE': 'BCC_A2',  # Fe 的 TDB 参考相
+        'C': 'GRAPHITE',  # C 的 TDB 参考相
+        'SI': 'DIAMOND_A4'  # Si 的 TDB 参考相
+    }
+    
     try:
-        multi_liq_ss = pd_calc.calculate_liquidus(
-            composition=liq_comp,
-            solid_phase_map=solid_map,
-            solid_model_type='SOLID_SOLUTION'
+        print(f"\n--- 尝试计算: Liquid <-> 纯固相 @ {liq_comp} ---")
+        multi_liq_result = pd_calc.calculate_liquidus(
+                composition=liq_comp,
+                solid_phase_map=solid_map_pure,
+                is_solid_solution=False  # (重要) 告诉求解器这是一个纯固相模型
         )
-        print(f"  [Liquidus-SS] T_liquidus: {multi_liq_ss['T_liquidus']:.2f} K")
-        print("                  Eq. Solid Comp:", {k: round(v, 6) for k,v in multi_liq_ss['solid_composition_eq'].items()})
-    except Exception as e:
-        print(f"  计算 Fe-C-Si (SS) 液相线失败: {e}")
-
-    # --- 测试 2.2: 纯固体模型 (V3.2 Logic) ---
-    print("\n--- 测试 2.2: 'PURE_SOLID' (V3.2 逻辑) ---")
-    try:
-        multi_liq_pure = pd_calc.calculate_liquidus(
-            composition=liq_comp,
-            solid_phase_map=solid_map,
-            solid_model_type='PURE_SOLID'
-        )
-        print(f"  [Liquidus-Pure] T_liquidus: {multi_liq_pure['T_liquidus']:.2f} K")
-        print("                    Eq. Solid Comp (纯相):", {k: round(v, 4) for k,v in multi_liq_pure['solid_composition_eq'].items()})
-
-        multi_sol_pure = pd_calc.calculate_solidus(
-            composition=liq_comp,
-            solid_phase_map=solid_map,
-            solid_model_type='PURE_SOLID'
-        )
-        print(f"  [Solidus-Pure]  T_solidus (Eutectic): {multi_sol_pure['T_solidus']:.2f} K")
-        print("                    Eq. Liquid Comp (共晶):", {k: round(v, 6) for k,v in multi_sol_pure['liquid_composition_eq'].items()})
-    except Exception as e:
-        print(f"  计算 Fe-C-Si (Pure) 固相线失败: {e}")
         
+        print(f"\n--- [V4] 多元液相线 (凝固点) ---")
+        print(f"  T_liquidus: {multi_liq_result['T_liquidus']:.2f} K")
+        print(f"  (首先析出的组分: {multi_liq_result['precipitating_component']})")
+        print(f"  (析出相: {multi_liq_result['primary_solid_phase']})")
+        
+        print("\n  所有组元的单独平衡温度:")
+        for comp, temp in multi_liq_result['component_equilibrium_temps'].items():
+            print(f"    T({comp}): {temp:.2f} K")
+    
+    except Exception as e:
+        print(f"计算 Fe-C-Si 液相线 (纯固相模型) 失败: {e}")
+    
+    print("=" * 70)
+    
+    # ================================================================
+    # =================== 3. 固溶体溶解度测试 (C in Fe) ===================
+    # ================================================================
+    
+    print("\n" + "=" * 70)
+    print("Solid Solution Solubility Test (C in pure FE)")
+    print("=" * 70)
+    
+    # 我们要计算 C 在 纯Fe 中的溶解度
+    # 基础合金 = 纯 FE
+    base_comp_fe = {'FE': 1.0}
+    solute_c = 'C'
+    
+    # 溶液相是 BCC_A2 (铁素体)
+    solution_phase_bcc = 'BCC_A2'
+    
+    # 析出相是 GRAPHITE
+    precipitating_phase_c = 'GRAPHITE'
+    
+    # 在 1000 K (铁素体区) 计算
+    T_test_sol = 1000.0
+    
+    # TDB 映射
+    solid_map_solubility = {
+        'FE': 'BCC_A2',
+        'C': 'BCC_A2'  # (重要) C 在 BCC_A2 中的 G°
+    }
+    
+    try:
+        solubility_result = pd_calc.calculate_solubility(
+                base_alloy_composition=base_comp_fe,
+                solute_element=solute_c,
+                solution_phase=solution_phase_bcc,
+                precipitating_phase=precipitating_phase_c,
+                temperature=T_test_sol,
+                solid_phase_map=solid_map_solubility  # (注意: 此参数目前仅用于 'calculate_pure_melting_point'，
+                #  但在未来版本中可能用于 _get_chemical_potential)
+        )
+        
+        print(f"\n--- [V4.2] 溶解度计算 @ {T_test_sol} K ---")
+        print(f"  溶质: {solute_c}")
+        print(f"  溶液相: {solution_phase_bcc}")
+        print(f"  析出相: {precipitating_phase_c}")
+        print(f"  基础合金: {base_comp_fe}")
+        print(f"  状态: {solubility_result['status']}")
+        print(f"  溶解度 (摩尔分数): {solubility_result['solubility_mole_fraction']:.6f}")
+    
+    except Exception as e:
+        print(f"计算 C 在 Fe 中的溶解度失败: {e}")
+    
     print("=" * 70)
