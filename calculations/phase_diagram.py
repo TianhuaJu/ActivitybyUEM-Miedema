@@ -293,6 +293,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             activity_phase_state = 'liquid'
             lookup_phase = 'LIQUID'
         elif tdb_phase == 'SOLID':
+            # 仅当传入 'SOLID' 时才需要推断相结构
+            # 如果传入的是具体的相名（如 'GRAPHITE', 'BCC_A2'），直接使用
             activity_phase_state = 'solid'
             # 固相溶液：根据合金的主要元素推断固相结构
             # 找出成分中含量最高的元素（溶剂）
@@ -306,6 +308,19 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                     # 例如：Fe -> BCC_A2, Ni -> FCC_A1
                     lookup_phase = solvent_ref_phase
                     print(f"  (Info) 固相溶液相结构推断为: {lookup_phase} (基于溶剂 {solvent})")
+
+                    # 尝试获取溶质在该固相中的 Gibbs 能量
+                    mu_0_test = self.tdb_parser.get_gibbs_energy(component, lookup_phase, temperature)
+
+                    # 如果失败（常见于间隙固溶体，如 C-BCC_A2），使用溶质自身的参考相
+                    if mu_0_test is None:
+                        component_ref_phase = self.tdb_parser.get_reference_phase(component)
+                        if component_ref_phase:
+                            print(f"  (Info) {component}-{lookup_phase} 数据缺失，使用参考态: {component_ref_phase}")
+                            lookup_phase = component_ref_phase
+                        else:
+                            print(f"  (Warning) 无法获取 {component} 的参考相")
+                            return None
                 else:
                     # 回退：对于待计算的组分，使用其自身的参考相
                     lookup_phase = self.tdb_parser.get_reference_phase(component)
@@ -319,9 +334,10 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                     print(f"  (Warning) 无法获取 {component} 的参考相")
                     return None
         else:
-            # 兼容旧的调用方式（如果有的话）
+            # 传入的是具体的相名（如 'GRAPHITE', 'BCC_A2', 'FCC_A1' 等）
+            # 判断是液相还是固相：如果是 LIQUID 则为液相，否则为固相
             activity_phase_state = 'liquid' if tdb_phase == 'LIQUID' else 'solid'
-            lookup_phase = tdb_phase
+            lookup_phase = tdb_phase  # 直接使用传入的相名
 
         # 2. 获取标准 Gibbs 能量
         mu_0 = self.tdb_parser.get_gibbs_energy(component, lookup_phase, temperature)
@@ -839,6 +855,24 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             raise ValueError("基础合金成分不能为空")
         normalized_base_comp = {elem: x / base_total for elem, x in base_alloy_composition.items()}
 
+        # 1.5 对于固相，预先确定固溶体的相结构（基于基础合金的主要元素）
+        actual_tdb_phase = solution_phase  # 默认使用传入的相名
+        if solution_phase == 'SOLID':
+            base_solvent = max(normalized_base_comp.items(), key=lambda x: x[1])[0]
+            base_solvent_ref = self.tdb_parser.get_reference_phase(base_solvent)
+            if base_solvent_ref:
+                # 检查溶质在该相中是否有数据
+                test_mu = self.tdb_parser.get_gibbs_energy(solute_element, base_solvent_ref, temperature)
+                if test_mu is not None:
+                    actual_tdb_phase = base_solvent_ref  # 使用基体的固相结构
+                    print(f"       固相结构: {actual_tdb_phase} (基于基体 {base_solvent})")
+                else:
+                    # 溶质在该相中无数据，使用溶质的参考相
+                    solute_ref = self.tdb_parser.get_reference_phase(solute_element)
+                    if solute_ref:
+                        actual_tdb_phase = solute_ref
+                        print(f"       固相结构: {actual_tdb_phase} (溶质参考态，{solute_element}-{base_solvent_ref} 数据缺失)")
+
         # 2. 获取析出相的纯固相 Gibbs 能量
         g_precipitate_pure = self.tdb_parser.get_gibbs_energy(solute_element, precipitating_phase, temperature)
         if g_precipitate_pure is None:
@@ -867,7 +901,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                     composition=current_solution_comp,
                     component=solute_element,
                     temperature=temperature,
-                    tdb_phase=solution_phase,  # 'LIQUID' 或 'SOLID'
+                    tdb_phase=actual_tdb_phase,  # 使用预先确定的相结构
                     extrapolation_model_func=extrapolation_func,
                     extrapolation_model=extrapolation_model_name,
                     activity_model=activity_model
