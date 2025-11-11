@@ -368,8 +368,19 @@ class SolubilityWidget(QWidget):
         if result['status'] == 'success':
             solubility = result['solubility_mole_fraction']
             self.chart_canvas.axes.bar([solute], [solubility * 100], color='#3498db', width=0.5)
-            self.chart_canvas.axes.set_ylabel('溶解度 (摩尔%)')
-            self.chart_canvas.axes.set_title(f'{solute} 在 {solution_phase} 中的溶解度')
+
+            # 确定溶液相类型（液态或固态）
+            phase_type = "液态" if solution_phase == "LIQUID" else f"固态{solution_phase}"
+
+            # 构建基础合金成分描述
+            base_alloy_str = "-".join(base_composition.keys())
+
+            self.chart_canvas.axes.set_ylabel('溶解度 (摩尔%)', fontsize=11)
+
+            # 标题：溶质在基体合金中的溶解度
+            # 例如："Fe在LIQUID（液态）Al合金中的溶解度"
+            title = f'{solute} 在 {solution_phase}（{phase_type}）{base_alloy_str} 合金中的溶解度'
+            self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
             self.chart_canvas.axes.grid(True, alpha=0.3, axis='y')
         self.chart_canvas.draw()
 
@@ -491,9 +502,22 @@ class SolubilityWidget(QWidget):
         if valid_data:
             x_plot, s_plot = zip(*valid_data)
             self.chart_canvas.axes.plot(x_plot, [s*100 for s in s_plot], 'b-o', linewidth=2, markersize=5)
-            self.chart_canvas.axes.set_xlabel(f'X_{variable_comp} (摩尔分数)')
-            self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)')
-            self.chart_canvas.axes.set_title(f'{solute} 在 {solution_phase} 中的溶解度 vs. {variable_comp} 含量')
+
+            # 确定溶液相类型（液态或固态）
+            phase_type = "液态" if solution_phase == "LIQUID" else f"固态{solution_phase}"
+
+            # 构建更清晰的标签
+            # X轴：变化组分的摩尔分数
+            self.chart_canvas.axes.set_xlabel(f'{variable_comp} 含量 (摩尔分数)', fontsize=11)
+
+            # Y轴：溶质的溶解度
+            self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
+
+            # 标题：溶质在基体合金中的溶解度 vs. 变化组分
+            # 例如："Fe在LIQUID（液态）Al-Si合金中的溶解度 vs. Si含量"
+            title = f'{solute} 在 {solution_phase}（{phase_type}）{fixed_base}-{variable_comp} 合金中的溶解度 vs. {variable_comp} 含量'
+            self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
+
             self.chart_canvas.axes.grid(True, alpha=0.3)
 
         self.chart_canvas.draw()
