@@ -54,13 +54,14 @@ class ThermodynamicProperties:
                           component: str,
                           temperature: float,
                           phase_state: str,
-                          extrapolation_model: Callable,
+                          extrapolation_model_func: extrap_func,
+                          extrapolation_model_name: str,
                           activity_model: str = 'Wagner') -> Optional[float]:
         """
         计算组分的活度 a_i = γ_i * X_i
         """
         ln_gamma = self.calculate_ln_activity_coefficient(composition, component, temperature, phase_state,
-                                                          extrapolation_model, activity_model)
+                                                          extrapolation_model_func, extrapolation_model_name, activity_model)
         if ln_gamma is None:
             return None
         gamma = math.exp(ln_gamma)
@@ -118,21 +119,28 @@ class ThermodynamicProperties:
                                      temperature: float,
                                      phase_state: str = 'liquid',
                                      solvent: str = None,
-                                     extrapolation_model: str = 'UEM1',
+                                     extrapolation_model_func: extrap_func = None,
+                                     extrapolation_model_name: str = 'UEM1',
                                      activity_model: str = 'Wagner') -> Optional[float]:
         """
         计算化学势 μ_i = μ°_i(T) + RT ln(a_i)
-        
+
         [V2.1 注] TDB 查找需要根据 phase_state 映射到正确的相
         'liquid' -> 'LIQUID'
         'solid'  -> 'BCC_A2', 'FCC_A1' 等。
         但是，phase_diagram.py 会直接传入 TDB 相名 ('BCC_A2')，
         这会导致这里的 phase_map 查找失败。
-        
+
         我们将假定 phase_diagram.py 中的 _get_chemical_potential 是
         主要的调用者，它不依赖于这个函数。
         这个函数主要用于 if __name__ == "__main__" 测试。
         """
+        # Default extrapolation model if not provided
+        if extrapolation_model_func is None:
+            from models.extrapolation_models import BinaryModel
+            bm = BinaryModel()
+            extrapolation_model_func = bm.UEM1
+
         phase_map = {'liquid': 'LIQUID', 'solid': 'SER'}
         
         # 尝试将 'solid' 映射到 TDB 参考相
@@ -163,7 +171,7 @@ class ThermodynamicProperties:
         # (正确) 内部函数将处理转换
         activity = self.calculate_activity(
             composition, component, temperature, phase_state,
-            solvent, extrapolation_model, activity_model
+            extrapolation_model_func, extrapolation_model_name, activity_model
         )
         if activity is None or activity <= 0:
             # print(f"Warning: Activity for {component} is {activity}, cannot calculate log(a_i)")
@@ -180,12 +188,19 @@ class ThermodynamicProperties:
                                  composition: Dict[str, float],
                                  temperature: float,
                                  phase_state: str = 'liquid',
-                                 extrapolation_model: str = 'UEM1') -> Optional[float]:
+                                 extrapolation_model_func: extrap_func = None,
+                                 extrapolation_model_name: str = 'UEM1') -> Optional[float]:
         """
         计算合金的摩尔焓 H_alloy = Σ(X_i * H°_i) + H^E
         """
+        # Default extrapolation model if not provided
+        if extrapolation_model_func is None:
+            from models.extrapolation_models import BinaryModel
+            bm = BinaryModel()
+            extrapolation_model_func = bm.UEM1
+
         H_ideal = 0.0
-        
+
         # [V2.1 修正] 改进 phase_state 映射
         tdb_phase_map = {'liquid': 'LIQUID', 'solid': None}
         
@@ -208,7 +223,7 @@ class ThermodynamicProperties:
 
         # (正确) 内部函数将处理转换
         H_excess = self._calculate_excess_enthalpy(
-            composition, temperature, phase_state, extrapolation_model
+            composition, temperature, phase_state, extrapolation_model_func, extrapolation_model_name
         )
         if H_excess is None:
             print("Warning: Could not calculate excess enthalpy, using ideal mixing only")
@@ -222,17 +237,24 @@ class ThermodynamicProperties:
                                temperature: float,
                                phase_state: str = 'liquid',
                                solvent: str = None,
-                               extrapolation_model: str = 'UEM1',
+                               extrapolation_model_func: extrap_func = None,
+                               extrapolation_model_name: str = 'UEM1',
                                activity_model: str = 'Wagner') -> Optional[float]:
         """
         计算合金的摩尔Gibbs自由能 G_alloy = Σ(X_i * μ_i)
         """
+        # Default extrapolation model if not provided
+        if extrapolation_model_func is None:
+            from models.extrapolation_models import BinaryModel
+            bm = BinaryModel()
+            extrapolation_model_func = bm.UEM1
+
         G_total = 0.0
         failed = False
         for component, x_i in composition.items():
             mu_i = self.calculate_chemical_potential(
                 composition, component, temperature, phase_state,
-                solvent, extrapolation_model, activity_model
+                solvent, extrapolation_model_func, extrapolation_model_name, activity_model
             )
             if mu_i is None:
                 # print(f"Warning: mu_i for {component} is None, G calculation failed.")
@@ -250,17 +272,24 @@ class ThermodynamicProperties:
                          temperature: float,
                          phase_state: str = 'liquid',
                          solvent: str = None,
-                         extrapolation_model: str = 'UEM1',
+                         extrapolation_model_func: extrap_func = None,
+                         extrapolation_model_name: str = 'UEM1',
                          activity_model: str = 'Wagner') -> Optional[float]:
         """
         计算合金的摩尔熵 S = (H - G) / T
         """
+        # Default extrapolation model if not provided
+        if extrapolation_model_func is None:
+            from models.extrapolation_models import BinaryModel
+            bm = BinaryModel()
+            extrapolation_model_func = bm.UEM1
+
         H = self.calculate_molar_enthalpy(
-            composition, temperature, phase_state, extrapolation_model
+            composition, temperature, phase_state, extrapolation_model_func, extrapolation_model_name
         )
         G = self.calculate_gibbs_energy(
             composition, temperature, phase_state, solvent,
-            extrapolation_model, activity_model
+            extrapolation_model_func, extrapolation_model_name, activity_model
         )
         if H is None or G is None:
             return None
@@ -273,15 +302,21 @@ class ThermodynamicProperties:
                                    composition: Dict[str, float],
                                    temperature: float,
                                    phase_state: str = 'liquid',
-                                   extrapolation_model: str = 'UEM1') -> Optional[float]:
+                                   extrapolation_model_func: extrap_func = None,
+                                   extrapolation_model_name: str = 'UEM1') -> Optional[float]:
         """
         使用Miedema模型计算过剩焓（混合焓）
         (已修正) 此函数将大写TDB符号(FE)转换为标准Miedema符号(Fe)。
-        
+
         [V2.1 注] Miedema 模型是为液相设计的。如果请求固相，
         我们应该返回 0 (理想溶液的 H_excess)。
         """
-        
+        # Default extrapolation model if not provided
+        if extrapolation_model_func is None:
+            from models.extrapolation_models import BinaryModel
+            bm = BinaryModel()
+            extrapolation_model_func = bm.UEM1
+
         # --- [V2.1 关键修正] ---
         if phase_state.lower() == 'solid':
             return 0.0 # 固相理想溶液
@@ -292,7 +327,7 @@ class ThermodynamicProperties:
             comp_std = {self._to_standard_symbol(k): v for k, v in composition.items()}
             components = list(comp_std.keys())
             # --- (修正结束) ---
-            
+
             n = len(components)
             if n == 1: return 0.0
 
@@ -305,28 +340,15 @@ class ThermodynamicProperties:
                 H_mix = self.binary_model.binary_model(elem_a, elem_b, x_a, x_b)
                 return H_mix
 
-            # 多元外推 (注意：这里使用的方法不是标准的外推法，而是二元对的加权)
-            # 这与 UEM1 等模型计算 G^E 的方式不同。
-            # 这是 H^E 的一个粗略估计。
-            
-            from models.extrapolation_models import BinaryModel
-            bm = BinaryModel()
-            extrap_func_map = {
-                'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
-                'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
-                'Toop-Muggianu': bm.Toop_Muggianu,
-            }
-            # (正确) 使用标准符号
-            extrap_func = extrap_func_map.get(extrapolation_model, bm.UEM1)
-            
+            # 多元外推 - 直接使用传入的函数对象
             # (正确) 传递标准符号
-            H_excess = extrap_func(
+            H_excess = extrapolation_model_func(
                 comp_dict=comp_std,
                 Tem=temperature,
                 binary_model_func=self.binary_model.binary_model,
                 state=phase_state
             )
-            
+
             return H_excess
             
         except Exception as e:
@@ -338,43 +360,50 @@ class ThermodynamicProperties:
                                  temperature: float,
                                  phase_state: str = 'liquid',
                                  solvent: str = None,
-                                 extrapolation_model: str = 'UEM1',
+                                 extrapolation_model_func: extrap_func = None,
+                                 extrapolation_model_name: str = 'UEM1',
                                  activity_model: str = 'Wagner') -> Dict[str, Dict]:
         """
         计算所有热力学性质
         """
+        # Default extrapolation model if not provided
+        if extrapolation_model_func is None:
+            from models.extrapolation_models import BinaryModel
+            bm = BinaryModel()
+            extrapolation_model_func = bm.UEM1
+
         results = {'component_properties': {}, 'alloy_properties': {}}
         for component in composition.keys():
             comp_results = {}
-            ln_gamma = self.calculate_ln_activity_coefficient(composition, component, temperature, phase_state, solvent,
-                                                              extrapolation_model, activity_model)
+            ln_gamma = self.calculate_ln_activity_coefficient(composition, component, temperature, phase_state,
+                                                              extrapolation_model_func, extrapolation_model_name, activity_model)
             comp_results['ln_gamma'] = ln_gamma
             comp_results['gamma'] = math.exp(ln_gamma) if ln_gamma is not None else None
             activity = self.calculate_activity(
                 composition, component, temperature, phase_state,
-                solvent, extrapolation_model, activity_model
+                extrapolation_model_func, extrapolation_model_name, activity_model
             )
             comp_results['activity'] = activity
             mu = self.calculate_chemical_potential(
                 composition, component, temperature, phase_state,
-                solvent, extrapolation_model, activity_model
+                solvent, extrapolation_model_func, extrapolation_model_name, activity_model
             )
             comp_results['mu'] = mu
             comp_results['mole_fraction'] = composition[component]
             results['component_properties'][component] = comp_results
 
         H = self.calculate_molar_enthalpy(
-            composition, temperature, phase_state, extrapolation_model
+            composition, temperature, phase_state, extrapolation_model_func, extrapolation_model_name
         )
         results['alloy_properties']['H'] = H
         G = self.calculate_gibbs_energy(
             composition, temperature, phase_state, solvent,
-            extrapolation_model, activity_model
+            extrapolation_model_func, extrapolation_model_name, activity_model
         )
         results['alloy_properties']['G'] = G
         S = self.calculate_entropy(
             composition, temperature, phase_state, solvent,
-            extrapolation_model, activity_model
+            extrapolation_model_func, extrapolation_model_name, activity_model
         )
         results['alloy_properties']['S'] = S
         results['alloy_properties']['T'] = temperature

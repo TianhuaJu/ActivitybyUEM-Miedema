@@ -49,7 +49,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
     def calculate_liquidus(self,
                            composition: Dict[str, float],
                            solid_phase_map: Dict[str, str],
-                           extrapolation_func: extrap_func,
+                           extrapolation_model_func: extrap_func,
                            extrapolation_model_name: str = 'UEM1',
                            activity_model: str = 'Wagner',
                            solid_model_type: str = 'SOLID_SOLUTION'
@@ -148,25 +148,25 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
     def calculate_solidus(self,
                            composition: Dict[str, float],
                            solid_phase_map: Dict[str, str],
-                          extrapolation_func: extrap_func,
-                           extrapolation_model: str = 'UEM1',
+                          extrapolation_model_func: extrap_func,
+                           extrapolation_model_name: str = 'UEM1',
                            activity_model: str = 'Wagner',
                            solid_model_type: str = 'SOLID_SOLUTION'
                            ) -> dict:
         """
         (V3.3) 统一的固相线计算接口。
-        
+
         Args:
             composition (Dict): 固相成分
             ...
             solid_model_type (str): 'SOLID_SOLUTION' 或 'PURE_SOLID'
         """
         n_components = len(composition)
-        
+
         if n_components <= 0:
             raise ValueError("成分字典不能为空")
         if n_components == 1:
-            return self.calculate_liquidus(composition, solid_phase_map, extrapolation_func,extrapolation_model, activity_model, solid_model_type)
+            return self.calculate_liquidus(composition, solid_phase_map, extrapolation_model_func, extrapolation_model_name, activity_model, solid_model_type)
 
         elif n_components == 2:
             print(f"(Info) 检测到二元系统，使用 '{solid_model_type}' 模型...")
@@ -207,8 +207,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                 comp_A=comp_A, comp_B=comp_B,
                 solid_phase_A=solid_A, solid_phase_B=solid_B,
                 T_guess=T_guess, x_L_guess=x_L_guess,
-                    extrapolation_model_func=extrapolation_func,
-                extrapolation_model_name=extrapolation_model, activity_model=activity_model
+                    extrapolation_model_func=extrapolation_model_func,
+                extrapolation_model_name=extrapolation_model_name, activity_model=activity_model
             )
 
         else: # n_components > 2
@@ -226,8 +226,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             return robust_solver_func(
                 solid_composition=composition,
                 solid_phase_map=solid_phase_map,
-                    extrapolation_model_func=extrapolation_func,
-                    extrapolation_model_name=extrapolation_model, activity_model=activity_model
+                    extrapolation_model_func=extrapolation_model_func,
+                    extrapolation_model_name=extrapolation_model_name, activity_model=activity_model
             )
 
     # ================================================================
@@ -933,7 +933,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 
     def calculate_liquidus_temperature(self,
                                       composition: Dict[str, float],
-                                      extrapolation_model: str = 'UEM1',
+                                      extrapolation_model_func: extrap_func = None,
+                                      extrapolation_model_name: str = 'UEM1',
                                       activity_model: str = 'Wagner',
                                       solid_model_type: str = 'PURE_SOLID') -> Optional[float]:
         """
@@ -941,13 +942,20 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 
         Args:
             composition: 液相成分字典，如 {'Fe': 0.97, 'C': 0.03}
-            extrapolation_model: 外推模型
+            extrapolation_model_func: 外推模型函数对象
+            extrapolation_model_name: 外推模型名称
             activity_model: 活度模型
             solid_model_type: 固相模型类型 ('SOLID_SOLUTION' 或 'PURE_SOLID')
 
         Returns:
             液相线温度 (K)，如果计算失败返回 None
         """
+        # Default extrapolation model if not provided
+        if extrapolation_model_func is None:
+            from models.extrapolation_models import BinaryModel
+            bm = BinaryModel()
+            extrapolation_model_func = bm.UEM1
+
         try:
             # 统一转为大写符号（TDB数据库使用大写）
             composition_upper = {k.upper(): v for k, v in composition.items()}
@@ -959,7 +967,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             result = self.calculate_liquidus(
                 composition=composition_upper,
                 solid_phase_map=solid_phase_map,
-                extrapolation_model=extrapolation_model,
+                extrapolation_model_func=extrapolation_model_func,
+                extrapolation_model_name=extrapolation_model_name,
                 activity_model=activity_model,
                 solid_model_type=solid_model_type
             )
@@ -977,7 +986,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 
     def calculate_solidus_temperature(self,
                                      composition: Dict[str, float],
-                                     extrapolation_model: str = 'UEM1',
+                                     extrapolation_model_func: extrap_func = None,
+                                     extrapolation_model_name: str = 'UEM1',
                                      activity_model: str = 'Wagner',
                                      solid_model_type: str = 'PURE_SOLID') -> Optional[float]:
         """
@@ -985,13 +995,20 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 
         Args:
             composition: 固相成分字典，如 {'Fe': 0.97, 'C': 0.03}
-            extrapolation_model: 外推模型
+            extrapolation_model_func: 外推模型函数对象
+            extrapolation_model_name: 外推模型名称
             activity_model: 活度模型
             solid_model_type: 固相模型类型 ('SOLID_SOLUTION' 或 'PURE_SOLID')
 
         Returns:
             固相线温度 (K)，如果计算失败返回 None
         """
+        # Default extrapolation model if not provided
+        if extrapolation_model_func is None:
+            from models.extrapolation_models import BinaryModel
+            bm = BinaryModel()
+            extrapolation_model_func = bm.UEM1
+
         try:
             # 统一转为大写符号（TDB数据库使用大写）
             composition_upper = {k.upper(): v for k, v in composition.items()}
@@ -1003,7 +1020,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             result = self.calculate_solidus(
                 composition=composition_upper,
                 solid_phase_map=solid_phase_map,
-                extrapolation_model=extrapolation_model,
+                extrapolation_model_func=extrapolation_model_func,
+                extrapolation_model_name=extrapolation_model_name,
                 activity_model=activity_model,
                 solid_model_type=solid_model_type
             )
@@ -1023,7 +1041,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                                        component_a: str,
                                        component_b: str,
                                        n_points: int = 20,
-                                       extrapolation_model: str = 'UEM1',
+                                       extrapolation_model_func: extrap_func = None,
+                                       extrapolation_model_name: str = 'UEM1',
                                        activity_model: str = 'Wagner',
                                        solid_model_type: str = 'PURE_SOLID',
                                        progress_callback=None) -> Dict[str, List]:
@@ -1034,7 +1053,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             component_a: 组分A
             component_b: 组分B
             n_points: 采样点数
-            extrapolation_model: 外推模型
+            extrapolation_model_func: 外推模型函数对象
+            extrapolation_model_name: 外推模型名称
             activity_model: 活度模型
             solid_model_type: 固相模型类型
             progress_callback: 可选的进度回调函数 progress_callback(current, total)
@@ -1042,6 +1062,12 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         Returns:
             包含 'x_b', 'T_liquidus', 'T_solidus' 的字典
         """
+        # Default extrapolation model if not provided
+        if extrapolation_model_func is None:
+            from models.extrapolation_models import BinaryModel
+            bm = BinaryModel()
+            extrapolation_model_func = bm.UEM1
+
         results = {
             'x_b': [],
             'T_liquidus': [],
@@ -1069,10 +1095,10 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                 continue
 
             T_liq = self.calculate_liquidus_temperature(
-                composition, extrapolation_model, activity_model, solid_model_type
+                composition, extrapolation_model_func, extrapolation_model_name, activity_model, solid_model_type
             )
             T_sol = self.calculate_solidus_temperature(
-                composition, extrapolation_model, activity_model, solid_model_type
+                composition, extrapolation_model_func, extrapolation_model_name, activity_model, solid_model_type
             )
 
             results['x_b'].append(x_b)
@@ -1087,7 +1113,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                                       x_min: float = 0.0,
                                       x_max: float = 1.0,
                                       n_points: int = 20,
-                                      extrapolation_model: str = 'UEM1',
+                                      extrapolation_model_func: extrap_func = None,
+                                      extrapolation_model_name: str = 'UEM1',
                                       activity_model: str = 'Wagner',
                                       solid_model_type: str = 'PURE_SOLID',
                                       progress_callback=None) -> Dict[str, List]:
@@ -1103,7 +1130,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             x_min: 变化组分的最小摩尔分数
             x_max: 变化组分的最大摩尔分数
             n_points: 采样点数
-            extrapolation_model: 外推模型
+            extrapolation_model_func: 外推模型函数对象
+            extrapolation_model_name: 外推模型名称
             activity_model: 活度模型
             solid_model_type: 固相模型类型
             progress_callback: 可选的进度回调函数 progress_callback(current, total)
@@ -1111,6 +1139,12 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         Returns:
             包含 'x', 'T_liquidus', 'T_solidus' 的字典
         """
+        # Default extrapolation model if not provided
+        if extrapolation_model_func is None:
+            from models.extrapolation_models import BinaryModel
+            bm = BinaryModel()
+            extrapolation_model_func = bm.UEM1
+
         results = {
             'x': [],
             'T_liquidus': [],
@@ -1157,10 +1191,10 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                 current_comp = {k: v/total for k, v in current_comp.items()}
 
             T_liq = self.calculate_liquidus_temperature(
-                current_comp, extrapolation_model, activity_model, solid_model_type
+                current_comp, extrapolation_model_func, extrapolation_model_name, activity_model, solid_model_type
             )
             T_sol = self.calculate_solidus_temperature(
-                current_comp, extrapolation_model, activity_model, solid_model_type
+                current_comp, extrapolation_model_func, extrapolation_model_name, activity_model, solid_model_type
             )
 
             results['x'].append(x_var)

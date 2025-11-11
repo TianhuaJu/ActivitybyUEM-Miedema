@@ -306,16 +306,26 @@ class PhaseDiagramWidget(QWidget):
             return
 
         # 获取模型参数
-        extrap_model = self.extrap_model_combo.currentText()
+        extrap_model_name = self.extrap_model_combo.currentText()
         activity_model = self.activity_model_combo.currentText()
         solid_model_type = self.solid_model_combo.currentText()
 
+        # Convert model name to function object
+        from models.extrapolation_models import BinaryModel
+        bm = BinaryModel()
+        extrap_func_map = {
+            'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+            'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
+            'Toop-Muggianu': bm.Toop_Muggianu
+        }
+        extrap_func = extrap_func_map.get(extrap_model_name, bm.UEM1)
+
         # 计算
         T_liquidus = self.phase_calc.calculate_liquidus_temperature(
-            composition, extrap_model, activity_model, solid_model_type
+            composition, extrap_func, extrap_model_name, activity_model, solid_model_type
         )
         T_solidus = self.phase_calc.calculate_solidus_temperature(
-            composition, extrap_model, activity_model, solid_model_type
+            composition, extrap_func, extrap_model_name, activity_model, solid_model_type
         )
 
         # 增加计算批次计数
@@ -328,7 +338,7 @@ class PhaseDiagramWidget(QWidget):
         text_output += "液相线/固相线温度计算结果\n"
         text_output += "=" * 70 + "\n\n"
         text_output += f"合金成分: {composition}\n"
-        text_output += f"外推模型: {extrap_model}\n"
+        text_output += f"外推模型: {extrap_model_name}\n"
         text_output += f"活度模型: {activity_model}\n"
         text_output += f"固相模型: {solid_model_type}\n\n"
 
@@ -376,9 +386,19 @@ class PhaseDiagramWidget(QWidget):
             return
 
         # 获取模型参数
-        extrap_model = self.extrap_model_combo.currentText()
+        extrap_model_name = self.extrap_model_combo.currentText()
         activity_model = self.activity_model_combo.currentText()
         solid_model_type = self.solid_model_combo.currentText()
+
+        # Convert model name to function object
+        from models.extrapolation_models import BinaryModel
+        bm = BinaryModel()
+        extrap_func_map = {
+            'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+            'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
+            'Toop-Muggianu': bm.Toop_Muggianu
+        }
+        extrap_func = extrap_func_map.get(extrap_model_name, bm.UEM1)
 
         # 显示进度条
         self.progress_bar.setVisible(True)
@@ -395,7 +415,8 @@ class PhaseDiagramWidget(QWidget):
         # 计算相图
         phase_data = self.phase_calc.calculate_binary_phase_diagram(
             comp_a, comp_b, n_points=n_points,
-            extrapolation_model=extrap_model,
+            extrapolation_model_func=extrap_func,
+            extrapolation_model_name=extrap_model_name,
             activity_model=activity_model,
             solid_model_type=solid_model_type,
             progress_callback=update_progress
@@ -413,7 +434,7 @@ class PhaseDiagramWidget(QWidget):
         text_output += f"【计算批次 #{self.calculation_count}】 {timestamp}\n"
         text_output += f"二元相图: {comp_a}-{comp_b}\n"
         text_output += "=" * 70 + "\n\n"
-        text_output += f"外推模型: {extrap_model}\n"
+        text_output += f"外推模型: {extrap_model_name}\n"
         text_output += f"活度模型: {activity_model}\n"
         text_output += f"固相模型: {solid_model_type}\n"
         text_output += f"采样点数: {n_points}\n\n"
@@ -465,9 +486,19 @@ class PhaseDiagramWidget(QWidget):
         base_composition = parse_composition_static(base_comp_str) if base_comp_str else {}
 
         # 获取模型参数
-        extrap_model = self.extrap_model_combo.currentText()
+        extrap_model_name = self.extrap_model_combo.currentText()
         activity_model = self.activity_model_combo.currentText()
         solid_model_type = self.solid_model_combo.currentText()
+
+        # Convert model name to function object
+        from models.extrapolation_models import BinaryModel
+        bm = BinaryModel()
+        extrap_func_map = {
+            'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+            'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
+            'Toop-Muggianu': bm.Toop_Muggianu
+        }
+        extrap_func = extrap_func_map.get(extrap_model_name, bm.UEM1)
 
         # 显示进度条
         self.progress_bar.setVisible(True)
@@ -488,7 +519,8 @@ class PhaseDiagramWidget(QWidget):
             x_min=x_min,
             x_max=x_max,
             n_points=n_points,
-            extrapolation_model=extrap_model,
+            extrapolation_model_func=extrap_func,
+            extrapolation_model_name=extrap_model_name,
             activity_model=activity_model,
             solid_model_type=solid_model_type,
             progress_callback=update_progress
@@ -508,7 +540,7 @@ class PhaseDiagramWidget(QWidget):
         text_output += "=" * 70 + "\n\n"
         text_output += f"基础成分: {base_composition}\n"
         text_output += f"变化范围: {x_min:.3f} ~ {x_max:.3f}\n"
-        text_output += f"外推模型: {extrap_model}\n"
+        text_output += f"外推模型: {extrap_model_name}\n"
         text_output += f"活度模型: {activity_model}\n"
         text_output += f"固相模型: {solid_model_type}\n"
         text_output += f"采样点数: {n_points}\n\n"

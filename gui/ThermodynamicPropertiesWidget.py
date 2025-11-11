@@ -208,8 +208,18 @@ class ThermodynamicPropertiesWidget(QWidget):
             temperature = float(self.temperature_input.text())
             phase_state = self.phase_combo.currentText()
             solvent = self.solvent_input.text().strip() or None
-            extrap_model = self.extrap_model_combo.currentText()
+            extrap_model_name = self.extrap_model_combo.currentText()
             activity_model = self.activity_model_combo.currentText()
+
+            # Convert model name to function object
+            from models.extrapolation_models import BinaryModel
+            bm = BinaryModel()
+            extrap_func_map = {
+                'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+                'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
+                'Toop-Muggianu': bm.Toop_Muggianu
+            }
+            extrap_func = extrap_func_map.get(extrap_model_name, bm.UEM1)
 
             # 显示计算中和进度条
             self.results_text.setText("正在计算中，请稍候...")
@@ -226,7 +236,8 @@ class ThermodynamicPropertiesWidget(QWidget):
                 temperature=temperature,
                 phase_state=phase_state,
                 solvent=solvent,
-                extrapolation_model=extrap_model,
+                extrapolation_model_func=extrap_func,
+                extrapolation_model_name=extrap_model_name,
                 activity_model=activity_model
             )
 
@@ -234,7 +245,7 @@ class ThermodynamicPropertiesWidget(QWidget):
 
             # 显示结果
             self.display_results(results, composition, temperature, phase_state,
-                               extrap_model, activity_model)
+                               extrap_model_name, activity_model)
 
             # 启用导出按钮
             self.export_button.setEnabled(True)
