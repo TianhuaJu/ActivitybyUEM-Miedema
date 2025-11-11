@@ -505,7 +505,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                 last_exception = e
         raise RuntimeError(f"所有SS策略均未能找到 {solid_composition} 的有效固相线温度。 最后错误: {last_exception}")
 
-    def _solve_liquidus_multi_ss(self, liquid_composition: Dict[str, float], solid_phase_map: Dict[str, str], T_guess: float, solid_solute_comp_guess: Dict[str, float], extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
+    def _solve_liquidus_multi_ss(self, liquid_composition: Dict[str, float], solid_phase_map: Dict[str, str], T_guess: float, solid_solute_comp_guess: Dict[str, float],extrapolation_func:extrap_func, extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
         """ (V3.1 Logic) 求解 L <-> SS (多元) 液相线 """
         solvent = max(liquid_composition.items(), key=lambda x: x[1])[0]; solutes = [c for c in liquid_composition.keys() if c != solvent]; all_components = [solvent] + solutes
         X_L = {c: self._check_bounds(x) for c, x in liquid_composition.items()}
@@ -515,8 +515,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             for comp in all_components:
                 solid_phase = solid_phase_map.get(comp);
                 if solid_phase is None: raise ValueError(f"solid_phase_map 中未定义组分 {comp} 的固相")
-                mu_L = self._get_chemical_potential(X_L, comp, T, 'LIQUID', extrapolation_model, activity_model)
-                mu_S = self._get_chemical_potential(X_S, comp, T, solid_phase, extrapolation_model, activity_model)
+                mu_L = self._get_chemical_potential(X_L, comp, T, 'LIQUID', extrapolation_func,extrapolation_model, activity_model)
+                mu_S = self._get_chemical_potential(X_S, comp, T, solid_phase, extrapolation_func,extrapolation_model, activity_model)
                 if mu_L is None or mu_S is None: return [1e10] * len(all_components)
                 residuals.append(mu_L - mu_S)
             return residuals
@@ -526,7 +526,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         T_liquidus = sol.x[0]; final_solid_solutes = {solute: sol.x[i+1] for i, solute in enumerate(solutes)}; final_solid_solvent = 1.0 - sum(final_solid_solutes.values()); final_solid_comp = {solvent: final_solid_solvent, **final_solid_solutes}
         return {"status": "success", "T_liquidus": T_liquidus, "liquid_composition": liquid_composition, "solid_composition_eq": final_solid_comp}
 
-    def _solve_solidus_multi_ss(self, solid_composition: Dict[str, float], solid_phase_map: Dict[str, str], T_guess: float, liquid_solute_comp_guess: Dict[str, float], extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
+    def _solve_solidus_multi_ss(self, solid_composition: Dict[str, float], solid_phase_map: Dict[str, str], T_guess: float, liquid_solute_comp_guess: Dict[str, float], extrapolation_func:extrap_func,extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
         """ (V3.1 Logic) 求解 L <-> SS (多元) 固相线 """
         solvent = max(solid_composition.items(), key=lambda x: x[1])[0]; solutes = [c for c in solid_composition.keys() if c != solvent]; all_components = [solvent] + solutes
         X_S = {c: self._check_bounds(x) for c, x in solid_composition.items()}
@@ -536,8 +536,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             for comp in all_components:
                 solid_phase = solid_phase_map.get(comp);
                 if solid_phase is None: raise ValueError(f"solid_phase_map 中未定义组分 {comp} 的固相")
-                mu_L = self._get_chemical_potential(X_L, comp, T, 'LIQUID', extrapolation_model, activity_model)
-                mu_S = self._get_chemical_potential(X_S, comp, T, solid_phase, extrapolation_model, activity_model)
+                mu_L = self._get_chemical_potential(X_L, comp, T, 'LIQUID', extrapolation_func,extrapolation_model, activity_model)
+                mu_S = self._get_chemical_potential(X_S, comp, T, solid_phase, extrapolation_func, extrapolation_model, activity_model)
                 if mu_L is None or mu_S is None: return [1e10] * len(all_components)
                 residuals.append(mu_L - mu_S)
             return residuals
@@ -551,19 +551,19 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
     # ============ MODEL 2: PURE SOLID (V3.2 Logic) ==================
     # ================================================================
 
-    def _solve_liquidus_binary_pure(self, x_B_overall: float, comp_A: str, comp_B: str, solid_phase_A: str, solid_phase_B: str, T_guess: float, x_S_guess: float, extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
+    def _solve_liquidus_binary_pure(self, x_B_overall: float, comp_A: str, comp_B: str, solid_phase_A: str, solid_phase_B: str, T_guess: float, x_S_guess: float, extrapolation_func:extrap_func,extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
         """ (V3.2 Logic) 求解 L <-> Pure (二元) 液相线 """
         x_L = self._check_bounds(x_B_overall)
         comp_dict_L = {comp_A: 1.0 - x_L, comp_B: x_L}
 
         def _resid_A(T: float) -> float:
-            mu_A_L = self._get_chemical_potential(comp_dict_L, comp_A, T, 'LIQUID', extrapolation_model, activity_model)
+            mu_A_L = self._get_chemical_potential(comp_dict_L, comp_A, T, 'LIQUID', extrapolation_func,extrapolation_model, activity_model)
             mu_A_S_pure = self.tdb_parser.get_gibbs_energy(comp_A, solid_phase_A, T)
             if mu_A_L is None or mu_A_S_pure is None: return 1e10
             return mu_A_L - mu_A_S_pure
 
         def _resid_B(T: float) -> float:
-            mu_B_L = self._get_chemical_potential(comp_dict_L, comp_B, T, 'LIQUID', extrapolation_model, activity_model)
+            mu_B_L = self._get_chemical_potential(comp_dict_L, comp_B, T, 'LIQUID',extrapolation_func, extrapolation_model, activity_model)
             mu_B_S_pure = self.tdb_parser.get_gibbs_energy(comp_B, solid_phase_B, T)
             if mu_B_L is None or mu_B_S_pure is None: return 1e10
             return mu_B_L - mu_B_S_pure
@@ -599,14 +599,14 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         solid_comp_eq = {comp_A: 0.0, comp_B: 0.0}; solid_comp_eq[primary_phase_comp] = 1.0
         return {"status": "success", "T_liquidus": T_liquidus, "liquid_composition": comp_dict_L, "solid_composition_eq": solid_comp_eq}
 
-    def _solve_solidus_binary_pure(self, x_B_overall: float, comp_A: str, comp_B: str, solid_phase_A: str, solid_phase_B: str, T_guess: float, x_L_guess: float, extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
+    def _solve_solidus_binary_pure(self, x_B_overall: float, comp_A: str, comp_B: str, solid_phase_A: str, solid_phase_B: str, T_guess: float, x_L_guess: float, extrapolation_func:extrap_func,extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
         """ (V3.2 Logic) 求解 L <-> Pure_A + Pure_B (二元共晶) 固相线 """
         x_S_input_comp = {comp_A: 1.0 - x_B_overall, comp_B: x_B_overall}
         def _residuals(unknowns):
             T, x_L_calc = unknowns; x_L = self._check_bounds(x_L_calc)
             comp_dict_L = {comp_A: 1.0 - x_L, comp_B: x_L}
-            mu_A_L = self._get_chemical_potential(comp_dict_L, comp_A, T, 'LIQUID', extrapolation_model, activity_model)
-            mu_B_L = self._get_chemical_potential(comp_dict_L, comp_B, T, 'LIQUID', extrapolation_model, activity_model)
+            mu_A_L = self._get_chemical_potential(comp_dict_L, comp_A, T, 'LIQUID',extrapolation_func, extrapolation_model, activity_model)
+            mu_B_L = self._get_chemical_potential(comp_dict_L, comp_B, T, 'LIQUID', extrapolation_func,extrapolation_model, activity_model)
             mu_A_S_pure = self.tdb_parser.get_gibbs_energy(comp_A, solid_phase_A, T)
             mu_B_S_pure = self.tdb_parser.get_gibbs_energy(comp_B, solid_phase_B, T)
             if any(v is None for v in [mu_A_L, mu_A_S_pure, mu_B_L, mu_B_S_pure]): return [1e10, 1e10]
@@ -709,7 +709,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                 last_exception = e
         raise RuntimeError(f"所有Pure策略均未能找到 {solid_composition} 的有效固相线(共晶)温度。 最后错误: {last_exception}")
 
-    def _solve_liquidus_multi_pure(self, liquid_composition: Dict[str, float], solid_phase_map: Dict[str, str], T_guess: float, solid_solute_comp_guess: Dict[str, float], extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
+    def _solve_liquidus_multi_pure(self, liquid_composition: Dict[str, float], solid_phase_map: Dict[str, str], T_guess: float, solid_solute_comp_guess: Dict[str, float], extrapolation_func:extrap_func,extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
         """ (V3.2 Logic) 求解 L <-> Pure (多元) 液相线 """
         all_components = list(liquid_composition.keys())
         X_L = {c: self._check_bounds(x) for c, x in liquid_composition.items()}
@@ -732,7 +732,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         for comp in all_components:
             solid_phase = solid_phase_map[comp]
             def _resid_comp(T: float) -> float:
-                mu_L = self._get_chemical_potential(X_L, comp, T, 'LIQUID', extrapolation_model, activity_model)
+                mu_L = self._get_chemical_potential(X_L, comp, T, 'LIQUID', extrapolation_func,extrapolation_model, activity_model)
                 mu_S_pure = self.tdb_parser.get_gibbs_energy(comp, solid_phase, T)
                 if mu_L is None or mu_S_pure is None: return 1e10
                 return mu_L - mu_S_pure
