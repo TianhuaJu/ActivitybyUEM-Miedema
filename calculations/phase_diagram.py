@@ -274,16 +274,29 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                               extrapolation_model: str,
                               activity_model: str) -> Optional[float]:
         """
-        计算化学势的内部辅助函数 (V3.2 固溶体版本)。
+        计算化学势的内部辅助函数 (V3.3 固溶体版本)。
         用于计算任何 *溶液相* (液相或固溶体) 的化学势。
         mu_i = G_i_0 + R*T*ln(x_i) + R*T*ln(gamma_i)
 
-        关键修改：固相统一使用 phase_state='solid' 调用 UEM-Miedema 框架
+        关键修改：
+        - 液相：使用 LIQUID 相的标准 Gibbs 能量
+        - 固相：如果该相的 G° 不可用，使用参考相（SER）的 G°
+        - 所有固相统一使用 phase_state='solid' 调用 UEM-Miedema 框架
         """
         # 1. 获取标准 Gibbs 能量
         mu_0 = self.tdb_parser.get_gibbs_energy(component, tdb_phase, temperature)
+
+        # 如果该相的 Gibbs 能量不可用，尝试使用参考相
+        if mu_0 is None and tdb_phase != 'LIQUID':
+            # 对于固相，尝试使用参考相（SER）
+            ref_phase = self.tdb_parser.get_reference_phase(component)
+            if ref_phase:
+                mu_0 = self.tdb_parser.get_gibbs_energy(component, ref_phase, temperature)
+                if mu_0 is not None:
+                    print(f"  (Info) 使用 {component} 的参考相 {ref_phase} 代替 {tdb_phase}，G° = {mu_0:.2f} J/mol")
+
         if mu_0 is None:
-            print(f"  (Warning) 无法获取 {component} 在 {tdb_phase} 相的标准 Gibbs 能量 @ {temperature}K")
+            print(f"  (Warning) 无法获取 {component} 在 {tdb_phase} 相或参考相的标准 Gibbs 能量 @ {temperature}K")
             return None
 
         # 2. 确定相态：液相或固相（统一处理所有固相）
