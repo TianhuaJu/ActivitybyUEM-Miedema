@@ -101,14 +101,15 @@ class ThermodynamicProperties:
             print(f"Error standardizing symbols: {e}")
             return None
         # --- (修正结束) ---
-        
+
         ln_gamma = self.activity_calculator.get_ln_gamma(
                 comp_dict=comp_dict_std,
                 component_to_calculate=component_std,
+                solvent=solvent_std,  # 添加 solvent 参数
                 Tem=temperature,
                 state=phase_state,
                 extra_model=extrapolation_model_func,
-                extrapolation_model_name = extrapolation_model_name,
+                extrapolation_model_name=extrapolation_model_name,
                 activity_model=activity_model
         )
         return ln_gamma

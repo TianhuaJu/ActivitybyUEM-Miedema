@@ -341,7 +341,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         mu = mu_0 + self.R * temperature * (math.log(x_i) + ln_gamma)
 
         # 调试输出
-        # print(f"  (Debug) μ_{component} @ {tdb_phase}({activity_phase_state}): G°={mu_0:.2f}, ln(γ)={ln_gamma:.4f}, x={x_i:.4e}, μ={mu:.2f}")
+        print(f"  (Debug) μ_{component} @ {tdb_phase}({activity_phase_state}): G°={mu_0:.2f}, ln(γ)={ln_gamma:.4f}, x={x_i:.4e}, μ={mu:.2f} J/mol")
 
         return mu
 
