@@ -772,16 +772,17 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                               solution_phase: str,
                               precipitating_phase: str,
                               temperature: float,
-                              extrapolation_model: str = 'UEM1',
+                              extrapolation_func: extrap_func,
+                              extrapolation_model_name: str = 'UEM1',
                               activity_model: str = 'Wagner',
                               min_solubility: float = 1e-9,
                               max_solubility: float = 0.999) -> dict:
         """
-        (V4.2 - 新增) 计算指定溶质在多元溶液相中的溶解度极限。
+        (V4.3 - 更新) 计算指定溶质在多元溶液相中的溶解度极限。
 
         这适用于:
         1. 固溶体溶解度:
-           e.g., C 在 BCC_A2(Fe,Si) 中的溶解度 (平衡相: GRAPHITE)
+           e.g., C 在 SOLID(Fe,Si) 中的溶解度 (平衡相: GRAPHITE)
         2. 液相溶解度:
            e.g., C 在 LIQUID(Fe,Si) 中的溶解度 (平衡相: GRAPHITE)
 
@@ -791,9 +792,12 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         Args:
             base_alloy_composition (Dict): 基础合金（溶剂）的成分, e.g., {'FE': 0.7, 'SI': 0.3}
             solute_element (str): 待计算溶解度的溶质, e.g., 'C'
-            solution_phase (str): 溶质溶解于的相, e.g., 'BCC_A2' 或 'LIQUID'
+            solution_phase (str): 溶质溶解于的相, 'LIQUID' 或 'SOLID'
             precipitating_phase (str): 溶质析出时形成的纯固相, e.g., 'GRAPHITE'
             temperature (float): 固定的温度 (K)
+            extrapolation_func (extrap_func): 外推模型函数对象
+            extrapolation_model_name (str): 外推模型名称
+            activity_model (str): 活度模型名称
             min_solubility (float): 求解器下限
             max_solubility (float): 求解器上限 (必须 < 1.0)
 
@@ -808,7 +812,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         print(f"(Info) 开始计算 {solute_element} 在 {phase_type} {solution_phase} 相中的溶解度 @ {temperature}K...")
         print(f"       (基础合金: {base_alloy_composition})")
         print(f"       (析出相: {precipitating_phase})")
-        print(f"       (相态: {phase_state}, 外推模型: {extrapolation_model}, 活度模型: {activity_model})")
+        print(f"       (相态: {phase_state}, 外推模型: {extrapolation_model_name}, 活度模型: {activity_model})")
 
         # 1. 归一化基础合金成分
         base_total = sum(base_alloy_composition.values())
@@ -838,14 +842,15 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             }
             current_solution_comp[solute_element] = x_solute
             
-            # b. 计算溶质在“溶液相”中的化学势
+            # b. 计算溶质在"溶液相"中的化学势
             #    (使用通用的 _get_chemical_potential 辅助函数)
             mu_in_solution = self._get_chemical_potential(
                     composition=current_solution_comp,
                     component=solute_element,
                     temperature=temperature,
-                    tdb_phase=solution_phase,  # e.g., 'BCC_A2' 或 'LIQUID'
-                    extrapolation_model=extrapolation_model,
+                    tdb_phase=solution_phase,  # 'LIQUID' 或 'SOLID'
+                    extrapolation_model_func=extrapolation_func,
+                    extrapolation_model=extrapolation_model_name,
                     activity_model=activity_model
             )
             

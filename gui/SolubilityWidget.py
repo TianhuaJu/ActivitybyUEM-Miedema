@@ -312,8 +312,18 @@ class SolubilityWidget(QWidget):
         base_composition = {k.upper(): v for k, v in base_composition.items()}
 
         # 获取模型参数
-        extrap_model = self.extrap_model_combo.currentText()
+        extrap_model_name = self.extrap_model_combo.currentText()
         activity_model = self.activity_model_combo.currentText()
+
+        # 将外推模型名称转换为函数对象
+        from models.extrapolation_models import BinaryModel
+        bm = BinaryModel()
+        extrap_func_map = {
+            'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+            'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
+            'Toop-Muggianu': bm.Toop_Muggianu
+        }
+        extrap_func = extrap_func_map.get(extrap_model_name, bm.UEM1)
 
         # 计算溶解度
         result = self.phase_calc.calculate_solubility(
@@ -322,7 +332,8 @@ class SolubilityWidget(QWidget):
             solution_phase=solution_phase,
             precipitating_phase=precipitate,
             temperature=temperature,
-            extrapolation_model=extrap_model,
+            extrapolation_func=extrap_func,
+            extrapolation_model_name=extrap_model_name,
             activity_model=activity_model
         )
 
@@ -340,7 +351,7 @@ class SolubilityWidget(QWidget):
         text_output += f"溶液相: {solution_phase}\n"
         text_output += f"析出相: {precipitate}\n"
         text_output += f"温度: {temperature:.2f} K ({temperature-273.15:.2f} °C)\n"
-        text_output += f"外推模型: {extrap_model}\n"
+        text_output += f"外推模型: {extrap_model_name}\n"
         text_output += f"活度模型: {activity_model}\n\n"
 
         if result['status'] == 'success':
@@ -402,8 +413,18 @@ class SolubilityWidget(QWidget):
             return
 
         # 获取模型参数
-        extrap_model = self.extrap_model_combo.currentText()
+        extrap_model_name = self.extrap_model_combo.currentText()
         activity_model = self.activity_model_combo.currentText()
+
+        # 将外推模型名称转换为函数对象
+        from models.extrapolation_models import BinaryModel
+        bm = BinaryModel()
+        extrap_func_map = {
+            'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+            'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
+            'Toop-Muggianu': bm.Toop_Muggianu
+        }
+        extrap_func = extrap_func_map.get(extrap_model_name, bm.UEM1)
 
         # 显示进度条
         self.progress_bar.setVisible(True)
@@ -439,7 +460,8 @@ class SolubilityWidget(QWidget):
                     solution_phase=solution_phase,
                     precipitating_phase=precipitate,
                     temperature=temperature,
-                    extrapolation_model=extrap_model,
+                    extrapolation_func=extrap_func,
+                    extrapolation_model_name=extrap_model_name,
                     activity_model=activity_model
                 )
 
@@ -473,7 +495,7 @@ class SolubilityWidget(QWidget):
         text_output += f"溶液相: {solution_phase}\n"
         text_output += f"析出相: {precipitate}\n"
         text_output += f"温度: {temperature:.2f} K ({temperature-273.15:.2f} °C)\n"
-        text_output += f"外推模型: {extrap_model}\n"
+        text_output += f"外推模型: {extrap_model_name}\n"
         text_output += f"活度模型: {activity_model}\n"
         text_output += f"采样点数: {n_points}\n\n"
 
