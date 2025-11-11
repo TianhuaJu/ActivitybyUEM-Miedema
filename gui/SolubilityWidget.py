@@ -180,14 +180,11 @@ class SolubilityWidget(QWidget):
         row += 1
 
         solution_label = QLabel("溶液相:")
-        solution_label.setToolTip("选择溶质溶解的相:\nLIQUID - 液相\nBCC_A2/FCC_A1/HCP_A3 - 固相溶体")
+        solution_label.setToolTip("选择溶质溶解的相:\n液相 - 液态合金\n固相 - 固态合金")
         self.input_layout.addWidget(solution_label, row, 0, Qt.AlignRight)
         self.solution_phase_combo = QComboBox()
-        self.solution_phase_combo.addItems([
-            "LIQUID (液相)", "BCC_A2 (体心立方)", "FCC_A1 (面心立方)",
-            "HCP_A3 (密排六方)", "DIAMOND_A4 (金刚石)"
-        ])
-        self.solution_phase_combo.setToolTip("液相和固相溶体均采用UEM-Miedema框架计算")
+        self.solution_phase_combo.addItems(["液相", "固相"])
+        self.solution_phase_combo.setToolTip("液相和固相均采用UEM-Miedema框架计算")
         self.input_layout.addWidget(self.solution_phase_combo, row, 1)
         row += 1
 
@@ -235,13 +232,16 @@ class SolubilityWidget(QWidget):
         self.create_input_fields()
 
     def _extract_phase_name(self, phase_text: str) -> str:
-        """从带说明的相名称中提取实际的相名称
-        例如: "LIQUID (液相)" -> "LIQUID"
-              "BCC_A2 (体心立方)" -> "BCC_A2"
+        """映射溶液相选择为内部相名称
+        液相 -> LIQUID
+        固相 -> SOLID
         """
-        if '(' in phase_text:
-            return phase_text.split('(')[0].strip()
-        return phase_text.strip()
+        if phase_text == "液相":
+            return "LIQUID"
+        elif phase_text == "固相":
+            return "SOLID"
+        else:
+            return phase_text.strip()
 
     def create_results_panel(self):
         """创建结果面板"""

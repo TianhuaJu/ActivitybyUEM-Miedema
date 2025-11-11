@@ -270,37 +270,41 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                               composition: Dict[str, float],
                               component: str,
                               temperature: float,
-                              tdb_phase: str, # 'LIQUID', 'BCC_A2', etc.
+                              tdb_phase: str, # 'LIQUID' or 'SOLID'
                               extrapolation_model: str,
                               activity_model: str) -> Optional[float]:
         """
-        计算化学势的内部辅助函数 (V3.3 固溶体版本)。
-        用于计算任何 *溶液相* (液相或固溶体) 的化学势。
+        计算化学势的内部辅助函数 (V3.4 简化版本)。
+        用于计算任何 *溶液相* (液相或固相) 的化学势。
         mu_i = G_i_0 + R*T*ln(x_i) + R*T*ln(gamma_i)
 
         关键修改：
-        - 液相：使用 LIQUID 相的标准 Gibbs 能量
-        - 固相：如果该相的 G° 不可用，使用参考相（SER）的 G°
-        - 所有固相统一使用 phase_state='solid' 调用 UEM-Miedema 框架
+        - tdb_phase 参数现在只接受 'LIQUID' 或 'SOLID'
+        - 液相 (LIQUID)：使用 LIQUID 相的标准 Gibbs 能量
+        - 固相 (SOLID)：使用参考相的标准 Gibbs 能量
+        - 活度系数通过 UEM-Miedema 框架计算 (phase_state='liquid' 或 'solid')
         """
-        # 1. 获取标准 Gibbs 能量
-        mu_0 = self.tdb_parser.get_gibbs_energy(component, tdb_phase, temperature)
+        # 1. 确定相态
+        if tdb_phase == 'LIQUID':
+            activity_phase_state = 'liquid'
+            lookup_phase = 'LIQUID'
+        elif tdb_phase == 'SOLID':
+            activity_phase_state = 'solid'
+            # 固相使用参考相的 Gibbs 能量
+            lookup_phase = self.tdb_parser.get_reference_phase(component)
+            if not lookup_phase:
+                print(f"  (Warning) 无法获取 {component} 的参考相")
+                return None
+        else:
+            # 兼容旧的调用方式（如果有的话）
+            activity_phase_state = 'liquid' if tdb_phase == 'LIQUID' else 'solid'
+            lookup_phase = tdb_phase
 
-        # 如果该相的 Gibbs 能量不可用，尝试使用参考相
-        if mu_0 is None and tdb_phase != 'LIQUID':
-            # 对于固相，尝试使用参考相（SER）
-            ref_phase = self.tdb_parser.get_reference_phase(component)
-            if ref_phase:
-                mu_0 = self.tdb_parser.get_gibbs_energy(component, ref_phase, temperature)
-                if mu_0 is not None:
-                    print(f"  (Info) 使用 {component} 的参考相 {ref_phase} 代替 {tdb_phase}，G° = {mu_0:.2f} J/mol")
-
+        # 2. 获取标准 Gibbs 能量
+        mu_0 = self.tdb_parser.get_gibbs_energy(component, lookup_phase, temperature)
         if mu_0 is None:
-            print(f"  (Warning) 无法获取 {component} 在 {tdb_phase} 相或参考相的标准 Gibbs 能量 @ {temperature}K")
+            print(f"  (Warning) 无法获取 {component} 在 {lookup_phase} 相的标准 Gibbs 能量 @ {temperature}K")
             return None
-
-        # 2. 确定相态：液相或固相（统一处理所有固相）
-        activity_phase_state = 'liquid' if tdb_phase == 'LIQUID' else 'solid'
 
         # 3. 计算活度系数（使用 UEM-Miedema 框架，传入 phase_state）
         ln_gamma = self.calculate_ln_activity_coefficient(
