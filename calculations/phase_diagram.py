@@ -24,7 +24,7 @@ from scipy.optimize import root, brentq
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from calculations.thermodynamic_properties import ThermodynamicProperties
+from calculations.thermodynamic_properties import ThermodynamicProperties,extrap_func
 
 
 class PhaseDiagramCalculator(ThermodynamicProperties):
@@ -49,7 +49,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
     def calculate_liquidus(self,
                            composition: Dict[str, float],
                            solid_phase_map: Dict[str, str],
-                           extrapolation_model: str = 'UEM1',
+                           extrapolation_func: extrap_func,
+                           extrapolation_model_name: str = 'UEM1',
                            activity_model: str = 'Wagner',
                            solid_model_type: str = 'SOLID_SOLUTION'
                            ) -> dict:
@@ -122,7 +123,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                 comp_A=comp_A, comp_B=comp_B,
                 solid_phase_A=solid_A, solid_phase_B=solid_B,
                 T_guess=T_guess, x_S_guess=x_S_guess,
-                extrapolation_model=extrapolation_model, activity_model=activity_model
+                extrapolation_model=extrapolation_model_name, activity_model=activity_model
             )
 
         else: # n_components > 2
@@ -140,13 +141,14 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             return robust_solver_func(
                 liquid_composition=composition,
                 solid_phase_map=solid_phase_map,
-                extrapolation_model=extrapolation_model,
+                extrapolation_model=extrapolation_model_name,
                 activity_model=activity_model
             )
 
     def calculate_solidus(self,
                            composition: Dict[str, float],
                            solid_phase_map: Dict[str, str],
+                          extrapolation_func: extrap_func,
                            extrapolation_model: str = 'UEM1',
                            activity_model: str = 'Wagner',
                            solid_model_type: str = 'SOLID_SOLUTION'
@@ -164,7 +166,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         if n_components <= 0:
             raise ValueError("成分字典不能为空")
         if n_components == 1:
-            return self.calculate_liquidus(composition, solid_phase_map, extrapolation_model, activity_model, solid_model_type)
+            return self.calculate_liquidus(composition, solid_phase_map, extrapolation_func,extrapolation_model, activity_model, solid_model_type)
 
         elif n_components == 2:
             print(f"(Info) 检测到二元系统，使用 '{solid_model_type}' 模型...")
@@ -205,7 +207,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                 comp_A=comp_A, comp_B=comp_B,
                 solid_phase_A=solid_A, solid_phase_B=solid_B,
                 T_guess=T_guess, x_L_guess=x_L_guess,
-                extrapolation_model=extrapolation_model, activity_model=activity_model
+                    extrapolation_model_func=extrapolation_func,
+                extrapolation_model_name=extrapolation_model, activity_model=activity_model
             )
 
         else: # n_components > 2
@@ -223,8 +226,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             return robust_solver_func(
                 solid_composition=composition,
                 solid_phase_map=solid_phase_map,
-                extrapolation_model=extrapolation_model,
-                activity_model=activity_model
+                    extrapolation_model_func=extrapolation_func,
+                    extrapolation_model_name=extrapolation_model, activity_model=activity_model
             )
 
     # ================================================================
@@ -271,6 +274,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                               component: str,
                               temperature: float,
                               tdb_phase: str, # 'LIQUID' or 'SOLID'
+                              extrapolation_model_func:extrap_func,
                               extrapolation_model: str,
                               activity_model: str) -> Optional[float]:
         """
@@ -307,10 +311,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             return None
 
         # 3. 计算活度系数（使用 UEM-Miedema 框架，传入 phase_state）
-        ln_gamma = self.calculate_ln_activity_coefficient(
-            composition, component, temperature, activity_phase_state,
-            None, extrapolation_model, activity_model
-        )
+        ln_gamma = self.calculate_ln_activity_coefficient(composition, component, temperature, activity_phase_state,
+                                                          extrapolation_model_func, extrapolation_model, activity_model)
         if ln_gamma is None:
             print(f"  (Warning) 无法计算 {component} 的活度系数 @ phase_state={activity_phase_state}")
             return None
@@ -352,32 +354,33 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
     # ============ MODEL 1: SOLID SOLUTION (V3.1 Logic) ==============
     # ================================================================
 
-    def _solve_liquidus_binary_ss(self, x_B_overall: float, comp_A: str, comp_B: str, solid_phase_A: str, solid_phase_B: str, T_guess: float, x_S_guess: float, extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
+    def _solve_liquidus_binary_ss(self, x_B_overall: float, comp_A: str, comp_B: str, solid_phase_A: str, solid_phase_B: str, T_guess: float, x_S_guess: float,
+                                  extra_model_func:extrap_func,extrapolation_model_name: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
         """ (V3.1 Logic) 求解 L <-> SS (二元) 液相线 """
         x_L = self._check_bounds(x_B_overall)
         def _residuals(unknowns):
             T, x_S_calc = unknowns; x_S = self._check_bounds(x_S_calc)
             comp_dict_L = {comp_A: 1.0 - x_L, comp_B: x_L}; comp_dict_S = {comp_A: 1.0 - x_S, comp_B: x_S}
-            mu_A_L = self._get_chemical_potential(comp_dict_L, comp_A, T, 'LIQUID', extrapolation_model, activity_model)
-            mu_A_S = self._get_chemical_potential(comp_dict_S, comp_A, T, solid_phase_A, extrapolation_model, activity_model)
-            mu_B_L = self._get_chemical_potential(comp_dict_L, comp_B, T, 'LIQUID', extrapolation_model, activity_model)
-            mu_B_S = self._get_chemical_potential(comp_dict_S, comp_B, T, solid_phase_B, extrapolation_model, activity_model)
+            mu_A_L = self._get_chemical_potential(comp_dict_L, comp_A, T, 'LIQUID', extrapolation_model_func=extra_model_func,extrapolation_model=extrapolation_model_name, activity_model=activity_model)
+            mu_A_S = self._get_chemical_potential(comp_dict_S, comp_A, T, solid_phase_A,  extrapolation_model_func=extra_model_func,extrapolation_model=extrapolation_model_name, activity_model=activity_model)
+            mu_B_L = self._get_chemical_potential(comp_dict_L, comp_B, T, 'LIQUID', extrapolation_model_func=extra_model_func,extrapolation_model=extrapolation_model_name, activity_model=activity_model)
+            mu_B_S = self._get_chemical_potential(comp_dict_S, comp_B, T, solid_phase_B, extrapolation_model_func=extra_model_func,extrapolation_model=extrapolation_model_name, activity_model=activity_model)
             if any(v is None for v in [mu_A_L, mu_A_S, mu_B_L, mu_B_S]): return [1e10, 1e10]
             return [mu_A_L - mu_A_S, mu_B_L - mu_B_S]
         sol = root(_residuals, [T_guess, x_S_guess], method='lm')
         if not sol.success: raise RuntimeError(f"二元液相线求解失败(SS Model) (x_L={x_B_overall}): {sol.message}")
         return {"status": "success", "T_liquidus": sol.x[0], "liquid_composition": {comp_A: 1.0-x_L, comp_B: x_L}, "solid_composition_eq": {comp_A: 1.0-sol.x[1], comp_B: sol.x[1]}}
 
-    def _solve_solidus_binary_ss(self, x_B_overall: float, comp_A: str, comp_B: str, solid_phase_A: str, solid_phase_B: str, T_guess: float, x_L_guess: float, extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
+    def _solve_solidus_binary_ss(self, x_B_overall: float, comp_A: str, comp_B: str, solid_phase_A: str, solid_phase_B: str, T_guess: float, x_L_guess: float, extrapolation_model_func:extrap_func,extrapolation_model_name: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
         """ (V3.1 Logic) 求解 L <-> SS (二元) 固相线 """
-        x_S = self._check_bounds(x_B_overall);
+        x_S = self._check_bounds(x_B_overall)
         def _residuals(unknowns):
             T, x_L_calc = unknowns; x_L = self._check_bounds(x_L_calc)
             comp_dict_L = {comp_A: 1.0 - x_L, comp_B: x_L}; comp_dict_S = {comp_A: 1.0 - x_S, comp_B: x_S}
-            mu_A_L = self._get_chemical_potential(comp_dict_L, comp_A, T, 'LIQUID', extrapolation_model, activity_model)
-            mu_A_S = self._get_chemical_potential(comp_dict_S, comp_A, T, solid_phase_A, extrapolation_model, activity_model)
-            mu_B_L = self._get_chemical_potential(comp_dict_L, comp_B, T, 'LIQUID', extrapolation_model, activity_model)
-            mu_B_S = self._get_chemical_potential(comp_dict_S, comp_B, T, solid_phase_B, extrapolation_model, activity_model)
+            mu_A_L = self._get_chemical_potential(comp_dict_L, comp_A, T, 'LIQUID', extrapolation_model_func=extrapolation_model_func,extrapolation_model=extrapolation_model_name, activity_model=activity_model)
+            mu_A_S = self._get_chemical_potential(comp_dict_S, comp_A, T, solid_phase_A, extrapolation_model_func=extrapolation_model_func,extrapolation_model=extrapolation_model_name, activity_model=activity_model)
+            mu_B_L = self._get_chemical_potential(comp_dict_L, comp_B, T, 'LIQUID', extrapolation_model_func=extrapolation_model_func,extrapolation_model=extrapolation_model_name, activity_model=activity_model)
+            mu_B_S = self._get_chemical_potential(comp_dict_S, comp_B, T, solid_phase_B, extrapolation_model_func=extrapolation_model_func,extrapolation_model=extrapolation_model_name, activity_model=activity_model)
             if any(v is None for v in [mu_A_L, mu_A_S, mu_B_L, mu_B_S]): return [1e10, 1e10]
             return [mu_A_L - mu_A_S, mu_B_L - mu_B_S]
         sol = root(_residuals, [T_guess, x_L_guess], method='lm')
@@ -643,7 +646,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
     def calculate_solidus_temp_robust_pure(self,
                                            solid_composition: Dict[str, float],
                                            solid_phase_map: Dict[str, str],
-                                           extrapolation_model: str = 'UEM1',
+                                           extrapolation_func:extrap_func,
+                                           extrapolation_model_name: str = 'UEM1',
                                            activity_model: str = 'Wagner'
                                            ) -> dict:
         """ (V3.2 Logic) 健壮地计算多元固相线 (Pure Model, 共晶) """
@@ -674,7 +678,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             try:
                 result = self._solve_solidus_multi_pure(
                     solid_composition, solid_phase_map, T_guess, liquid_guess,
-                    extrapolation_model, activity_model
+                extrapolation_func,
+                    extrapolation_model_name, activity_model
                 )
                 T_result = result['T_solidus']
                 if 300 < T_result < 6000:
@@ -725,7 +730,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
         final_solid_comp = {c: 0.0 for c in all_components}; final_solid_comp[primary_phase_comp] = 1.0
         return {"status": "success", "T_liquidus": T_liquidus, "liquid_composition": liquid_composition, "solid_composition_eq": final_solid_comp}
 
-    def _solve_solidus_multi_pure(self, solid_composition: Dict[str, float], solid_phase_map: Dict[str, str], T_guess: float, liquid_solute_comp_guess: Dict[str, float], extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
+    def _solve_solidus_multi_pure(self, solid_composition: Dict[str, float], solid_phase_map: Dict[str, str], T_guess: float, liquid_solute_comp_guess: Dict[str, float],
+                                  extrapolation_func:extrap_func,extrapolation_model: str = 'UEM1', activity_model: str = 'Wagner') -> dict:
         """ (V3.2 Logic) 求解 L <-> Pure_A + ... (多元共晶) 固相线 """
         solvent = max(solid_composition.items(), key=lambda x: x[1])[0]
         solutes = [c for c in solid_composition.keys() if c != solvent]
@@ -740,7 +746,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             for comp in all_components:
                 solid_phase = solid_phase_map.get(comp)
                 if solid_phase is None: raise ValueError(f"solid_phase_map 中未定义组分 {comp} 的固相")
-                mu_L = self._get_chemical_potential(X_L, comp, T, 'LIQUID', extrapolation_model, activity_model)
+                mu_L = self._get_chemical_potential(X_L, comp, T, 'LIQUID', extrapolation_func,extrapolation_model, activity_model)
                 mu_S_pure = self.tdb_parser.get_gibbs_energy(comp, solid_phase, T)
                 if mu_L is None or mu_S_pure is None: return [1e10] * len(all_components)
                 residuals.append(mu_L - mu_S_pure)
@@ -879,9 +885,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             }
         except Exception as e:
             raise RuntimeError(f"计算 {solution_phase} 中 {solute_element} 的溶解度失败: {e}")
-    # ================================================================
-    # =================== 新增：溶解度计算器 ，固溶体中的溶解度===================
-    # ================================================================
+  
     
     
     

@@ -124,7 +124,7 @@ class ActivityCoefficient:
        
         # 📍 新增功能 1: 根据 Kang-2020.pdf (UIPF模型) 实现溶剂活度系数的计算
     def _calculate_ln_gamma_solvent_UIPF (self, comp_dict: Dict[str, float], solvent: str, Tem: float, state: str,
-                                              geo_model: extrap_func, geo_model_name: str,activity_model_type:str,
+                                              geo_model: extrap_func, activity_model_type:str,
                                               full_alloy_str: str = "") -> float:
         """
             计算溶剂的活度系数 (ln γ_solvent)。
@@ -155,7 +155,7 @@ class ActivityCoefficient:
                 
                 # 获取溶质j和溶质k之间的一阶相互作用参数 ε_jk (在溶剂1中)
                 epsilon_j_k = ternary_melts.activity_interact_coefficient_1st(solv, soluj, soluk, Tem, state, geo_model,
-                                                                              geo_model_name, full_alloy_str)
+                                                                              full_alloy_str)
                 
                 quadratic_sum += epsilon_j_k * xj * xk
 
@@ -165,7 +165,7 @@ class ActivityCoefficient:
         
     # 📍 新增功能 2: 创建一个统一的计算入口函数
     def get_ln_gamma(self, comp_dict: Dict[str, float], component_to_calculate: str, solvent: str,
-                     Tem: float, state: str, extra_model: extrap_func, extra_model_name: str,activity_model:str,
+                     Tem: float, state: str, extra_model: extrap_func, extrapolation_model_name, activity_model:str,
                      full_alloy_str: str = "") -> float:
         """
         统一的活度系数计算入口。
@@ -175,11 +175,11 @@ class ActivityCoefficient:
         if component_to_calculate == solvent:
             # Darken模型和UIPF在热力学上是一致的，直接调用UIPF溶剂公式
             return self._calculate_ln_gamma_solvent_UIPF(
-                    comp_dict, solvent, Tem, state, extra_model, extra_model_name, activity_model, full_alloy_str)
+                    comp_dict, solvent, Tem, state, extra_model,  activity_model, full_alloy_str)
         # 如果待计算组分是溶质
         else:
-            return self._calculate_ln_yi(comp_dict, solvent, component_to_calculate, Tem, state, extra_model,
-                                         extra_model_name, activity_model, full_alloy_str)
+            return self._calculate_ln_yi(comp_dict, solvent, component_to_calculate, Tem, state, extra_model,extrapolation_model_name,
+                                          activity_model, full_alloy_str)
     
    
    

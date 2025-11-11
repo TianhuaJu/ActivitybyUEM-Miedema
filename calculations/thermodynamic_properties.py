@@ -12,7 +12,7 @@ Thermodynamic Properties Calculator
 """
 
 import math
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Optional, Tuple, List, Callable
 import sys
 import os
 
@@ -20,7 +20,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.tdb_parser import get_tdb_parser, TDBParser
 from core.constants import Constants
-
+from calculations.activity_calculator import ActivityCoefficient,extrap_func
+from models.extrapolation_models import BinaryModel
 
 class ThermodynamicProperties:
     """多组元合金热力学性质计算器"""
@@ -28,8 +29,7 @@ class ThermodynamicProperties:
     def __init__(self):
         self.tdb_parser: TDBParser = get_tdb_parser()
 
-        from calculations.activity_calculator import ActivityCoefficient
-        from models.extrapolation_models import BinaryModel
+        
 
         self.activity_calculator = ActivityCoefficient()
         self.binary_model = BinaryModel()
@@ -53,17 +53,14 @@ class ThermodynamicProperties:
                           composition: Dict[str, float],
                           component: str,
                           temperature: float,
-                          phase_state: str = 'liquid',
-                          solvent: str = None,
-                          extrapolation_model: str = 'UEM1',
+                          phase_state: str,
+                          extrapolation_model: Callable,
                           activity_model: str = 'Wagner') -> Optional[float]:
         """
         计算组分的活度 a_i = γ_i * X_i
         """
-        ln_gamma = self.calculate_ln_activity_coefficient(
-            composition, component, temperature, phase_state,
-            solvent, extrapolation_model, activity_model
-        )
+        ln_gamma = self.calculate_ln_activity_coefficient(composition, component, temperature, phase_state,
+                                                          extrapolation_model, activity_model)
         if ln_gamma is None:
             return None
         gamma = math.exp(ln_gamma)
@@ -75,9 +72,9 @@ class ThermodynamicProperties:
                                          composition: Dict[str, float],
                                          component: str,
                                          temperature: float,
-                                         phase_state: str = 'liquid',
-                                         solvent: str = None,
-                                         extrapolation_model: str = 'UEM1',
+                                         phase_state: str,
+                                         extrapolation_model_func: extrap_func,
+                                          extrapolation_model_name,
                                          activity_model: str = 'Wagner') -> Optional[float]:
         """
         计算活度系数的对数 ln(γ_i)
@@ -90,13 +87,9 @@ class ThermodynamicProperties:
         """
 
         # 1. 确定溶剂 (仍然使用大写符号)
-        if solvent is None:
-            if not composition: raise ValueError("Composition dictionary is empty")
-            valid_components = {k: v for k, v in composition.items() if v > 0}
-            if not valid_components:
-                # 如果所有成分都为0 (例如在求解器的0边界)，返回理想值
-                return 0.0
-            solvent = max(valid_components.items(), key=lambda x: x[1])[0]
+        valid_components = {k: v for k, v in composition.items() if v > 0}
+        solvent = max(valid_components.items(), key=lambda x: x[1])[0]
+        
 
         # 2. --- (关键修正: 转换为标准符号) ---
         try:
@@ -107,34 +100,17 @@ class ThermodynamicProperties:
             print(f"Error standardizing symbols: {e}")
             return None
         # --- (修正结束) ---
-
-        self.activity_calculator._comp_dict = comp_dict_std.copy()
-
-        from models.extrapolation_models import BinaryModel
-        bm = BinaryModel()
-        extrap_func_map = {
-            'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
-            'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
-            'Toop-Muggianu': bm.Toop_Muggianu,
-        }
-        extrap_func = extrap_func_map.get(extrapolation_model, bm.UEM1)
-
-        try:
-            # 3. (正确) 仅在 'liquid' 状态下调用
-            ln_gamma = self.activity_calculator.get_ln_gamma(
+        
+        ln_gamma = self.activity_calculator.get_ln_gamma(
                 comp_dict=comp_dict_std,
                 component_to_calculate=component_std,
-                solvent=solvent_std,
                 Tem=temperature,
-                state=phase_state, # 此时 state 必定是 'liquid'
-                extra_model=extrap_func,
-                extra_model_name=extrapolation_model,
+                state=phase_state,
+                extra_model=extrapolation_model_func,
+                extrapolation_model_name = extrapolation_model_name,
                 activity_model=activity_model
-            )
-            return ln_gamma
-        except Exception as e:
-            print(f"Error calculating ln(γ) for {component} (as {component_std}): {e}")
-            return None
+        )
+        return ln_gamma
 
     def calculate_chemical_potential(self,
                                      composition: Dict[str, float],
@@ -370,10 +346,8 @@ class ThermodynamicProperties:
         results = {'component_properties': {}, 'alloy_properties': {}}
         for component in composition.keys():
             comp_results = {}
-            ln_gamma = self.calculate_ln_activity_coefficient(
-                composition, component, temperature, phase_state,
-                solvent, extrapolation_model, activity_model
-            )
+            ln_gamma = self.calculate_ln_activity_coefficient(composition, component, temperature, phase_state, solvent,
+                                                              extrapolation_model, activity_model)
             comp_results['ln_gamma'] = ln_gamma
             comp_results['gamma'] = math.exp(ln_gamma) if ln_gamma is not None else None
             activity = self.calculate_activity(
