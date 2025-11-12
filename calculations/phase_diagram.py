@@ -931,15 +931,24 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             
             # 调用 brentq 求解
             solubility = brentq(_solubility_residual, min_solubility, max_solubility, xtol=1e-6)
-            
+
+            # 计算最终平衡合金的完整成分（用于显示）
+            total_solvent_fraction = 1.0 - solubility
+            final_composition = {
+                elem: normalized_base_comp[elem] * total_solvent_fraction
+                for elem in normalized_base_comp
+            }
+            final_composition[solute_element] = solubility
+
             return {
                 "status": "success",
                 "T": temperature,
                 "solute": solute_element,
                 "solution_phase": solution_phase,
                 "precipitating_phase": precipitating_phase,
-                "solubility_mole_fraction": solubility,  # This is X_i
-                "base_alloy": normalized_base_comp
+                "solubility_mole_fraction": solubility,  # 溶质在最终合金中的摩尔分数
+                "base_alloy": normalized_base_comp,  # 归一化的基础合金成分
+                "final_composition": final_composition  # 最终平衡合金的完整成分
             }
         except Exception as e:
             raise RuntimeError(f"计算 {solution_phase} 中 {solute_element} 的溶解度失败: {e}")

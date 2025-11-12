@@ -356,8 +356,22 @@ class SolubilityWidget(QWidget):
 
         if result['status'] == 'success':
             solubility = result['solubility_mole_fraction']
-            text_output += f"溶解度 (摩尔分数): {solubility:.6e}\n"
-            text_output += f"溶解度 (摩尔%): {solubility*100:.4f}%\n"
+            text_output += f"✓ 溶解度 (摩尔分数): {solubility:.6e}\n"
+            text_output += f"✓ 溶解度 (摩尔%): {solubility*100:.4f}%\n\n"
+
+            # 显示最终平衡合金的完整成分
+            text_output += "说明：溶解度是指溶质在【最终平衡合金】中的摩尔分数\n"
+            text_output += "-" * 70 + "\n"
+            text_output += "最终平衡合金成分（总计=100%）：\n"
+            if 'final_composition' in result:
+                final_comp = result['final_composition']
+                # 按含量从高到低排序
+                sorted_comp = sorted(final_comp.items(), key=lambda x: x[1], reverse=True)
+                for elem, mole_frac in sorted_comp:
+                    text_output += f"  {elem}: {mole_frac:.6f} ({mole_frac*100:.4f}%)\n"
+                # 验证总和
+                total = sum(final_comp.values())
+                text_output += f"  总计: {total:.6f} ({total*100:.2f}%)\n"
         elif result['status'] == 'fully_soluble':
             text_output += "结果: 完全溶解 (X ≈ 1.0)\n"
         elif result['status'] == 'insoluble':
@@ -498,6 +512,10 @@ class SolubilityWidget(QWidget):
         text_output += f"外推模型: {extrap_model_name}\n"
         text_output += f"活度模型: {activity_model}\n"
         text_output += f"采样点数: {n_points}\n\n"
+
+        text_output += "说明：溶解度是指溶质在【最终平衡合金】中的摩尔分数\n"
+        text_output += "      例如：Si=0.3时，V溶解度=0.73，表示最终合金为 V(73%) + Fe(18.9%) + Si(8.1%)\n"
+        text_output += "-" * 70 + "\n"
 
         text_output += f"{'X_' + variable_comp:<12} {'溶解度 (X_' + solute + ')':<20}\n"
         text_output += "-" * 70 + "\n"
