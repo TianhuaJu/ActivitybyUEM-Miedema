@@ -356,8 +356,22 @@ class SolubilityWidget(QWidget):
 
         if result['status'] == 'success':
             solubility = result['solubility_mole_fraction']
+            relative_addition = result.get('relative_addition', 0)
+            base_dilution = result.get('base_alloy_dilution', 0)
+
             text_output += f"✓ 溶解度 (摩尔分数): {solubility:.6e}\n"
-            text_output += f"✓ 溶解度 (摩尔%): {solubility*100:.4f}%\n\n"
+            text_output += f"✓ 溶解度 (摩尔%): {solubility*100:.4f}%\n"
+            text_output += f"✓ 相对添加量: {relative_addition:.4f} (溶质/基础合金 摩尔比)\n"
+            text_output += f"  → 含义: 每 1 摩尔基础合金可添加 {relative_addition:.4f} 摩尔 {solute}\n"
+            text_output += f"✓ 基础合金稀释度: {base_dilution*100:.2f}%\n\n"
+
+            # 显示警告信息
+            warnings = result.get('warnings', [])
+            if warnings:
+                text_output += "⚠️  合理性警告:\n"
+                for warning in warnings:
+                    text_output += f"  • {warning}\n"
+                text_output += "\n"
 
             # 显示最终平衡合金的完整成分
             text_output += "说明：溶解度是指溶质在【最终平衡合金】中的摩尔分数\n"
@@ -456,6 +470,7 @@ class SolubilityWidget(QWidget):
         import numpy as np
         x_values = np.linspace(x_min, x_max, n_points)
         solubility_values = []
+        results_list = []  # 保存完整结果
 
         for i, x_var in enumerate(x_values):
             update_progress(i + 1, n_points)
@@ -479,6 +494,8 @@ class SolubilityWidget(QWidget):
                     activity_model=activity_model
                 )
 
+                results_list.append(result)
+
                 if result['status'] == 'success':
                     solubility_values.append(result['solubility_mole_fraction'])
                 elif result['status'] == 'fully_soluble':
@@ -490,6 +507,7 @@ class SolubilityWidget(QWidget):
             except Exception as e:
                 print(f"Error at X_{variable_comp}={x_var}: {e}")
                 solubility_values.append(None)
+                results_list.append({'status': 'error', 'message': str(e)})
 
         # 隐藏进度条
         self.progress_bar.setVisible(False)
@@ -514,18 +532,67 @@ class SolubilityWidget(QWidget):
         text_output += f"采样点数: {n_points}\n\n"
 
         text_output += "说明：溶解度是指溶质在【最终平衡合金】中的摩尔分数\n"
-        text_output += "      例如：Si=0.3时，V溶解度=0.73，表示最终合金为 V(73%) + Fe(18.9%) + Si(8.1%)\n"
+        text_output += "      相对添加量 = 溶质摩尔数 / 基础合金摩尔数\n"
         text_output += "-" * 70 + "\n"
 
-        text_output += f"{'X_' + variable_comp:<12} {'溶解度 (X_' + solute + ')':<20}\n"
+        # 统计警告数量
+        warning_count = sum(1 for r in results_list if r.get('status') == 'success' and r.get('warnings'))
+        if warning_count > 0:
+            text_output += f"⚠️  {warning_count} 个数据点存在合理性警告，详见下表\n\n"
+
+        # 表头
+        text_output += f"{'X_' + variable_comp:<10} "
+        text_output += f"{'X_' + solute + '(溶解度)':<16} "
+        text_output += f"{'相对添加量':<12} "
+        text_output += f"{'警告':<30}\n"
         text_output += "-" * 70 + "\n"
 
         for i, x_var in enumerate(x_values):
+            result = results_list[i]
             sol = solubility_values[i]
-            text_output += f"{x_var:<12.4f} "
-            text_output += f"{sol:.6e}\n" if sol is not None else "N/A\n"
+
+            text_output += f"{x_var:<10.4f} "
+
+            if sol is not None and result.get('status') == 'success':
+                rel_add = result.get('relative_addition', 0)
+                warnings = result.get('warnings', [])
+
+                text_output += f"{sol:<16.6e} "
+                text_output += f"{rel_add:<12.4f} "
+
+                if warnings:
+                    # 只显示第一个警告的简短版本
+                    first_warning = warnings[0]
+                    if len(first_warning) > 28:
+                        text_output += first_warning[:25] + "..."
+                    else:
+                        text_output += first_warning
+                else:
+                    text_output += "正常"
+
+                text_output += "\n"
+            else:
+                text_output += "N/A              N/A          N/A\n"
 
         text_output += "=" * 70 + "\n"
+
+        # 如果存在高溶解度警告，添加额外说明
+        high_solubility_points = [(x_values[i], solubility_values[i])
+                                   for i, r in enumerate(results_list)
+                                   if r.get('status') == 'success' and solubility_values[i] and solubility_values[i] > 0.5]
+        if high_solubility_points:
+            text_output += "\n📊 高溶解度数据点详细说明:\n"
+            text_output += "-" * 70 + "\n"
+            for x_var, sol in high_solubility_points[:3]:  # 最多显示3个
+                idx = list(x_values).index(x_var)
+                result = results_list[idx]
+                final_comp = result.get('final_composition', {})
+                if final_comp:
+                    text_output += f"当 X_{variable_comp}={x_var:.3f} 时，X_{solute}={sol:.3f}:\n"
+                    text_output += "  最终合金成分: "
+                    comp_str = ", ".join([f"{k}({v*100:.1f}%)" for k, v in sorted(final_comp.items(), key=lambda x: x[1], reverse=True)])
+                    text_output += comp_str + "\n"
+            text_output += "-" * 70 + "\n"
 
         # 追加结果
         self.results_text.append(text_output)

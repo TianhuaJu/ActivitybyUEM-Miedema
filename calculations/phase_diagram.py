@@ -974,6 +974,18 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
             }
             final_composition[solute_element] = solubility
 
+            # 计算相对添加量（溶质相对于基础合金的摩尔比）
+            relative_addition = solubility / total_solvent_fraction if total_solvent_fraction > 1e-9 else float('inf')
+
+            # 生成合理性警告
+            warnings = []
+            if solubility > 0.5:
+                warnings.append(f"溶质 {solute_element} 已成为主要成分（{solubility*100:.1f}% > 50%），物理意义可能不明确")
+            if relative_addition > 5.0:
+                warnings.append(f"需要添加过多溶质（相对添加量 {relative_addition:.2f} > 5倍基础合金）")
+            if solubility > 0.9:
+                warnings.append(f"溶解度极高（{solubility*100:.1f}%），基础合金被严重稀释至 {total_solvent_fraction*100:.1f}%")
+
             return {
                 "status": "success",
                 "T": temperature,
@@ -981,8 +993,11 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
                 "solution_phase": solution_phase,
                 "precipitating_phase": precipitating_phase,
                 "solubility_mole_fraction": solubility,  # 溶质在最终合金中的摩尔分数
+                "relative_addition": relative_addition,  # 相对于基础合金的添加比例 (n_solute/n_base)
+                "base_alloy_dilution": total_solvent_fraction,  # 基础合金被稀释的程度
                 "base_alloy": normalized_base_comp,  # 归一化的基础合金成分
-                "final_composition": final_composition  # 最终平衡合金的完整成分
+                "final_composition": final_composition,  # 最终平衡合金的完整成分
+                "warnings": warnings  # 合理性警告列表
             }
         except Exception as e:
             # 重新抛出，包含更多上下文
