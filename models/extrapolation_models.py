@@ -300,8 +300,8 @@ class BinaryModel:
 			else:
 				dhtrans_slv = solvent.dh_trans
 		else:
-			dhtrans_i = solutei.dh_trans
-			dhtrans_slv = solvent.dh_trans
+			dhtrans_i = 0
+			dhtrans_slv = 0
 		
 		dhtrans = dhtrans_i - dhtrans_slv
 		
