@@ -485,28 +485,42 @@ class SolubilityWidget(QWidget):
             self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
             self.chart_canvas.axes.grid(True, alpha=0.3, axis='y')
         self.chart_canvas.draw()
-
-    def calculate_solubility_curve(self):
+    
+    def calculate_solubility_curve (self):
         """计算溶解度随浓度变化的曲线"""
         # 获取输入参数
         solute = self.solute_input.text().strip().upper()
         precipitate = self.precipitate_combo.currentText()
         solution_phase = self._extract_phase_name(self.solution_phase_combo.currentText())
         temperature = float(self.temperature_input.text())
-        fixed_base = self.fixed_base_input.text().strip().upper()
-        variable_comp = self.variable_comp_input.text().strip().upper()
+        
+        # --- [Fix Start] 修改参数获取与解析逻辑 ---
+        fixed_base_str = self.fixed_base_input.text().strip()  # 获取原始字符串，如 "Fe0.7Ni0.3"
+        variable_comp = self.variable_comp_input.text().strip().upper()  # 变化组分，如 "Cr"
+        
         x_min = float(self.x_min_input.text())
         x_max = float(self.x_max_input.text())
         n_points = int(self.n_points_input.text())
-
-        if not all([solute, fixed_base, variable_comp]):
+        
+        if not all([solute, fixed_base_str, variable_comp]):
             QMessageBox.warning(self, "输入错误", "请输入所有必需参数！")
             return
-
+        
+        # 1. 解析固定基础合金成分 (例如: "Fe0.7Ni0.3" -> {'FE': 0.7, 'NI': 0.3})
+        fixed_base_map = parse_composition_static(fixed_base_str)
+        if not fixed_base_map:
+            QMessageBox.warning(self, "输入错误", f"无法解析固定基础成分: {fixed_base_str}")
+            return
+        
+        # 归一化固定基础成分（确保总和为1，作为混合前的基准）
+        total_fixed = sum(fixed_base_map.values())
+        fixed_base_norm = {k.upper(): v / total_fixed for k, v in fixed_base_map.items()}
+        # --- [Fix End] ---
+        
         # 获取模型参数
         extrap_model_name = self.extrap_model_combo.currentText()
         activity_model = self.activity_model_combo.currentText()
-
+        
         # 将外推模型名称转换为函数对象
         from models.extrapolation_models import BinaryModel
         bm = BinaryModel()
@@ -516,49 +530,57 @@ class SolubilityWidget(QWidget):
             'Toop-Muggianu': bm.Toop_Muggianu
         }
         extrap_func = extrap_func_map.get(extrap_model_name, bm.UEM1)
-
+        
         # 显示进度条
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, n_points)
         self.progress_bar.setValue(0)
         self.results_text.setText("正在计算溶解度曲线，请稍候...")
-
+        
         # 定义进度回调
         from PyQt5.QtWidgets import QApplication
-        def update_progress(current, total):
+        def update_progress (current, total):
             self.progress_bar.setValue(current)
             QApplication.processEvents()
-
+        
         # 计算曲线
         import numpy as np
         x_values = np.linspace(x_min, x_max, n_points)
         solubility_values = []
         results_list = []  # 保存完整结果
-
+        
         for i, x_var in enumerate(x_values):
             update_progress(i + 1, n_points)
-
-            # 构建基础合金成分
-            x_fixed = 1.0 - x_var
-            base_composition = {
-                fixed_base: x_fixed,
-                variable_comp: x_var
-            }
-
+            
+            # --- [Fix Start] 构建混合后的基础合金成分 ---
+            # 逻辑: 基础合金 = (1 - x_var) * [固定基础成分] + x_var * [变化组分]
+            x_fixed_fraction = 1.0 - x_var
+            
+            base_composition = {}
+            
+            # 1. 加入按比例缩小的固定基础成分
+            for elem, frac in fixed_base_norm.items():
+                base_composition[elem] = frac * x_fixed_fraction
+            
+            # 2. 加入变化组分
+            # 注意：如果变化组分(如Fe)已经在固定成分中存在，需要累加
+            base_composition[variable_comp] = base_composition.get(variable_comp, 0.0) + x_var
+            # --- [Fix End] ---
+            
             try:
                 result = self.phase_calc.calculate_solubility(
-                    base_alloy_composition=base_composition,
-                    solute_element=solute,
-                    solution_phase=solution_phase,
-                    precipitating_phase=precipitate,
-                    temperature=temperature,
-                    extrapolation_func=extrap_func,
-                    extrapolation_model_name=extrap_model_name,
-                    activity_model=activity_model
+                        base_alloy_composition=base_composition,
+                        solute_element=solute,
+                        solution_phase=solution_phase,
+                        precipitating_phase=precipitate,
+                        temperature=temperature,
+                        extrapolation_func=extrap_func,
+                        extrapolation_model_name=extrap_model_name,
+                        activity_model=activity_model
                 )
-
+                
                 results_list.append(result)
-
+                
                 if result['status'] == 'success':
                     solubility_values.append(result['solubility_mole_fraction'])
                 elif result['status'] == 'fully_soluble':
@@ -571,29 +593,31 @@ class SolubilityWidget(QWidget):
                 print(f"Error at X_{variable_comp}={x_var}: {e}")
                 solubility_values.append(None)
                 results_list.append({'status': 'error', 'message': str(e)})
-
+        
         # 隐藏进度条
         self.progress_bar.setVisible(False)
-
+        
         # 增加计算批次计数
         self.calculation_count += 1
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+        
         # 显示结果
         text_output = "\n" + "=" * 70 + "\n"
         text_output += f"【计算批次 #{self.calculation_count}】 {timestamp}\n"
         text_output += "溶解度-浓度曲线计算结果\n"
         text_output += "=" * 70 + "\n\n"
         text_output += f"溶质元素: {solute}\n"
-        text_output += f"基础合金: {fixed_base} + {variable_comp}\n"
+        # --- [Fix Start] 更新输出文本以反映真实成分 ---
+        text_output += f"固定基础: {fixed_base_str}\n"
         text_output += f"变化组分: {variable_comp} ({x_min:.3f} ~ {x_max:.3f})\n"
+        # --- [Fix End] ---
         text_output += f"溶液相: {solution_phase}\n"
         text_output += f"析出相: {precipitate}\n"
-        text_output += f"温度: {temperature:.2f} K ({temperature-273.15:.2f} °C)\n"
+        text_output += f"温度: {temperature:.2f} K ({temperature - 273.15:.2f} °C)\n"
         text_output += f"外推模型: {extrap_model_name}\n"
         text_output += f"活度模型: {activity_model}\n"
         text_output += f"采样点数: {n_points}\n\n"
-
+        
         text_output += "说明：溶解度是指溶质在【最终平衡合金】中的摩尔分数\n"
         text_output += "      相对添加量 = 溶质摩尔数 / 基础合金摩尔数\n"
         text_output += "-" * 70 + "\n"
@@ -685,7 +709,7 @@ class SolubilityWidget(QWidget):
 
             # 标题：溶质在基体合金中的溶解度 vs. 变化组分
             # 例如："Fe 在液态 Al-Si 合金中的溶解度 vs. Si 含量" 或 "C 在固态 Fe-Cr 合金中的溶解度 vs. Cr 含量"
-            title = f'{solute} 在{phase_type} {fixed_base}-{variable_comp} 合金中的溶解度 vs. {variable_comp} 含量'
+            title = f'{solute} 在{phase_type} {fixed_base_str}-{variable_comp} 合金中的溶解度 vs. {variable_comp} 含量'
             self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
 
             self.chart_canvas.axes.grid(True, alpha=0.3)

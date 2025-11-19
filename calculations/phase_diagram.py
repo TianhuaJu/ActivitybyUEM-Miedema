@@ -67,7 +67,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			'C': {
 				'stable_phase': 'GRAPHITE',  # 稳定态
 				'proxy_phase': None,  # 禁用代理相 (不使用金刚石)
-				'fixed_diff': 30000.0  # 设定值: 100 kJ/mol
+				'fixed_diff': 180000.0  # 设定值: 100 kJ/mol
 			},
 			
 			# --- 氮 N ---
