@@ -3,9 +3,8 @@ TDB (Thermodynamic Database) Parser
 ====================================
 解析SGTE Unary Database (TDB格式)，提取纯元素的热力学函数
 
-(已修正 - V2)
-- 增加了 PARAMETER 块的解析
-- 重写了 get_gibbs_energy 以使用 PARAMETER 映射
+(已修正 - V3)
+- 增加了 get_element_phases 函数，用于获取指定元素的所有可用相
 
 作者: Claude
 日期: 2025-11-08
@@ -260,6 +259,35 @@ class TDBParser:
                     
             except Exception as e:
                 print(f"Warning: Failed to parse PARAMETER line: '{match.group(0)}'. Error: {e}")
+    
+    def get_stable_phase (self, element: str, temperature: float) -> Optional[str]:
+        """
+		获取指定温度下元素的稳定相（Gibbs能最低的相）。
+
+		Args:
+			element: 元素符号 (e.g., 'AL')
+			temperature: 温度 (K)
+
+		Returns:
+			稳定相的名称 (e.g., 'LIQUID' or 'FCC_A1')。如果找不到数据则返回 None。
+		"""
+        phases = self.get_element_phases(element)
+        if not phases:
+            return None
+        
+        min_g = float('inf')
+        stable_phase = None
+        
+        for phase in phases:
+            # 计算该相在当前温度下的 Gibbs 能
+            g_val = self.get_gibbs_energy(element, phase, temperature)
+            
+            # 如果计算成功且能量更低，则更新稳定相
+            if g_val is not None and g_val < min_g:
+                min_g = g_val
+                stable_phase = phase
+        
+        return stable_phase
 
     # --- (重写的方法) ---
     def get_gibbs_energy(self, element: str, phase: str, temperature: float) -> Optional[float]:
@@ -311,6 +339,34 @@ class TDBParser:
         # 5. 最终失败
         print(f"Warning: TDB function for {element}-{phase} not found in PARAMETER block.")
         return None
+    
+    def get_element_phases(self, element: str) -> List[str]:
+        """
+        获取指定元素的所有可用相名称。
+        
+        遍历解析出的参数映射表，找出所有与该元素相关的相。
+        
+        Args:
+            element: 元素符号 (例如 'AL', 'Fe')
+            
+        Returns:
+            相名称列表 (例如 ['LIQUID', 'FCC_A1', 'BCC_A2'])，按字母顺序排序
+        """
+        element_upper = element.upper()
+        phases = set()
+        
+        # 1. 遍历函数映射表 _phase_function_map
+        # 键是 (Element, Phase)
+        for (elem, phase) in self._phase_function_map.keys():
+            if elem == element_upper:
+                phases.add(phase)
+                
+        # 2. 遍历原始表达式映射表 _phase_raw_expression_map
+        for (elem, phase) in self._phase_raw_expression_map.keys():
+            if elem == element_upper:
+                phases.add(phase)
+                
+        return sorted(list(phases))
 
     def get_enthalpy(self, element: str, phase: str, temperature: float) -> Optional[float]:
         """
@@ -417,6 +473,8 @@ def get_tdb_parser() -> TDBParser:
         _global_tdb_parser = TDBParser(tdb_path)
 
     return _global_tdb_parser
+    
+ 
 
 
 # 测试代码
@@ -438,6 +496,11 @@ if __name__ == "__main__":
     for elem in ['FE', 'SI', 'C', 'AL']:
         ref_phase = parser.get_reference_phase(elem)
         print(f"  {elem} -> {ref_phase}")
+        
+    print("\n1c. Testing get_element_phases:")
+    for elem in ['FE', 'AL', 'C']:
+        phases = parser.get_element_phases(elem)
+        print(f"  Phases for {elem}: {phases}")
         
     print("\n2. Thermodynamic Properties at 1873K (1600°C):")
     test_elements = ['FE', 'AL', 'CU', 'NI']

@@ -81,16 +81,20 @@ class SolubilityWidget(QWidget):
 
         self.mode_single = QRadioButton("单点溶解度计算")
         self.mode_curve = QRadioButton("溶解度-浓度曲线")
+        self.mode_temp_curve = QRadioButton("溶解度-温度曲线")
 
         self.mode_button_group.addButton(self.mode_single, 1)
         self.mode_button_group.addButton(self.mode_curve, 2)
+        self.mode_button_group.addButton(self.mode_temp_curve, 3)
 
         self.mode_single.setChecked(True)
         self.mode_single.toggled.connect(self.on_mode_changed)
         self.mode_curve.toggled.connect(self.on_mode_changed)
+        self.mode_temp_curve.toggled.connect(self.on_mode_changed)
 
         mode_layout.addWidget(self.mode_single)
         mode_layout.addWidget(self.mode_curve)
+        mode_layout.addWidget(self.mode_temp_curve)
 
         layout.addWidget(mode_group)
 
@@ -152,24 +156,59 @@ class SolubilityWidget(QWidget):
         layout.addStretch()
 
         return widget
-
-    def create_input_fields(self):
-        """创建输入字段"""
-        # 清空现有字段
+    
+    def create_input_fields (self):
+        """创建输入字段 (调整顺序版)"""
+        # 1. 清空现有字段
         while self.input_layout.count():
             item = self.input_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-
+        
         row = 0
-
-        # 共同参数
+        
+        # ==========================================
+        # 第一部分：基础合金定义 (放在最上方)
+        # ==========================================
+        if self.mode_single.isChecked() or self.mode_temp_curve.isChecked():
+            self.input_layout.addWidget(QLabel("基础合金:"), row, 0, Qt.AlignRight)
+            self.base_alloy_input = QLineEdit("Fe0.7Si0.3")
+            if self.mode_temp_curve.isChecked():
+                self.base_alloy_input.setPlaceholderText("例如: Fe0.7Si0.3 (保持固定)")
+            else:
+                self.base_alloy_input.setPlaceholderText("例如: Fe0.7Si0.3")
+            self.input_layout.addWidget(self.base_alloy_input, row, 1)
+            row += 1
+        
+        elif self.mode_curve.isChecked():
+            self.input_layout.addWidget(QLabel("固定基础成分:"), row, 0, Qt.AlignRight)
+            self.fixed_base_input = QLineEdit("Fe")
+            self.fixed_base_input.setPlaceholderText("例如: Fe (不变化)")
+            self.input_layout.addWidget(self.fixed_base_input, row, 1)
+            row += 1
+        
+        # ==========================================
+        # 第二部分：基体状态
+        # ==========================================
+        solution_label = QLabel("基体状态:")
+        solution_label.setToolTip("选择基础合金所处的物理状态。\n程序将自动判断该状态下的稳定性。")
+        self.input_layout.addWidget(solution_label, row, 0, Qt.AlignRight)
+        
+        self.solution_phase_combo = QComboBox()
+        self.solution_phase_combo.addItems(["液相", "固相"])
+        self.solution_phase_combo.setToolTip("液相和固相均采用UEM-Miedema框架计算")
+        self.input_layout.addWidget(self.solution_phase_combo, row, 1)
+        row += 1
+        
+        # ==========================================
+        # 第三部分：溶质与析出相
+        # ==========================================
         self.input_layout.addWidget(QLabel("溶质元素:"), row, 0, Qt.AlignRight)
         self.solute_input = QLineEdit("C")
         self.solute_input.setPlaceholderText("例如: C")
         self.input_layout.addWidget(self.solute_input, row, 1)
         row += 1
-
+        
         self.input_layout.addWidget(QLabel("析出相:"), row, 0, Qt.AlignRight)
         self.precipitate_combo = QComboBox()
         self.precipitate_combo.addItems([
@@ -178,51 +217,56 @@ class SolubilityWidget(QWidget):
         ])
         self.input_layout.addWidget(self.precipitate_combo, row, 1)
         row += 1
-
-        solution_label = QLabel("溶液相:")
-        solution_label.setToolTip("选择溶质溶解的相:\n液相 - 液态合金\n固相 - 固态合金")
-        self.input_layout.addWidget(solution_label, row, 0, Qt.AlignRight)
-        self.solution_phase_combo = QComboBox()
-        self.solution_phase_combo.addItems(["液相", "固相"])
-        self.solution_phase_combo.setToolTip("液相和固相均采用UEM-Miedema框架计算")
-        self.input_layout.addWidget(self.solution_phase_combo, row, 1)
-        row += 1
-
-        self.input_layout.addWidget(QLabel("温度 (K):"), row, 0, Qt.AlignRight)
-        self.temperature_input = QLineEdit("1500")
-        self.input_layout.addWidget(self.temperature_input, row, 1)
-        row += 1
-
-        # 单点计算模式
-        if self.mode_single.isChecked():
-            self.input_layout.addWidget(QLabel("基础合金:"), row, 0, Qt.AlignRight)
-            self.base_alloy_input = QLineEdit("Fe0.7Si0.3")
-            self.base_alloy_input.setPlaceholderText("例如: Fe0.7Si0.3")
-            self.input_layout.addWidget(self.base_alloy_input, row, 1)
-
-        # 曲线计算模式
-        elif self.mode_curve.isChecked():
-            self.input_layout.addWidget(QLabel("固定基础成分:"), row, 0, Qt.AlignRight)
-            self.fixed_base_input = QLineEdit("Fe")
-            self.fixed_base_input.setPlaceholderText("例如: Fe (不变化)")
-            self.input_layout.addWidget(self.fixed_base_input, row, 1)
+        
+        # ==========================================
+        # 第四部分：模式特定的参数 (温度、范围、采样点)
+        # ==========================================
+        
+        # --- 模式 C: 温度曲线 (您图片中的模式) ---
+        # 顺序: 起始温度 -> 终止温度 -> 采样点数
+        if self.mode_temp_curve.isChecked():
+            self.input_layout.addWidget(QLabel("起始温度 (K):"), row, 0, Qt.AlignRight)
+            self.t_start_input = QLineEdit("1000")
+            self.input_layout.addWidget(self.t_start_input, row, 1)
             row += 1
-
+            
+            self.input_layout.addWidget(QLabel("终止温度 (K):"), row, 0, Qt.AlignRight)
+            self.t_end_input = QLineEdit("1800")
+            self.input_layout.addWidget(self.t_end_input, row, 1)
+            row += 1
+            
+            self.input_layout.addWidget(QLabel("采样点数:"), row, 0, Qt.AlignRight)
+            self.n_points_input = QLineEdit("20")
+            self.input_layout.addWidget(self.n_points_input, row, 1)
+        
+        # --- 模式 A: 单点计算 ---
+        elif self.mode_single.isChecked():
+            self.input_layout.addWidget(QLabel("温度 (K):"), row, 0, Qt.AlignRight)
+            self.temperature_input = QLineEdit("1500")
+            self.input_layout.addWidget(self.temperature_input, row, 1)
+        
+        # --- 模式 B: 浓度曲线 ---
+        elif self.mode_curve.isChecked():
             self.input_layout.addWidget(QLabel("变化组分:"), row, 0, Qt.AlignRight)
             self.variable_comp_input = QLineEdit("Si")
             self.input_layout.addWidget(self.variable_comp_input, row, 1)
             row += 1
-
+            
             self.input_layout.addWidget(QLabel("变化范围 (X_min):"), row, 0, Qt.AlignRight)
             self.x_min_input = QLineEdit("0.0")
             self.input_layout.addWidget(self.x_min_input, row, 1)
             row += 1
-
+            
             self.input_layout.addWidget(QLabel("变化范围 (X_max):"), row, 0, Qt.AlignRight)
             self.x_max_input = QLineEdit("0.5")
             self.input_layout.addWidget(self.x_max_input, row, 1)
             row += 1
-
+            
+            self.input_layout.addWidget(QLabel("温度 (K):"), row, 0, Qt.AlignRight)
+            self.temperature_input = QLineEdit("1500")
+            self.input_layout.addWidget(self.temperature_input, row, 1)
+            row += 1
+            
             self.input_layout.addWidget(QLabel("采样点数:"), row, 0, Qt.AlignRight)
             self.n_points_input = QLineEdit("20")
             self.input_layout.addWidget(self.n_points_input, row, 1)
@@ -283,6 +327,8 @@ class SolubilityWidget(QWidget):
                 self.calculate_single_point()
             elif self.mode_curve.isChecked():
                 self.calculate_solubility_curve()
+            elif self.mode_temp_curve.isChecked():
+                self.calculate_temperature_curve()
 
             self.export_button.setEnabled(True)
 
@@ -340,26 +386,43 @@ class SolubilityWidget(QWidget):
         # 增加计算批次计数
         self.calculation_count += 1
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        phase_state_str = result.get('phase_state', solution_phase)
+        base_stability = result.get('base_stability', 'Unknown')
+        detected_solvent = result.get('solvent_element', 'Unknown')
 
         # 显示结果
         text_output = "\n" + "=" * 70 + "\n"
         text_output += f"【计算批次 #{self.calculation_count}】 {timestamp}\n"
         text_output += "溶解度计算结果\n"
         text_output += "=" * 70 + "\n\n"
+        
+        text_output += f"基础合金: {base_alloy_str}\n"
+        text_output += f"  -> 自动识别溶剂: {detected_solvent}\n"
+        text_output += f"  -> 基础合金状态: {base_stability} " + (
+            "(⚠️ 不稳定)" if base_stability == "Unstable" else "(✅ 稳定)") + "\n"
+        text_output += f"当前相状态: {phase_state_str}\n"  # 明确显示液相/固相
         text_output += f"溶质元素: {solute}\n"
-        text_output += f"基础合金: {base_composition}\n"
-        text_output += f"溶液相: {solution_phase}\n"
         text_output += f"析出相: {precipitate}\n"
-        text_output += f"温度: {temperature:.2f} K ({temperature-273.15:.2f} °C)\n"
-        text_output += f"外推模型: {extrap_model_name}\n"
-        text_output += f"活度模型: {activity_model}\n\n"
-
+        text_output += f"温度: {temperature:.2f} K\n"
+        
+        # 显示警告（特别是基础合金不稳定的警告）
+        warnings = result.get('warnings', [])
+        if warnings:
+            text_output += "\n⚠️  警告信息:\n"
+            for warning in warnings:
+                text_output += f"  • {warning}\n"
+            text_output += "\n"
+        
         if result['status'] == 'success':
             solubility = result['solubility_mole_fraction']
+            
             relative_addition = result.get('relative_addition', 0)
             base_dilution = result.get('base_alloy_dilution', 0)
+            # ... [原有的结果显示代码] ...
+            text_output += f"✓ 溶解度 (X_{solute}): {solubility:.6e}\n"
 
-            text_output += f"✓ 溶解度 (摩尔分数): {solubility:.6e}\n"
+            
             text_output += f"✓ 溶解度 (摩尔%): {solubility*100:.4f}%\n"
             text_output += f"✓ 相对添加量: {relative_addition:.4f} (溶质/基础合金 摩尔比)\n"
             text_output += f"  → 含义: 每 1 摩尔基础合金可添加 {relative_addition:.4f} 摩尔 {solute}\n"
@@ -627,6 +690,151 @@ class SolubilityWidget(QWidget):
 
             self.chart_canvas.axes.grid(True, alpha=0.3)
 
+        self.chart_canvas.draw()
+    
+    def calculate_temperature_curve (self):
+        """计算溶解度随温度变化的曲线"""
+        # 1. 获取参数
+        solute = self.solute_input.text().strip().upper()
+        precipitate = self.precipitate_combo.currentText()
+        solution_phase = self._extract_phase_name(self.solution_phase_combo.currentText())
+        base_alloy_str = self.base_alloy_input.text().strip()
+        
+        t_start = float(self.t_start_input.text())
+        t_end = float(self.t_end_input.text())
+        n_points = int(self.n_points_input.text())
+        
+        if not all([solute, base_alloy_str]):
+            QMessageBox.warning(self, "输入错误", "请输入所有必需参数！")
+            return
+        
+        # 解析基础合金
+        base_composition = parse_composition_static(base_alloy_str)
+        if not base_composition:
+            QMessageBox.warning(self, "输入错误", "无法解析基础合金成分！")
+            return
+        base_composition = {k.upper(): v for k, v in base_composition.items()}
+        
+        # 获取模型参数 (与原代码一致)
+        extrap_model_name = self.extrap_model_combo.currentText()
+        activity_model = self.activity_model_combo.currentText()
+        from models.extrapolation_models import BinaryModel
+        bm = BinaryModel()
+        extrap_func_map = {
+            'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+            'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
+            'Toop-Muggianu': bm.Toop_Muggianu
+        }
+        extrap_func = extrap_func_map.get(extrap_model_name, bm.UEM1)
+        
+        # 2. 初始化进度条
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, n_points)
+        self.progress_bar.setValue(0)
+        self.results_text.setText(f"正在计算 {solute} 在 {base_alloy_str} 中的溶解度随温度变化曲线...\n")
+        
+        from PyQt5.QtWidgets import QApplication
+        def update_progress (current, total):
+            self.progress_bar.setValue(current)
+            QApplication.processEvents()
+        
+        # 3. 循环计算
+        import numpy as np
+        t_values = np.linspace(t_start, t_end, n_points)
+        solubility_values = []
+        results_list = []
+        
+        for i, t_curr in enumerate(t_values):
+            update_progress(i + 1, n_points)
+            
+            try:
+                result = self.phase_calc.calculate_solubility(
+                        base_alloy_composition=base_composition,
+                        solute_element=solute,
+                        solution_phase=solution_phase,
+                        precipitating_phase=precipitate,
+                        temperature=t_curr,  # 传入当前循环的温度
+                        extrapolation_func=extrap_func,
+                        extrapolation_model_name=extrap_model_name,
+                        activity_model=activity_model
+                )
+                
+                results_list.append(result)
+                
+                if result['status'] == 'success':
+                    solubility_values.append(result['solubility_mole_fraction'])
+                elif result['status'] == 'fully_soluble':
+                    solubility_values.append(1.0)
+                elif result['status'] == 'insoluble':
+                    solubility_values.append(0.0)
+                else:
+                    solubility_values.append(None)
+            
+            except Exception as e:
+                print(f"Error at T={t_curr}: {e}")
+                solubility_values.append(None)
+                results_list.append({'status': 'error', 'message': str(e)})
+        
+        self.progress_bar.setVisible(False)
+        
+        # 4. 结果文本输出
+        self.calculation_count += 1
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 提取第一点的溶剂信息用于显示
+        first_valid = next((r for r in results_list if r.get('status') == 'success'), {})
+        detected_solvent = first_valid.get('solvent_element', 'Unknown')
+        
+        text_output = "\n" + "=" * 70 + "\n"
+        text_output += f"【计算批次 #{self.calculation_count}】 {timestamp}\n"
+        text_output += "溶解度-温度曲线计算结果\n"
+        text_output += "=" * 70 + "\n\n"
+        text_output += f"溶质元素: {solute}\n"
+        text_output += f"基础合金: {base_alloy_str}\n"
+        text_output += f"  -> 自动识别溶剂: {detected_solvent}\n"
+        text_output += f"温度范围: {t_start:.1f} K ~ {t_end:.1f} K\n"
+        text_output += f"基体状态: {solution_phase}\n"
+        text_output += f"析出相: {precipitate}\n\n"
+        
+        text_output += f"{'温度(K)':<10} {'温度(°C)':<10} {'溶解度(X_' + solute + ')':<20} {'基础合金稳定性':<15}\n"
+        text_output += "-" * 70 + "\n"
+        
+        for i, t_curr in enumerate(t_values):
+            sol = solubility_values[i]
+            res = results_list[i]
+            
+            if sol is not None:
+                base_stab = res.get('base_stability', '-')
+                stab_mark = "⚠️" if base_stab == "Unstable" else "OK"
+                text_output += f"{t_curr:<10.1f} {t_curr - 273.15:<10.1f} {sol:<20.6e} {stab_mark}\n"
+            else:
+                text_output += f"{t_curr:<10.1f} {t_curr - 273.15:<10.1f} N/A\n"
+        
+        self.results_text.append(text_output)
+        scrollbar = self.results_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+        
+        # 5. 绘制图表
+        self.chart_canvas.axes.clear()
+        valid_data = [(t, s) for t, s in zip(t_values, solubility_values) if s is not None]
+        
+        if valid_data:
+            x_plot, s_plot = zip(*valid_data)
+            # 绘制曲线
+            self.chart_canvas.axes.plot(x_plot, [s * 100 for s in s_plot], 'r-o', linewidth=2, markersize=4,
+                                        label='溶解度')
+            
+            self.chart_canvas.axes.set_xlabel('温度 (K)', fontsize=11)
+            self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
+            
+            phase_type_cn = "液态" if solution_phase == "LIQUID" else "固态"
+            title = f'{solute} 在{phase_type_cn} {base_alloy_str} 中的溶解度 vs. 温度'
+            self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
+            self.chart_canvas.axes.grid(True, alpha=0.3)
+            
+            # 如果数据跨度大，可以考虑对数坐标，这里默认线性
+            # self.chart_canvas.axes.set_yscale('log')
+        
         self.chart_canvas.draw()
 
     def clear_history(self):
