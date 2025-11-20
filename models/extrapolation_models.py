@@ -46,35 +46,7 @@ class BinaryModel:
 	
 	def set_entropy (self, is_se):
 		self._is_entropy = is_se
-	
-	def entropy_judge (self, *elements: str) -> bool:
-		"""
-		判断是否需要考虑过剩熵。
 
-		Args:
-			*elements: 一个或多个元素符号。
-
-		Returns:
-			bool: 根据规则，如果需要考虑过剩熵，则返回 True，否则返回 False。
-		"""
-		if not elements:
-			# Avoid direct GUI calls in utility functions
-			print("警告: entropy_judge 函数至少需要一个元素参数。")
-			# QMessageBox.warning(None, "输入错误", "entropy_judge 函数至少需要一个元素参数。")
-			return False
-		
-		s_set = set(elements)
-		
-		if "O" in s_set:
-			other_elements = s_set - {"O"}
-			return bool(other_elements.intersection(Constants.non_metal_list))
-		elif "H" in s_set or "N" in s_set:
-			
-			return False
-		else:
-			
-			return True
-	
 	def fab (self, ea:Element, eb:Element, state):
 		"""计算 Miedema 模型中的 Fab 值。"""
 		if not (ea.is_exist and eb.is_exist): return float('nan')
@@ -328,8 +300,8 @@ class BinaryModel:
 			else:
 				dhtrans_slv = solvent.dh_trans
 		else:
-			dhtrans_i = solutei.dh_trans
-			dhtrans_slv = solvent.dh_trans
+			dhtrans_i = 0
+			dhtrans_slv = 0
 		
 		dhtrans = dhtrans_i - dhtrans_slv
 		

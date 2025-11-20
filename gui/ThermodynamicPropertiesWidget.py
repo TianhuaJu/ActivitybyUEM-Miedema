@@ -19,7 +19,7 @@ from datetime import datetime
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QLabel, QLineEdit, QComboBox, QPushButton,
                              QSplitter, QFrame, QGroupBox, QTextEdit,
-                             QMessageBox, QTableWidget, QTableWidgetItem)
+                             QMessageBox, QTableWidget, QTableWidgetItem, QProgressBar)
 from PyQt5.QtCore import Qt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -163,6 +163,12 @@ class ThermodynamicPropertiesWidget(QWidget):
         results_group = QGroupBox("计算结果")
         results_layout = QVBoxLayout(results_group)
 
+        # 添加进度条（用于显示计算进行中）
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setRange(0, 0)  # 不确定模式（循环动画）
+        results_layout.addWidget(self.progress_bar)
+
         self.results_text = QTextEdit()
         self.results_text.setReadOnly(True)
         self.results_text.setMinimumHeight(200)
@@ -202,12 +208,27 @@ class ThermodynamicPropertiesWidget(QWidget):
             temperature = float(self.temperature_input.text())
             phase_state = self.phase_combo.currentText()
             solvent = self.solvent_input.text().strip() or None
-            extrap_model = self.extrap_model_combo.currentText()
+            extrap_model_name = self.extrap_model_combo.currentText()
             activity_model = self.activity_model_combo.currentText()
 
-            # 显示计算中
+            # Convert model name to function object
+            from models.extrapolation_models import BinaryModel
+            bm = BinaryModel()
+            extrap_func_map = {
+                'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+                'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
+                'Toop-Muggianu': bm.Toop_Muggianu
+            }
+            extrap_func = extrap_func_map.get(extrap_model_name, bm.UEM1)
+
+            # 显示计算中和进度条
             self.results_text.setText("正在计算中，请稍候...")
             self.calculate_button.setEnabled(False)
+            self.progress_bar.setVisible(True)
+
+            # 强制更新GUI
+            from PyQt5.QtWidgets import QApplication
+            QApplication.processEvents()
 
             # 执行计算
             results = self.thermo_calc.calculate_all_properties(
@@ -215,7 +236,8 @@ class ThermodynamicPropertiesWidget(QWidget):
                 temperature=temperature,
                 phase_state=phase_state,
                 solvent=solvent,
-                extrapolation_model=extrap_model,
+                extrapolation_model_func=extrap_func,
+                extrapolation_model_name=extrap_model_name,
                 activity_model=activity_model
             )
 
@@ -223,7 +245,7 @@ class ThermodynamicPropertiesWidget(QWidget):
 
             # 显示结果
             self.display_results(results, composition, temperature, phase_state,
-                               extrap_model, activity_model)
+                               extrap_model_name, activity_model)
 
             # 启用导出按钮
             self.export_button.setEnabled(True)
@@ -234,6 +256,7 @@ class ThermodynamicPropertiesWidget(QWidget):
 
         finally:
             self.calculate_button.setEnabled(True)
+            self.progress_bar.setVisible(False)
 
     def display_results(self, results, composition, temperature, phase_state,
                        extrap_model, activity_model):
@@ -295,12 +318,12 @@ class ThermodynamicPropertiesWidget(QWidget):
             activity = props.get('activity')
             mu = props.get('mu')
 
-            # 文本输出
+            # 文本输出 - 统一格式化以匹配表格
             text_output += f"{comp:<8} {x_i:<10.4f} "
-            text_output += f"{ln_gamma if ln_gamma is not None else 'N/A':<12} "
-            text_output += f"{gamma if gamma is not None else 'N/A':<12} "
-            text_output += f"{activity if activity is not None else 'N/A':<12} "
-            text_output += f"{mu/1000 if mu is not None else 'N/A':<15}\n"
+            text_output += f"{ln_gamma:<12.4f} " if ln_gamma is not None else f"{'N/A':<12} "
+            text_output += f"{gamma:<12.4f} " if gamma is not None else f"{'N/A':<12} "
+            text_output += f"{activity:<12.4e} " if activity is not None else f"{'N/A':<12} "
+            text_output += f"{mu/1000:<15.2f}\n" if mu is not None else f"{'N/A':<15}\n"
 
             # 表格输出 - 注意列索引从0开始，现在多了一列
             self.results_table.setItem(row, 0, QTableWidgetItem(batch_label))

@@ -37,6 +37,7 @@ from gui.InteractionCoefficientWidget import InteractionCoefficientWidget
 from gui.SecondOrderCoefficientWidget import SecondOrderCoefficientWidget
 from gui.ThermodynamicPropertiesWidget import ThermodynamicPropertiesWidget
 from gui.PhaseDiagramWidget import PhaseDiagramWidget
+from gui.SolubilityWidget import SolubilityWidget
 
 
 class MplCanvas(FigureCanvas):
@@ -224,6 +225,9 @@ class AlloyActProGUI(QMainWindow):
 
 		# 相图计算选项卡
 		self.create_phase_diagram_tab()
+
+		# 溶解度计算选项卡
+		self.create_solubility_tab()
 	
 	def create_temperature_variation_tab (self):
 		"""创建温度变化分析选项卡"""
@@ -276,11 +280,16 @@ class AlloyActProGUI(QMainWindow):
 		self.phase_diagram_widget = PhaseDiagramWidget()
 		self.tabs.addTab(self.phase_diagram_widget, "相图计算")
 
+	def create_solubility_tab(self):
+		"""创建溶解度计算选项卡"""
+		self.solubility_widget = SolubilityWidget()
+		self.tabs.addTab(self.solubility_widget, "溶解度计算")
+
 	def show_about (self):
 		"""显示关于对话框"""
 		about_text = """
         <h3>AlloyAct Pro - 合金热力学计算器</h3>
-        <p><b>版本:</b> 2.1 (扩展版)</p>
+        <p><b>版本:</b> 2.2 (扩展版)</p>
         <p><b>功能特性:</b></p>
         <ul>
         <li>活度和活度系数计算</li>
@@ -292,6 +301,8 @@ class AlloyActProGUI(QMainWindow):
         <li><b>新增:</b> 完整热力学性质计算 (活度、化学势、摩尔焓、吉布斯自由能)</li>
         <li><b>新增:</b> 液相线/固相线温度计算</li>
         <li><b>新增:</b> 相图绘制与分析</li>
+        <li><b>新增:</b> 溶解度计算 (液相与固相)</li>
+        <li><b>新增:</b> 溶解度-浓度关系曲线分析</li>
         <li><b>新增:</b> 基于SGTE Unary Database的纯物质热力学数据</li>
         </ul>
         <p><b>开发团队:</b> 合金热力学计算实验室</p>
