@@ -147,6 +147,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 		
 		# ==================== 1. 预处理 ====================
 		solute = solute_element.upper()
+		precipitating_phase = self.tdb_parser.get_stable_phase(solute,temperature)#沉淀相为温度T下的稳定相
+		
 		total_base = sum(base_alloy_composition.values())
 		if total_base <= 0:
 			raise ValueError("基础合金成分不能为空")
@@ -300,6 +302,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 		"""
 		# 预处理
 		solute = solute_element.upper()
+		precipitating_phase = self.tdb_parser.get_stable_phase(solute, temperature)  # 沉淀相为温度T下的稳定相
 		total_base = sum(base_alloy_composition.values())
 		if total_base <= 0:
 			return {
