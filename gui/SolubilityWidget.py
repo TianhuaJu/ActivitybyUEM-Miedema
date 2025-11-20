@@ -552,6 +552,17 @@ class SolubilityWidget(QWidget):
         self.results_text = QTextEdit()
         self.results_text.setReadOnly(True)
         self.results_text.setMinimumHeight(150)
+
+        # 禁用自动换行，启用横向滚动条
+        self.results_text.setLineWrapMode(QTextEdit.NoWrap)
+        self.results_text.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        # 设置等宽字体以确保表格对齐
+        from PyQt5.QtGui import QFont
+        font = QFont("Courier New", 9)  # 等宽字体
+        font.setStyleHint(QFont.Monospace)
+        self.results_text.setFont(font)
+
         results_layout.addWidget(self.results_text)
 
         layout.addWidget(results_group)
