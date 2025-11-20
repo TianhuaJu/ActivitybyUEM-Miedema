@@ -19,7 +19,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QLabel, QLineEdit, QComboBox, QPushButton,
                              QSplitter, QFrame, QGroupBox, QTextEdit,
                              QMessageBox, QRadioButton, QButtonGroup, QProgressBar)
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
@@ -29,6 +29,246 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.utils import parse_composition_static
 from calculations.phase_diagram import PhaseDiagram
+
+
+class SolubilityWorker(QThread):
+    """溶解度计算工作线程"""
+
+    # 定义信号
+    progress_updated = pyqtSignal(int, int)  # (current, total)
+    calculation_finished = pyqtSignal(dict)  # 完成信号，传递结果字典
+    error_occurred = pyqtSignal(str)  # 错误信号
+
+    def __init__(self, calc_type, params, phase_calc):
+        """
+        初始化工作线程
+
+        Args:
+            calc_type: 计算类型 ('single', 'curve', 'temperature')
+            params: 计算参数字典
+            phase_calc: PhaseDiagram 计算对象
+        """
+        super().__init__()
+        self.calc_type = calc_type
+        self.params = params
+        self.phase_calc = phase_calc
+        self._is_cancelled = False
+
+    def cancel(self):
+        """取消计算"""
+        self._is_cancelled = True
+
+    def run(self):
+        """执行计算任务"""
+        try:
+            if self.calc_type == 'single':
+                self._run_single_calculation()
+            elif self.calc_type == 'curve':
+                self._run_curve_calculation()
+            elif self.calc_type == 'temperature':
+                self._run_temperature_calculation()
+        except Exception as e:
+            self.error_occurred.emit(str(e))
+
+    def _run_single_calculation(self):
+        """执行单点溶解度计算"""
+        result = self.phase_calc.calculate_solubility(
+            base_alloy_composition=self.params['base_composition'],
+            solute_element=self.params['solute'],
+            solution_phase=self.params['tdb_solution_phase'],
+            precipitating_phase=self.params['precipitate'],
+            temperature=self.params['temperature'],
+            extrapolation_func=self.params['extrap_func'],
+            extrapolation_model_name=self.params['extrap_model_name'],
+            activity_model=self.params['activity_model']
+        )
+
+        # 发送完成信号
+        self.calculation_finished.emit({
+            'type': 'single',
+            'result': result,
+            'params': self.params
+        })
+
+    def _run_curve_calculation(self):
+        """执行浓度曲线计算"""
+        import numpy as np
+
+        x_values = np.linspace(
+            self.params['x_min'],
+            self.params['x_max'],
+            self.params['n_points']
+        )
+
+        solubility_values = []
+        ideal_solubility_values = []
+        results_list = []
+        ideal_results_list = []
+
+        for i, x_var in enumerate(x_values):
+            if self._is_cancelled:
+                return
+
+            # 更新进度
+            self.progress_updated.emit(i + 1, len(x_values))
+
+            # 构建基础合金成分
+            x_fixed_fraction = 1.0 - x_var
+            base_composition = {}
+
+            for elem, frac in self.params['fixed_base_norm'].items():
+                base_composition[elem] = frac * x_fixed_fraction
+
+            variable_comp = self.params['variable_comp']
+            base_composition[variable_comp] = base_composition.get(variable_comp, 0.0) + x_var
+
+            try:
+                # 实际溶解度计算
+                result = self.phase_calc.calculate_solubility(
+                    base_alloy_composition=base_composition,
+                    solute_element=self.params['solute'],
+                    solution_phase=self.params['tdb_solution_phase'],
+                    precipitating_phase=self.params['precipitate'],
+                    temperature=self.params['temperature'],
+                    extrapolation_func=self.params['extrap_func'],
+                    extrapolation_model_name=self.params['extrap_model_name'],
+                    activity_model=self.params['activity_model']
+                )
+
+                # 理想溶解度计算
+                ideal_result = self.phase_calc.calculate_ideal_solubility(
+                    base_alloy_composition=base_composition,
+                    solute_element=self.params['solute'],
+                    solution_phase=self.params['tdb_solution_phase'],
+                    precipitating_phase=self.params['precipitate'],
+                    temperature=self.params['temperature']
+                )
+
+                results_list.append(result)
+                ideal_results_list.append(ideal_result)
+
+                # 处理实际溶解度
+                if result['status'] == 'success':
+                    solubility_values.append(result['solubility_mole_fraction'])
+                elif result['status'] == 'fully_soluble':
+                    solubility_values.append(1.0)
+                elif result['status'] == 'insoluble':
+                    solubility_values.append(0.0)
+                else:
+                    solubility_values.append(None)
+
+                # 处理理想溶解度
+                if ideal_result['status'] == 'success':
+                    ideal_solubility_values.append(ideal_result['solubility_mole_fraction'])
+                elif ideal_result['status'] == 'fully_soluble':
+                    ideal_solubility_values.append(1.0)
+                elif ideal_result['status'] == 'insoluble':
+                    ideal_solubility_values.append(0.0)
+                else:
+                    ideal_solubility_values.append(None)
+
+            except Exception as e:
+                print(f"Error at X_{variable_comp}={x_var}: {e}")
+                solubility_values.append(None)
+                ideal_solubility_values.append(None)
+                results_list.append({'status': 'error', 'message': str(e)})
+                ideal_results_list.append({'status': 'error', 'message': str(e)})
+
+        # 发送完成信号
+        self.calculation_finished.emit({
+            'type': 'curve',
+            'x_values': x_values,
+            'solubility_values': solubility_values,
+            'ideal_solubility_values': ideal_solubility_values,
+            'results_list': results_list,
+            'ideal_results_list': ideal_results_list,
+            'params': self.params
+        })
+
+    def _run_temperature_calculation(self):
+        """执行温度曲线计算"""
+        import numpy as np
+
+        t_values = np.linspace(
+            self.params['t_start'],
+            self.params['t_end'],
+            self.params['n_points']
+        )
+
+        solubility_values = []
+        ideal_solubility_values = []
+        results_list = []
+        ideal_results_list = []
+
+        for i, t_curr in enumerate(t_values):
+            if self._is_cancelled:
+                return
+
+            # 更新进度
+            self.progress_updated.emit(i + 1, len(t_values))
+
+            try:
+                # 实际溶解度计算
+                result = self.phase_calc.calculate_solubility(
+                    base_alloy_composition=self.params['base_composition'],
+                    solute_element=self.params['solute'],
+                    solution_phase=self.params['tdb_solution_phase'],
+                    precipitating_phase=self.params['precipitate'],
+                    temperature=t_curr,
+                    extrapolation_func=self.params['extrap_func'],
+                    extrapolation_model_name=self.params['extrap_model_name'],
+                    activity_model=self.params['activity_model']
+                )
+
+                # 理想溶解度计算
+                ideal_result = self.phase_calc.calculate_ideal_solubility(
+                    base_alloy_composition=self.params['base_composition'],
+                    solute_element=self.params['solute'],
+                    solution_phase=self.params['tdb_solution_phase'],
+                    precipitating_phase=self.params['precipitate'],
+                    temperature=t_curr
+                )
+
+                results_list.append(result)
+                ideal_results_list.append(ideal_result)
+
+                # 处理实际溶解度
+                if result['status'] == 'success':
+                    solubility_values.append(result['solubility_mole_fraction'])
+                elif result['status'] == 'fully_soluble':
+                    solubility_values.append(1.0)
+                elif result['status'] == 'insoluble':
+                    solubility_values.append(0.0)
+                else:
+                    solubility_values.append(None)
+
+                # 处理理想溶解度
+                if ideal_result['status'] == 'success':
+                    ideal_solubility_values.append(ideal_result['solubility_mole_fraction'])
+                elif ideal_result['status'] == 'fully_soluble':
+                    ideal_solubility_values.append(1.0)
+                elif ideal_result['status'] == 'insoluble':
+                    ideal_solubility_values.append(0.0)
+                else:
+                    ideal_solubility_values.append(None)
+
+            except Exception as e:
+                print(f"Error at T={t_curr}: {e}")
+                solubility_values.append(None)
+                ideal_solubility_values.append(None)
+                results_list.append({'status': 'error', 'message': str(e)})
+                ideal_results_list.append({'status': 'error', 'message': str(e)})
+
+        # 发送完成信号
+        self.calculation_finished.emit({
+            'type': 'temperature',
+            't_values': t_values,
+            'solubility_values': solubility_values,
+            'ideal_solubility_values': ideal_solubility_values,
+            'results_list': results_list,
+            'ideal_results_list': ideal_results_list,
+            'params': self.params
+        })
 
 
 class MplCanvas(FigureCanvas):
@@ -48,6 +288,7 @@ class SolubilityWidget(QWidget):
 
         self.phase_calc = PhaseDiagram()
         self.calculation_count = 0  # 计算批次计数器
+        self.worker = None  # 工作线程
         self.setup_ui()
 
     def setup_ui(self):
@@ -140,6 +381,12 @@ class SolubilityWidget(QWidget):
         self.calculate_button.setMinimumHeight(40)
         self.calculate_button.clicked.connect(self.perform_calculation)
         button_layout.addWidget(self.calculate_button)
+
+        self.cancel_button = QPushButton("取消计算")
+        self.cancel_button.setMinimumHeight(40)
+        self.cancel_button.clicked.connect(self.cancel_calculation)
+        self.cancel_button.setEnabled(False)
+        button_layout.addWidget(self.cancel_button)
 
         self.export_button = QPushButton("导出结果")
         self.export_button.setMinimumHeight(40)
@@ -320,8 +567,47 @@ class SolubilityWidget(QWidget):
 
         return widget
 
+    def cancel_calculation(self):
+        """取消当前计算"""
+        if self.worker and self.worker.isRunning():
+            self.worker.cancel()
+            self.results_text.append("\n⚠️ 用户取消计算...\n")
+            self.progress_bar.setVisible(False)
+            self.calculate_button.setEnabled(True)
+            self.cancel_button.setEnabled(False)
+
+    def on_calculation_started(self):
+        """计算开始时的UI状态更新"""
+        self.calculate_button.setEnabled(False)
+        self.cancel_button.setEnabled(True)
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+
+    def on_calculation_finished(self):
+        """计算完成时的UI状态更新"""
+        self.calculate_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+        self.progress_bar.setVisible(False)
+        self.export_button.setEnabled(True)
+
+    def on_progress_updated(self, current, total):
+        """更新进度条"""
+        self.progress_bar.setMaximum(total)
+        self.progress_bar.setValue(current)
+
+    def on_error_occurred(self, error_msg):
+        """处理计算错误"""
+        self.on_calculation_finished()
+        QMessageBox.critical(self, "计算错误", f"计算过程中发生错误:\n{error_msg}")
+        self.results_text.append(f"\n❌ 错误: {error_msg}\n")
+
     def perform_calculation(self):
-        """执行计算"""
+        """执行计算（多线程版本）"""
+        # 如果已有任务在运行，先取消
+        if self.worker and self.worker.isRunning():
+            QMessageBox.warning(self, "提示", "已有计算任务正在运行，请先取消或等待完成！")
+            return
+
         try:
             if self.mode_single.isChecked():
                 self.calculate_single_point()
@@ -330,14 +616,12 @@ class SolubilityWidget(QWidget):
             elif self.mode_temp_curve.isChecked():
                 self.calculate_temperature_curve()
 
-            self.export_button.setEnabled(True)
-
         except Exception as e:
-            QMessageBox.critical(self, "计算错误", f"计算过程中发生错误:\n{str(e)}")
+            QMessageBox.critical(self, "参数错误", f"参数验证失败:\n{str(e)}")
             self.results_text.setText(f"错误: {str(e)}")
 
     def calculate_single_point(self):
-        """计算单点溶解度"""
+        """计算单点溶解度（多线程版本）"""
         # 获取输入参数
         solute = self.solute_input.text().strip().upper()
         precipitate = self.precipitate_combo.currentText()
@@ -371,17 +655,42 @@ class SolubilityWidget(QWidget):
         }
         extrap_func = extrap_func_map.get(extrap_model_name, bm.UEM1)
 
-        # 计算溶解度
-        result = self.phase_calc.calculate_solubility(
-            base_alloy_composition=base_composition,
-            solute_element=solute,
-            solution_phase=solution_phase,
-            precipitating_phase=precipitate,
-            temperature=temperature,
-            extrapolation_func=extrap_func,
-            extrapolation_model_name=extrap_model_name,
-            activity_model=activity_model
-        )
+        # 准备参数
+        params = {
+            'base_composition': base_composition,
+            'solute': solute,
+            'tdb_solution_phase': solution_phase,
+            'precipitate': precipitate,
+            'temperature': temperature,
+            'extrap_func': extrap_func,
+            'extrap_model_name': extrap_model_name,
+            'activity_model': activity_model,
+            'base_alloy_str': base_alloy_str,
+            'solution_phase_display': self.solution_phase_combo.currentText()
+        }
+
+        # 创建并启动工作线程
+        self.worker = SolubilityWorker('single', params, self.phase_calc)
+        self.worker.progress_updated.connect(self.on_progress_updated)
+        self.worker.calculation_finished.connect(self.on_single_point_finished)
+        self.worker.error_occurred.connect(self.on_error_occurred)
+
+        self.on_calculation_started()
+        self.results_text.append(f"\n🔄 正在计算单点溶解度...\n")
+        self.worker.start()
+
+    def on_single_point_finished(self, data):
+        """处理单点计算完成"""
+        self.on_calculation_finished()
+
+        result = data['result']
+        params = data['params']
+        base_alloy_str = params['base_alloy_str']
+        solute = params['solute']
+        precipitate = params['precipitate']
+        temperature = params['temperature']
+        solution_phase = params['tdb_solution_phase']
+        base_composition = params['base_composition']
 
         # 增加计算批次计数
         self.calculation_count += 1
@@ -489,41 +798,40 @@ class SolubilityWidget(QWidget):
             self.chart_canvas.axes.grid(True, alpha=0.3, axis='y')
         self.chart_canvas.draw()
     
-    def calculate_solubility_curve (self):
-        """计算溶解度随浓度变化的曲线"""
+    def calculate_solubility_curve(self):
+        """计算溶解度随浓度变化的曲线（多线程版本）"""
         # 获取输入参数
         solute = self.solute_input.text().strip().upper()
         precipitate = self.precipitate_combo.currentText()
         solution_phase = self._extract_phase_name(self.solution_phase_combo.currentText())
         temperature = float(self.temperature_input.text())
-        
-        # --- [Fix Start] 修改参数获取与解析逻辑 ---
-        fixed_base_str = self.fixed_base_input.text().strip()  # 获取原始字符串，如 "Fe0.7Ni0.3"
-        variable_comp = self.variable_comp_input.text().strip().upper()  # 变化组分，如 "Cr"
-        
+
+        # 修改参数获取与解析逻辑
+        fixed_base_str = self.fixed_base_input.text().strip()
+        variable_comp = self.variable_comp_input.text().strip().upper()
+
         x_min = float(self.x_min_input.text())
         x_max = float(self.x_max_input.text())
         n_points = int(self.n_points_input.text())
-        
+
         if not all([solute, fixed_base_str, variable_comp]):
             QMessageBox.warning(self, "输入错误", "请输入所有必需参数！")
             return
-        
-        # 1. 解析固定基础合金成分 (例如: "Fe0.7Ni0.3" -> {'FE': 0.7, 'NI': 0.3})
+
+        # 解析固定基础合金成分
         fixed_base_map = parse_composition_static(fixed_base_str)
         if not fixed_base_map:
             QMessageBox.warning(self, "输入错误", f"无法解析固定基础成分: {fixed_base_str}")
             return
-        
-        # 归一化固定基础成分（确保总和为1，作为混合前的基准）
+
+        # 归一化固定基础成分
         total_fixed = sum(fixed_base_map.values())
         fixed_base_norm = {k.upper(): v / total_fixed for k, v in fixed_base_map.items()}
-        # --- [Fix End] ---
-        
+
         # 获取模型参数
         extrap_model_name = self.extrap_model_combo.currentText()
         activity_model = self.activity_model_combo.currentText()
-        
+
         # 将外推模型名称转换为函数对象
         from models.extrapolation_models import BinaryModel
         bm = BinaryModel()
@@ -533,116 +841,70 @@ class SolubilityWidget(QWidget):
             'Toop-Muggianu': bm.Toop_Muggianu
         }
         extrap_func = extrap_func_map.get(extrap_model_name, bm.UEM1)
-        
-        # 显示进度条
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, n_points)
-        self.progress_bar.setValue(0)
-        self.results_text.setText("正在计算溶解度曲线，请稍候...")
-        
-        # 定义进度回调
-        from PyQt5.QtWidgets import QApplication
-        def update_progress (current, total):
-            self.progress_bar.setValue(current)
-            QApplication.processEvents()
-        
-        # 计算曲线
-        import numpy as np
-        x_values = np.linspace(x_min, x_max, n_points)
-        solubility_values = []
-        ideal_solubility_values = []  # 理想溶解度
-        results_list = []  # 保存完整结果
-        ideal_results_list = []  # 理想溶解度结果
 
-        for i, x_var in enumerate(x_values):
-            update_progress(i + 1, n_points)
+        # 准备参数
+        params = {
+            'solute': solute,
+            'tdb_solution_phase': solution_phase,
+            'precipitate': precipitate,
+            'temperature': temperature,
+            'extrap_func': extrap_func,
+            'extrap_model_name': extrap_model_name,
+            'activity_model': activity_model,
+            'fixed_base_str': fixed_base_str,
+            'fixed_base_norm': fixed_base_norm,
+            'variable_comp': variable_comp,
+            'x_min': x_min,
+            'x_max': x_max,
+            'n_points': n_points,
+            'solution_phase_display': self.solution_phase_combo.currentText()
+        }
 
-            # --- [Fix Start] 构建混合后的基础合金成分 ---
-            # 逻辑: 基础合金 = (1 - x_var) * [固定基础成分] + x_var * [变化组分]
-            x_fixed_fraction = 1.0 - x_var
+        # 创建并启动工作线程
+        self.worker = SolubilityWorker('curve', params, self.phase_calc)
+        self.worker.progress_updated.connect(self.on_progress_updated)
+        self.worker.calculation_finished.connect(self.on_curve_finished)
+        self.worker.error_occurred.connect(self.on_error_occurred)
 
-            base_composition = {}
+        self.on_calculation_started()
+        self.results_text.append(f"\n🔄 正在计算溶解度-浓度曲线 ({n_points} 个点)...\n")
+        self.worker.start()
 
-            # 1. 加入按比例缩小的固定基础成分
-            for elem, frac in fixed_base_norm.items():
-                base_composition[elem] = frac * x_fixed_fraction
+    def on_curve_finished(self, data):
+        """处理浓度曲线计算完成"""
+        self.on_calculation_finished()
 
-            # 2. 加入变化组分
-            # 注意：如果变化组分(如Fe)已经在固定成分中存在，需要累加
-            base_composition[variable_comp] = base_composition.get(variable_comp, 0.0) + x_var
-            # --- [Fix End] ---
+        x_values = data['x_values']
+        solubility_values = data['solubility_values']
+        ideal_solubility_values = data['ideal_solubility_values']
+        results_list = data['results_list']
+        ideal_results_list = data['ideal_results_list']
+        params = data['params']
 
-            try:
-                # 实际溶解度计算
-                result = self.phase_calc.calculate_solubility(
-                        base_alloy_composition=base_composition,
-                        solute_element=solute,
-                        solution_phase=solution_phase,
-                        precipitating_phase=precipitate,
-                        temperature=temperature,
-                        extrapolation_func=extrap_func,
-                        extrapolation_model_name=extrap_model_name,
-                        activity_model=activity_model
-                )
+        solute = params['solute']
+        solution_phase = params['tdb_solution_phase']
+        precipitate = params['precipitate']
+        temperature = params['temperature']
+        extrap_model_name = params['extrap_model_name']
+        activity_model = params['activity_model']
+        fixed_base_str = params['fixed_base_str']
+        variable_comp = params['variable_comp']
+        n_points = params['n_points']
+        x_min = params['x_min']
+        x_max = params['x_max']
 
-                # 理想溶解度计算
-                ideal_result = self.phase_calc.calculate_ideal_solubility(
-                        base_alloy_composition=base_composition,
-                        solute_element=solute,
-                        solution_phase=solution_phase,
-                        precipitating_phase=precipitate,
-                        temperature=temperature
-                )
-
-                results_list.append(result)
-                ideal_results_list.append(ideal_result)
-
-                # 处理实际溶解度
-                if result['status'] == 'success':
-                    solubility_values.append(result['solubility_mole_fraction'])
-                elif result['status'] == 'fully_soluble':
-                    solubility_values.append(1.0)
-                elif result['status'] == 'insoluble':
-                    solubility_values.append(0.0)
-                else:
-                    solubility_values.append(None)
-
-                # 处理理想溶解度
-                if ideal_result['status'] == 'success':
-                    ideal_solubility_values.append(ideal_result['solubility_mole_fraction'])
-                elif ideal_result['status'] == 'fully_soluble':
-                    ideal_solubility_values.append(1.0)
-                elif ideal_result['status'] == 'insoluble':
-                    ideal_solubility_values.append(0.0)
-                else:
-                    ideal_solubility_values.append(None)
-
-            except Exception as e:
-                print(f"Error at X_{variable_comp}={x_var}: {e}")
-                solubility_values.append(None)
-                ideal_solubility_values.append(None)
-                results_list.append({'status': 'error', 'message': str(e)})
-                ideal_results_list.append({'status': 'error', 'message': str(e)})
-        
-        # 隐藏进度条
-        self.progress_bar.setVisible(False)
-        
         # 增加计算批次计数，结果文本输出
         self.calculation_count += 1
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        
-        
+
         # 显示结果
         text_output = "\n" + "=" * 70 + "\n"
         text_output += f"【计算批次 #{self.calculation_count}】 {timestamp}\n"
         text_output += "溶解度-浓度曲线计算结果\n"
         text_output += "=" * 70 + "\n\n"
         text_output += f"溶质元素: {solute}\n"
-        # --- [Fix Start] 更新输出文本以反映真实成分 ---
         text_output += f"固定基础: {fixed_base_str}\n"
         text_output += f"变化组分: {variable_comp} ({x_min:.3f} ~ {x_max:.3f})\n"
-        # --- [Fix End] ---
         text_output += f"溶液相: {solution_phase}\n"
         text_output += f"析出相: {precipitate}\n"
         text_output += f"温度: {temperature:.2f} K ({temperature - 273.15:.2f} °C)\n"
@@ -776,30 +1038,30 @@ class SolubilityWidget(QWidget):
 
         self.chart_canvas.draw()
     
-    def calculate_temperature_curve (self):
-        """计算溶解度随温度变化的曲线"""
+    def calculate_temperature_curve(self):
+        """计算溶解度随温度变化的曲线（多线程版本）"""
         # 1. 获取参数
         solute = self.solute_input.text().strip().upper()
         precipitate = self.precipitate_combo.currentText()
         solution_phase = self._extract_phase_name(self.solution_phase_combo.currentText())
         base_alloy_str = self.base_alloy_input.text().strip()
-        
+
         t_start = float(self.t_start_input.text())
         t_end = float(self.t_end_input.text())
         n_points = int(self.n_points_input.text())
-        
+
         if not all([solute, base_alloy_str]):
             QMessageBox.warning(self, "输入错误", "请输入所有必需参数！")
             return
-        
+
         # 解析基础合金
         base_composition = parse_composition_static(base_alloy_str)
         if not base_composition:
             QMessageBox.warning(self, "输入错误", "无法解析基础合金成分！")
             return
         base_composition = {k.upper(): v for k, v in base_composition.items()}
-        
-        # 获取模型参数 (与原代码一致)
+
+        # 获取模型参数
         extrap_model_name = self.extrap_model_combo.currentText()
         activity_model = self.activity_model_combo.currentText()
         from models.extrapolation_models import BinaryModel
@@ -810,84 +1072,53 @@ class SolubilityWidget(QWidget):
             'Toop-Muggianu': bm.Toop_Muggianu
         }
         extrap_func = extrap_func_map.get(extrap_model_name, bm.UEM1)
-        
-        # 2. 初始化进度条
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, n_points)
-        self.progress_bar.setValue(0)
-        self.results_text.setText(f"正在计算 {solute} 在 {base_alloy_str} 中的溶解度随温度变化曲线...\n")
-        
-        from PyQt5.QtWidgets import QApplication
-        def update_progress (current, total):
-            self.progress_bar.setValue(current)
-            QApplication.processEvents()
-        
-        # 3. 循环计算
-        import numpy as np
-        t_values = np.linspace(t_start, t_end, n_points)
-        solubility_values = []
-        ideal_solubility_values = []  # 添加理想溶解度数组
-        results_list = []
-        ideal_results_list = []  # 添加理想溶解度结果列表
 
-        for i, t_curr in enumerate(t_values):
-            update_progress(i + 1, n_points)
+        # 准备参数
+        params = {
+            'base_composition': base_composition,
+            'solute': solute,
+            'tdb_solution_phase': solution_phase,
+            'precipitate': precipitate,
+            'extrap_func': extrap_func,
+            'extrap_model_name': extrap_model_name,
+            'activity_model': activity_model,
+            't_start': t_start,
+            't_end': t_end,
+            'n_points': n_points,
+            'base_alloy_str': base_alloy_str,
+            'solution_phase_display': self.solution_phase_combo.currentText()
+        }
 
-            try:
-                # 实际溶解度计算（考虑活度系数）
-                result = self.phase_calc.calculate_solubility(
-                        base_alloy_composition=base_composition,
-                        solute_element=solute,
-                        solution_phase=solution_phase,
-                        precipitating_phase=precipitate,
-                        temperature=t_curr,  # 传入当前循环的温度
-                        extrapolation_func=extrap_func,
-                        extrapolation_model_name=extrap_model_name,
-                        activity_model=activity_model
-                )
+        # 创建并启动工作线程
+        self.worker = SolubilityWorker('temperature', params, self.phase_calc)
+        self.worker.progress_updated.connect(self.on_progress_updated)
+        self.worker.calculation_finished.connect(self.on_temperature_finished)
+        self.worker.error_occurred.connect(self.on_error_occurred)
 
-                # 理想溶解度计算（活度系数 = 1）
-                ideal_result = self.phase_calc.calculate_ideal_solubility(
-                        base_alloy_composition=base_composition,
-                        solute_element=solute,
-                        solution_phase=solution_phase,
-                        precipitating_phase=precipitate,
-                        temperature=t_curr
-                )
+        self.on_calculation_started()
+        self.results_text.append(f"\n🔄 正在计算溶解度-温度曲线 ({n_points} 个点)...\n")
+        self.worker.start()
 
-                results_list.append(result)
-                ideal_results_list.append(ideal_result)
+    def on_temperature_finished(self, data):
+        """处理温度曲线计算完成"""
+        self.on_calculation_finished()
 
-                # 处理实际溶解度结果
-                if result['status'] == 'success':
-                    solubility_values.append(result['solubility_mole_fraction'])
-                elif result['status'] == 'fully_soluble':
-                    solubility_values.append(1.0)
-                elif result['status'] == 'insoluble':
-                    solubility_values.append(0.0)
-                else:
-                    solubility_values.append(None)
+        t_values = data['t_values']
+        solubility_values = data['solubility_values']
+        ideal_solubility_values = data['ideal_solubility_values']
+        results_list = data['results_list']
+        ideal_results_list = data['ideal_results_list']
+        params = data['params']
 
-                # 处理理想溶解度结果
-                if ideal_result['status'] == 'success':
-                    ideal_solubility_values.append(ideal_result['solubility_mole_fraction'])
-                elif ideal_result['status'] == 'fully_soluble':
-                    ideal_solubility_values.append(1.0)
-                elif ideal_result['status'] == 'insoluble':
-                    ideal_solubility_values.append(0.0)
-                else:
-                    ideal_solubility_values.append(None)
+        solute = params['solute']
+        solution_phase = params['tdb_solution_phase']
+        precipitate = params['precipitate']
+        extrap_model_name = params['extrap_model_name']
+        base_alloy_str = params['base_alloy_str']
+        t_start = params['t_start']
+        t_end = params['t_end']
 
-            except Exception as e:
-                print(f"Error at T={t_curr}: {e}")
-                solubility_values.append(None)
-                ideal_solubility_values.append(None)
-                results_list.append({'status': 'error', 'message': str(e)})
-                ideal_results_list.append({'status': 'error', 'message': str(e)})
-        
-        self.progress_bar.setVisible(False)
-        
-        # 4. 结果文本输出
+        # 结果文本输出
         self.calculation_count += 1
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
