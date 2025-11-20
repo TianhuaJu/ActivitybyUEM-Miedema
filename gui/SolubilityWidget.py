@@ -407,6 +407,9 @@ class SolubilityWidget(QWidget):
         text_output += f"温度: {temperature:.2f} K\n"
         
         # 显示警告（特别是基础合金不稳定的警告）
+        error_detail = result.get('error_detail', '')
+        if error_detail:
+            text_output += f"⚠️  主要错误: {error_detail}\n"
         warnings = result.get('warnings', [])
         if warnings:
             text_output += "\n⚠️  警告信息:\n"
@@ -597,9 +600,11 @@ class SolubilityWidget(QWidget):
         # 隐藏进度条
         self.progress_bar.setVisible(False)
         
-        # 增加计算批次计数
+        # 增加计算批次计数，结果文本输出
         self.calculation_count += 1
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        
         
         # 显示结果
         text_output = "\n" + "=" * 70 + "\n"
@@ -622,47 +627,63 @@ class SolubilityWidget(QWidget):
         text_output += "      相对添加量 = 溶质摩尔数 / 基础合金摩尔数\n"
         text_output += "-" * 70 + "\n"
 
+        
         # 统计警告数量
         warning_count = sum(1 for r in results_list if r.get('status') == 'success' and r.get('warnings'))
         if warning_count > 0:
             text_output += f"⚠️  {warning_count} 个数据点存在合理性警告，详见下表\n\n"
-
-        # 表头
+        
+        # 【修改 1：更新表头】将 '警告' 改为 '状态/详情'
         text_output += f"{'X_' + variable_comp:<10} "
         text_output += f"{'X_' + solute + '(溶解度)':<16} "
         text_output += f"{'相对添加量':<12} "
-        text_output += f"{'警告':<30}\n"
-        text_output += "-" * 70 + "\n"
-
+        text_output += f"{'状态/详情':<35}\n"  # 加宽一点以容纳错误信息
+        text_output += "-" * 80 + "\n"
+        
         for i, x_var in enumerate(x_values):
             result = results_list[i]
             sol = solubility_values[i]
-
+            
             text_output += f"{x_var:<10.4f} "
-
+            
             if sol is not None and result.get('status') == 'success':
                 rel_add = result.get('relative_addition', 0)
                 warnings = result.get('warnings', [])
-
+                
                 text_output += f"{sol:<16.6e} "
                 text_output += f"{rel_add:<12.4f} "
-
+                
                 if warnings:
                     # 只显示第一个警告的简短版本
                     first_warning = warnings[0]
-                    if len(first_warning) > 28:
-                        text_output += first_warning[:25] + "..."
+                    if len(first_warning) > 33:
+                        text_output += first_warning[:30] + "..."
                     else:
                         text_output += first_warning
                 else:
-                    text_output += "正常"
-
+                    text_output += "OK"  # 成功且无警告显示 OK
+                
                 text_output += "\n"
             else:
-                text_output += "N/A              N/A          N/A\n"
-
+                # 【修改 2：处理失败情况，显示详细错误】
+                error_detail = result.get('error_detail', '')
+                status = result.get('status', 'Unknown')
+                
+                # 如果有详细错误信息，优先显示；否则显示状态码
+                if error_detail:
+                    display_msg = error_detail
+                elif status == 'insoluble':
+                    display_msg = "不溶"
+                else:
+                    display_msg = status
+                
+                # 截断过长信息
+                if len(display_msg) > 33:
+                    display_msg = display_msg[:30] + "..."
+                
+                text_output += f"{'N/A':<16} {'N/A':<12} {display_msg}\n"
+        
         text_output += "=" * 70 + "\n"
-
         # 如果存在高溶解度警告，添加额外说明
         high_solubility_points = [(x_values[i], solubility_values[i])
                                    for i, r in enumerate(results_list)
@@ -820,20 +841,28 @@ class SolubilityWidget(QWidget):
         text_output += f"基体状态: {solution_phase}\n"
         text_output += f"析出相: {precipitate}\n\n"
         
-        text_output += f"{'温度(K)':<10} {'温度(°C)':<10} {'溶解度(X_' + solute + ')':<20} {'基础合金稳定性':<15}\n"
-        text_output += "-" * 70 + "\n"
+        
+        text_output += f"{'温度(K)':<10} {'温度(°C)':<10} {'溶解度(X_' + solute + ')':<20} {'状态详情'}\n"
+        text_output += "-" * 80 + "\n"
         
         for i, t_curr in enumerate(t_values):
             sol = solubility_values[i]
             res = results_list[i]
-            
             if sol is not None:
-                base_stab = res.get('base_stability', '-')
-                stab_mark = "⚠️" if base_stab == "Unstable" else "OK"
-                text_output += f"{t_curr:<10.1f} {t_curr - 273.15:<10.1f} {sol:<20.6e} {stab_mark}\n"
+                status_str = "OK"
+                sol_str = f"{sol:.6e}"
             else:
-                text_output += f"{t_curr:<10.1f} {t_curr - 273.15:<10.1f} N/A\n"
-        
+                sol_str = "N/A"
+                # 优先显示 error_detail，如果没有则显示 status
+                error_detail = res.get('error_detail', '')
+                if error_detail:
+                    # 截取过长信息以免换行太乱 (比如前40个字符)
+                    status_str = (error_detail[:35] + '...') if len(error_detail) > 35 else error_detail
+                else:
+                    status_str = res.get('status', 'Unknown')
+            
+            text_output += f"{t_curr:<10.1f} {t_curr - 273.15:<10.1f} {sol_str:<20} {status_str}\n"
+            
         self.results_text.append(text_output)
         scrollbar = self.results_text.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
