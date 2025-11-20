@@ -275,6 +275,128 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 
 	
 	
+	def calculate_ideal_solubility(self,
+	                               base_alloy_composition: Dict[str, float],
+	                               solute_element: str,
+	                               solution_phase: str,
+	                               precipitating_phase: str,
+	                               temperature: float) -> dict:
+		"""
+		计算理想溶液模型下的溶解度
+
+		理想溶液假设：活度系数 γ = 1 (ln γ = 0)
+		化学势平衡：μ_solute^0 + RT ln(x_solute) = G_precipitate
+		理想溶解度：x_solute_ideal = exp[(G_precipitate - μ_solute^0) / RT]
+
+		参数:
+		    base_alloy_composition: 基础合金成分 (摩尔分数)
+		    solute_element: 溶质元素
+		    solution_phase: 溶液相 ('LIQUID' 或 'SOLID')
+		    precipitating_phase: 析出相名称
+		    temperature: 温度 (K)
+
+		返回:
+		    包含理想溶解度的字典
+		"""
+		# 预处理
+		solute = solute_element.upper()
+		total_base = sum(base_alloy_composition.values())
+		if total_base <= 0:
+			return {
+				"status": "error",
+				"message": "基础合金成分不能为空",
+				"solubility_mole_fraction": 0.0
+			}
+
+		# 归一化基础合金成分
+		base_comp = {k.upper(): v / total_base for k, v in base_alloy_composition.items()}
+		solvent = max(base_comp.items(), key=lambda x: x[1])[0]
+
+		# 确定溶液相的 TDB 相名
+		if solution_phase == 'LIQUID':
+			tdb_solution_phase = 'LIQUID'
+			phase_desc = "液相"
+		else:
+			ref = self.tdb_parser.get_reference_phase(solvent)
+			tdb_solution_phase = ref if ref else 'BCC_A2'
+			phase_desc = f"固相 ({tdb_solution_phase})"
+
+		# 获取溶质在溶液相中的标准Gibbs能量 (μ_solute^0)
+		mu_0_solute = self.tdb_parser.get_gibbs_energy(solute, tdb_solution_phase, temperature)
+
+		# 如果TDB中没有，尝试使用晶格稳定性估算
+		if mu_0_solute is None and tdb_solution_phase != 'LIQUID':
+			mu_0_solute = self._estimate_lattice_stability(solute, tdb_solution_phase, temperature)
+
+		if mu_0_solute is None:
+			return {
+				"status": "error",
+				"message": f"无法获取 {solute} 在 {tdb_solution_phase} 相的标准Gibbs能量",
+				"solubility_mole_fraction": 0.0
+			}
+
+		# 获取析出相的Gibbs能量
+		g_ppt = self.tdb_parser.get_gibbs_energy(solute, precipitating_phase, temperature)
+		if g_ppt is None:
+			return {
+				"status": "error",
+				"message": f"无法获取 {solute} 在 {precipitating_phase} 相的Gibbs能量",
+				"solubility_mole_fraction": 0.0
+			}
+
+		# 计算理想溶解度：x_ideal = exp[(G_ppt - μ_0) / RT]
+		try:
+			delta_g = g_ppt - mu_0_solute
+			exponent = delta_g / (self.R * temperature)
+
+			# 检查指数是否在合理范围内（避免数值溢出）
+			if exponent > 100:  # exp(100) ≈ 2.7e43，远超物理意义
+				x_ideal = 1.0
+				status = "fully_soluble"
+			elif exponent < -100:  # exp(-100) ≈ 3.7e-44，接近于0
+				x_ideal = 0.0
+				status = "insoluble"
+			else:
+				x_ideal = math.exp(exponent)
+				# 限制在物理范围内
+				x_ideal = max(1e-12, min(0.999, x_ideal))
+				status = "success"
+
+			# 构建最终成分
+			remaining = 1.0 - x_ideal
+			final_comp = {el: base_comp[el] * remaining for el in base_comp}
+			final_comp[solute] = x_ideal
+
+			# 计算相对添加量
+			if remaining > 1e-12:
+				relative_addition = x_ideal / remaining
+			else:
+				relative_addition = float('inf')
+
+			return {
+				"status": status,
+				"message": "理想溶液模型计算成功",
+				"model": "ideal_solution",
+				"T": temperature,
+				"solute": solute,
+				"precipitating_phase": precipitating_phase,
+				"phase_state": phase_desc,
+				"solvent_element": solvent,
+				"solubility_mole_fraction": float(x_ideal),
+				"final_composition": final_comp,
+				"relative_addition": relative_addition,
+				"delta_g": delta_g,
+				"mu_0_solute": mu_0_solute,
+				"g_precipitate": g_ppt
+			}
+
+		except Exception as e:
+			return {
+				"status": "error",
+				"message": f"理想溶解度计算失败: {str(e)}",
+				"solubility_mole_fraction": 0.0
+			}
+
 	def _check_alloy_full_stability (self, composition, temperature, tdb_phase, extrapolation_func,
 	                                 extrapolation_model_name, activity_model, ignore_component=None, tolerance=10.0):
 		"""

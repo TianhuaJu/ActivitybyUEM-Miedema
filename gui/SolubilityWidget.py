@@ -550,27 +550,30 @@ class SolubilityWidget(QWidget):
         import numpy as np
         x_values = np.linspace(x_min, x_max, n_points)
         solubility_values = []
+        ideal_solubility_values = []  # 理想溶解度
         results_list = []  # 保存完整结果
-        
+        ideal_results_list = []  # 理想溶解度结果
+
         for i, x_var in enumerate(x_values):
             update_progress(i + 1, n_points)
-            
+
             # --- [Fix Start] 构建混合后的基础合金成分 ---
             # 逻辑: 基础合金 = (1 - x_var) * [固定基础成分] + x_var * [变化组分]
             x_fixed_fraction = 1.0 - x_var
-            
+
             base_composition = {}
-            
+
             # 1. 加入按比例缩小的固定基础成分
             for elem, frac in fixed_base_norm.items():
                 base_composition[elem] = frac * x_fixed_fraction
-            
+
             # 2. 加入变化组分
             # 注意：如果变化组分(如Fe)已经在固定成分中存在，需要累加
             base_composition[variable_comp] = base_composition.get(variable_comp, 0.0) + x_var
             # --- [Fix End] ---
-            
+
             try:
+                # 实际溶解度计算
                 result = self.phase_calc.calculate_solubility(
                         base_alloy_composition=base_composition,
                         solute_element=solute,
@@ -581,9 +584,20 @@ class SolubilityWidget(QWidget):
                         extrapolation_model_name=extrap_model_name,
                         activity_model=activity_model
                 )
-                
+
+                # 理想溶解度计算
+                ideal_result = self.phase_calc.calculate_ideal_solubility(
+                        base_alloy_composition=base_composition,
+                        solute_element=solute,
+                        solution_phase=solution_phase,
+                        precipitating_phase=precipitate,
+                        temperature=temperature
+                )
+
                 results_list.append(result)
-                
+                ideal_results_list.append(ideal_result)
+
+                # 处理实际溶解度
                 if result['status'] == 'success':
                     solubility_values.append(result['solubility_mole_fraction'])
                 elif result['status'] == 'fully_soluble':
@@ -592,10 +606,23 @@ class SolubilityWidget(QWidget):
                     solubility_values.append(0.0)
                 else:
                     solubility_values.append(None)
+
+                # 处理理想溶解度
+                if ideal_result['status'] == 'success':
+                    ideal_solubility_values.append(ideal_result['solubility_mole_fraction'])
+                elif ideal_result['status'] == 'fully_soluble':
+                    ideal_solubility_values.append(1.0)
+                elif ideal_result['status'] == 'insoluble':
+                    ideal_solubility_values.append(0.0)
+                else:
+                    ideal_solubility_values.append(None)
+
             except Exception as e:
                 print(f"Error at X_{variable_comp}={x_var}: {e}")
                 solubility_values.append(None)
+                ideal_solubility_values.append(None)
                 results_list.append({'status': 'error', 'message': str(e)})
+                ideal_results_list.append({'status': 'error', 'message': str(e)})
         
         # 隐藏进度条
         self.progress_bar.setVisible(False)
@@ -714,9 +741,20 @@ class SolubilityWidget(QWidget):
 
         # 过滤有效数据
         valid_data = [(x, s) for x, s in zip(x_values, solubility_values) if s is not None]
-        if valid_data:
-            x_plot, s_plot = zip(*valid_data)
-            self.chart_canvas.axes.plot(x_plot, [s*100 for s in s_plot], 'b-o', linewidth=2, markersize=5)
+        valid_ideal_data = [(x, s) for x, s in zip(x_values, ideal_solubility_values) if s is not None]
+
+        if valid_data or valid_ideal_data:
+            # 绘制实际溶解度曲线
+            if valid_data:
+                x_plot, s_plot = zip(*valid_data)
+                self.chart_canvas.axes.plot(x_plot, [s*100 for s in s_plot], 'b-o', linewidth=2, markersize=5,
+                                            label=f'实际溶解度 ({extrap_model_name})')
+
+            # 绘制理想溶解度曲线
+            if valid_ideal_data:
+                x_ideal_plot, s_ideal_plot = zip(*valid_ideal_data)
+                self.chart_canvas.axes.plot(x_ideal_plot, [s*100 for s in s_ideal_plot], 'r--s', linewidth=2,
+                                            markersize=5, label='理想溶解度 (γ=1)')
 
             # 确定溶液相类型：液相或固相（统一处理所有固相）
             phase_type = "液态" if solution_phase == "LIQUID" else "固态"
@@ -734,6 +772,7 @@ class SolubilityWidget(QWidget):
             self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
 
             self.chart_canvas.axes.grid(True, alpha=0.3)
+            self.chart_canvas.axes.legend(loc='best', fontsize=10)
 
         self.chart_canvas.draw()
     
@@ -787,12 +826,15 @@ class SolubilityWidget(QWidget):
         import numpy as np
         t_values = np.linspace(t_start, t_end, n_points)
         solubility_values = []
+        ideal_solubility_values = []  # 添加理想溶解度数组
         results_list = []
-        
+        ideal_results_list = []  # 添加理想溶解度结果列表
+
         for i, t_curr in enumerate(t_values):
             update_progress(i + 1, n_points)
-            
+
             try:
+                # 实际溶解度计算（考虑活度系数）
                 result = self.phase_calc.calculate_solubility(
                         base_alloy_composition=base_composition,
                         solute_element=solute,
@@ -803,9 +845,20 @@ class SolubilityWidget(QWidget):
                         extrapolation_model_name=extrap_model_name,
                         activity_model=activity_model
                 )
-                
+
+                # 理想溶解度计算（活度系数 = 1）
+                ideal_result = self.phase_calc.calculate_ideal_solubility(
+                        base_alloy_composition=base_composition,
+                        solute_element=solute,
+                        solution_phase=solution_phase,
+                        precipitating_phase=precipitate,
+                        temperature=t_curr
+                )
+
                 results_list.append(result)
-                
+                ideal_results_list.append(ideal_result)
+
+                # 处理实际溶解度结果
                 if result['status'] == 'success':
                     solubility_values.append(result['solubility_mole_fraction'])
                 elif result['status'] == 'fully_soluble':
@@ -814,11 +867,23 @@ class SolubilityWidget(QWidget):
                     solubility_values.append(0.0)
                 else:
                     solubility_values.append(None)
-            
+
+                # 处理理想溶解度结果
+                if ideal_result['status'] == 'success':
+                    ideal_solubility_values.append(ideal_result['solubility_mole_fraction'])
+                elif ideal_result['status'] == 'fully_soluble':
+                    ideal_solubility_values.append(1.0)
+                elif ideal_result['status'] == 'insoluble':
+                    ideal_solubility_values.append(0.0)
+                else:
+                    ideal_solubility_values.append(None)
+
             except Exception as e:
                 print(f"Error at T={t_curr}: {e}")
                 solubility_values.append(None)
+                ideal_solubility_values.append(None)
                 results_list.append({'status': 'error', 'message': str(e)})
+                ideal_results_list.append({'status': 'error', 'message': str(e)})
         
         self.progress_bar.setVisible(False)
         
@@ -840,28 +905,42 @@ class SolubilityWidget(QWidget):
         text_output += f"温度范围: {t_start:.1f} K ~ {t_end:.1f} K\n"
         text_output += f"基体状态: {solution_phase}\n"
         text_output += f"析出相: {precipitate}\n\n"
-        
-        
-        text_output += f"{'温度(K)':<10} {'温度(°C)':<10} {'溶解度(X_' + solute + ')':<20} {'状态详情'}\n"
+
+        text_output += "说明: 实际溶解度采用UEM-Miedema模型（考虑活度系数），理想溶解度假设活度系数=1\n"
         text_output += "-" * 80 + "\n"
-        
+
+        text_output += f"{'温度(K)':<10} {'温度(°C)':<10} {'实际溶解度':<18} {'理想溶解度':<18} {'偏差系数':<12}\n"
+        text_output += "-" * 80 + "\n"
+
         for i, t_curr in enumerate(t_values):
             sol = solubility_values[i]
+            sol_ideal = ideal_solubility_values[i]
             res = results_list[i]
+
+            # 温度信息
+            temp_k_str = f"{t_curr:<10.1f}"
+            temp_c_str = f"{t_curr - 273.15:<10.1f}"
+
+            # 实际溶解度
             if sol is not None:
-                status_str = "OK"
                 sol_str = f"{sol:.6e}"
             else:
                 sol_str = "N/A"
-                # 优先显示 error_detail，如果没有则显示 status
-                error_detail = res.get('error_detail', '')
-                if error_detail:
-                    # 截取过长信息以免换行太乱 (比如前40个字符)
-                    status_str = (error_detail[:35] + '...') if len(error_detail) > 35 else error_detail
-                else:
-                    status_str = res.get('status', 'Unknown')
-            
-            text_output += f"{t_curr:<10.1f} {t_curr - 273.15:<10.1f} {sol_str:<20} {status_str}\n"
+
+            # 理想溶解度
+            if sol_ideal is not None:
+                sol_ideal_str = f"{sol_ideal:.6e}"
+            else:
+                sol_ideal_str = "N/A"
+
+            # 偏差系数（实际/理想）
+            if sol is not None and sol_ideal is not None and sol_ideal > 1e-12:
+                deviation = sol / sol_ideal
+                deviation_str = f"{deviation:.4f}"
+            else:
+                deviation_str = "N/A"
+
+            text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {deviation_str:<12}\n"
             
         self.results_text.append(text_output)
         scrollbar = self.results_text.verticalScrollBar()
@@ -870,24 +949,33 @@ class SolubilityWidget(QWidget):
         # 5. 绘制图表
         self.chart_canvas.axes.clear()
         valid_data = [(t, s) for t, s in zip(t_values, solubility_values) if s is not None]
-        
-        if valid_data:
-            x_plot, s_plot = zip(*valid_data)
-            # 绘制曲线
-            self.chart_canvas.axes.plot(x_plot, [s * 100 for s in s_plot], 'r-o', linewidth=2, markersize=4,
-                                        label='溶解度')
-            
+        valid_ideal_data = [(t, s) for t, s in zip(t_values, ideal_solubility_values) if s is not None]
+
+        if valid_data or valid_ideal_data:
+            # 绘制实际溶解度曲线
+            if valid_data:
+                x_plot, s_plot = zip(*valid_data)
+                self.chart_canvas.axes.plot(x_plot, [s * 100 for s in s_plot], 'b-o', linewidth=2, markersize=4,
+                                            label=f'实际溶解度 ({extrap_model_name})')
+
+            # 绘制理想溶解度曲线
+            if valid_ideal_data:
+                x_ideal_plot, s_ideal_plot = zip(*valid_ideal_data)
+                self.chart_canvas.axes.plot(x_ideal_plot, [s * 100 for s in s_ideal_plot], 'r--s', linewidth=2,
+                                            markersize=4, label='理想溶解度 (γ=1)')
+
             self.chart_canvas.axes.set_xlabel('温度 (K)', fontsize=11)
             self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
-            
+
             phase_type_cn = "液态" if solution_phase == "LIQUID" else "固态"
             title = f'{solute} 在{phase_type_cn} {base_alloy_str} 中的溶解度 vs. 温度'
             self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
             self.chart_canvas.axes.grid(True, alpha=0.3)
-            
+            self.chart_canvas.axes.legend(loc='best', fontsize=10)
+
             # 如果数据跨度大，可以考虑对数坐标，这里默认线性
             # self.chart_canvas.axes.set_yscale('log')
-        
+
         self.chart_canvas.draw()
 
     def clear_history(self):
