@@ -1140,7 +1140,7 @@ class SolubilityWidget(QWidget):
         text_output += "说明: 实际溶解度采用UEM-Miedema模型（考虑活度系数），理想溶解度假设活度系数=1\n"
         text_output += "-" * 80 + "\n"
 
-        text_output += f"{'温度(K)':<10} {'温度(°C)':<10} {'实际溶解度':<18} {'理想溶解度':<18} {'偏差系数':<12}\n"
+        text_output += f"{'温度(K)':<10} {'温度(°C)':<10} {'实际溶解度':<18} {'理想溶解度':<18} {'状态/备注':<25}\n"
         text_output += "-" * 80 + "\n"
 
         for i, t_curr in enumerate(t_values):
@@ -1152,26 +1152,54 @@ class SolubilityWidget(QWidget):
             temp_k_str = f"{t_curr:<10.1f}"
             temp_c_str = f"{t_curr - 273.15:<10.1f}"
 
-            # 实际溶解度
-            if sol is not None:
+            # 判断计算是否成功
+            if sol is not None and res.get('status') == 'success':
+                # 成功计算出溶解度
                 sol_str = f"{sol:.6e}"
+
+                # 理想溶解度
+                if sol_ideal is not None:
+                    sol_ideal_str = f"{sol_ideal:.6e}"
+                    # 计算偏差系数
+                    if sol_ideal > 1e-12:
+                        deviation = sol / sol_ideal
+                        status_str = f"γ偏差={deviation:.4f}"
+                    else:
+                        status_str = "OK"
+                else:
+                    sol_ideal_str = "N/A"
+                    status_str = "理想计算失败"
+
+                text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {status_str:<25}\n"
+
             else:
+                # 计算失败或不稳定
                 sol_str = "N/A"
 
-            # 理想溶解度
-            if sol_ideal is not None:
-                sol_ideal_str = f"{sol_ideal:.6e}"
-            else:
-                sol_ideal_str = "N/A"
+                # 理想溶解度（即使实际失败，理想可能成功）
+                if sol_ideal is not None:
+                    sol_ideal_str = f"{sol_ideal:.6e}"
+                else:
+                    sol_ideal_str = "N/A"
 
-            # 偏差系数（实际/理想）
-            if sol is not None and sol_ideal is not None and sol_ideal > 1e-12:
-                deviation = sol / sol_ideal
-                deviation_str = f"{deviation:.4f}"
-            else:
-                deviation_str = "N/A"
+                # 获取详细错误信息
+                error_detail = res.get('error_detail', '')
+                status = res.get('status', 'Unknown')
 
-            text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {deviation_str:<12}\n"
+                # 优先显示详细错误，否则显示状态
+                if error_detail:
+                    # 截断过长信息
+                    display_msg = (error_detail[:22] + '...') if len(error_detail) > 22 else error_detail
+                elif status == 'base_unstable':
+                    display_msg = "基础合金不稳定"
+                elif status == 'insoluble':
+                    display_msg = "不溶"
+                elif status == 'fully_soluble':
+                    display_msg = "完全互溶"
+                else:
+                    display_msg = status
+
+                text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {display_msg:<25}\n"
             
         self.results_text.append(text_output)
         scrollbar = self.results_text.verticalScrollBar()
