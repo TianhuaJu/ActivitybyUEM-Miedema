@@ -1047,9 +1047,9 @@ class SolubilityWidget(QWidget):
                 solution_phase_simple = self.simplify_phase_name(solution_phase_name)
 
                 text_output += f"{'完全互溶':<16} "
-                text_output += f"{'N/A':<12} "
+                text_output += f"{'无上限':<12} "
                 text_output += f"{solution_phase_simple:<10} "
-                text_output += f"溶解于{solution_phase_simple}\n"
+                text_output += f"可任意添加溶质\n"
             else:
                 # 【修改 2：处理失败情况，显示详细错误】
                 error_detail = result.get('error_detail', '')
