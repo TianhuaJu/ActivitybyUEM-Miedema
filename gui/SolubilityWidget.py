@@ -87,71 +87,11 @@ class SolubilityWorker(QThread):
             'params': self.params
         })
 
-    def _compute_single_concentration_point(self, x_var, index):
-        """计算单个浓度点的溶解度（用于并行计算）"""
-        variable_comp = self.params['variable_comp']
-
-        # 构建基础合金成分
-        x_fixed_fraction = 1.0 - x_var
-        base_composition = {}
-
-        for elem, frac in self.params['fixed_base_norm'].items():
-            base_composition[elem] = frac * x_fixed_fraction
-
-        base_composition[variable_comp] = base_composition.get(variable_comp, 0.0) + x_var
-
-        try:
-            # 实际溶解度计算
-            result = self.phase_calc.calculate_solubility(
-                base_alloy_composition=base_composition,
-                solute_element=self.params['solute'],
-                solution_phase=self.params['tdb_solution_phase'],
-                temperature=self.params['temperature'],
-                extrapolation_func=self.params['extrap_func'],
-                extrapolation_model_name=self.params['extrap_model_name'],
-                activity_model=self.params['activity_model']
-            )
-
-            # 理想溶解度计算
-            ideal_result = self.phase_calc.calculate_ideal_solubility(
-                base_alloy_composition=base_composition,
-                solute_element=self.params['solute'],
-                solution_phase=self.params['tdb_solution_phase'],
-                precipitating_phase="",  # 将被函数内部自动检测覆盖
-                temperature=self.params['temperature']
-            )
-
-            # 处理实际溶解度
-            if result['status'] == 'success':
-                sol_value = result['solubility_mole_fraction']
-            elif result['status'] == 'fully_soluble':
-                sol_value = 1.0
-            elif result['status'] == 'insoluble':
-                sol_value = 0.0
-            else:
-                sol_value = 0.0
-
-            # 处理理想溶解度
-            if ideal_result['status'] == 'success':
-                ideal_sol_value = ideal_result['solubility_mole_fraction']
-            elif ideal_result['status'] == 'fully_soluble':
-                ideal_sol_value = 1.0
-            elif ideal_result['status'] == 'insoluble':
-                ideal_sol_value = 0.0
-            else:
-                ideal_sol_value = 0.0
-
-            return (index, sol_value, ideal_sol_value, result, ideal_result)
-
-        except Exception as e:
-            print(f"Error at X_{variable_comp}={x_var}: {e}")
-            error_result = {'status': 'error', 'message': str(e)}
-            return (index, 0.0, 0.0, error_result, error_result)
-
     def _run_curve_calculation(self):
-        """执行浓度曲线计算（并行优化版本）"""
+        """执行浓度曲线计算（多进程并行优化版本）"""
         import numpy as np
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        from calculations.parallel_solubility import compute_concentration_point
         import os
 
         x_values = np.linspace(
@@ -167,15 +107,31 @@ class SolubilityWorker(QThread):
         results_list = [None] * n_points
         ideal_results_list = [None] * n_points
 
-        # 使用线程池并行计算（最多使用CPU核心数）
+        # 使用进程池并行计算（最多使用CPU核心数）
         max_workers = min(os.cpu_count() or 4, n_points)
         completed_count = 0
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # 准备每个点的参数（必须是可序列化的字典）
+        task_params = []
+        for i, x_val in enumerate(x_values):
+            param_dict = {
+                'x_var': float(x_val),
+                'index': i,
+                'fixed_base_norm': dict(self.params['fixed_base_norm']),
+                'variable_comp': str(self.params['variable_comp']),
+                'solute': str(self.params['solute']),
+                'tdb_solution_phase': str(self.params['tdb_solution_phase']),
+                'temperature': float(self.params['temperature']),
+                'extrap_model_name': str(self.params['extrap_model_name']),
+                'activity_model': str(self.params['activity_model'])
+            }
+            task_params.append(param_dict)
+
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
             # 提交所有任务
             futures = {
-                executor.submit(self._compute_single_concentration_point, x_val, i): i
-                for i, x_val in enumerate(x_values)
+                executor.submit(compute_concentration_point, params): params['index']
+                for params in task_params
             }
 
             # 处理完成的任务
@@ -200,6 +156,8 @@ class SolubilityWorker(QThread):
                 except Exception as e:
                     index = futures[future]
                     print(f"Task failed for index {index}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     solubility_values[index] = 0.0
                     ideal_solubility_values[index] = 0.0
                     results_list[index] = {'status': 'error', 'message': str(e)}
@@ -216,60 +174,11 @@ class SolubilityWorker(QThread):
             'params': self.params
         })
 
-    def _compute_single_temperature_point(self, t_curr, index):
-        """计算单个温度点的溶解度（用于并行计算）"""
-        try:
-            # 实际溶解度计算
-            result = self.phase_calc.calculate_solubility(
-                base_alloy_composition=self.params['base_composition'],
-                solute_element=self.params['solute'],
-                solution_phase=self.params['tdb_solution_phase'],
-                temperature=t_curr,
-                extrapolation_func=self.params['extrap_func'],
-                extrapolation_model_name=self.params['extrap_model_name'],
-                activity_model=self.params['activity_model']
-            )
-
-            # 理想溶解度计算
-            ideal_result = self.phase_calc.calculate_ideal_solubility(
-                base_alloy_composition=self.params['base_composition'],
-                solute_element=self.params['solute'],
-                solution_phase=self.params['tdb_solution_phase'],
-                precipitating_phase="",  # 将被函数内部自动检测覆盖
-                temperature=t_curr
-            )
-
-            # 处理实际溶解度
-            if result['status'] == 'success':
-                sol_value = result['solubility_mole_fraction']
-            elif result['status'] == 'fully_soluble':
-                sol_value = 1.0
-            elif result['status'] == 'insoluble':
-                sol_value = 0.0
-            else:
-                sol_value = 0.0
-
-            # 处理理想溶解度
-            if ideal_result['status'] == 'success':
-                ideal_sol_value = ideal_result['solubility_mole_fraction']
-            elif ideal_result['status'] == 'fully_soluble':
-                ideal_sol_value = 1.0
-            elif ideal_result['status'] == 'insoluble':
-                ideal_sol_value = 0.0
-            else:
-                ideal_sol_value = 0.0
-
-            return (index, sol_value, ideal_sol_value, result, ideal_result)
-
-        except Exception as e:
-            print(f"Error at T={t_curr}: {e}")
-            error_result = {'status': 'error', 'message': str(e)}
-            return (index, 0.0, 0.0, error_result, error_result)
-
     def _run_temperature_calculation(self):
-        """执行温度曲线计算（并行优化版本）"""
+        """执行温度曲线计算（多进程并行优化版本）"""
         import numpy as np
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        from calculations.parallel_solubility import compute_temperature_point
         import os
 
         t_values = np.linspace(
@@ -285,15 +194,29 @@ class SolubilityWorker(QThread):
         results_list = [None] * n_points
         ideal_results_list = [None] * n_points
 
-        # 使用线程池并行计算（最多使用CPU核心数）
+        # 使用进程池并行计算（最多使用CPU核心数）
         max_workers = min(os.cpu_count() or 4, n_points)
         completed_count = 0
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # 准备每个点的参数（必须是可序列化的字典）
+        task_params = []
+        for i, t_val in enumerate(t_values):
+            param_dict = {
+                't_curr': float(t_val),
+                'index': i,
+                'base_composition': dict(self.params['base_composition']),
+                'solute': str(self.params['solute']),
+                'tdb_solution_phase': str(self.params['tdb_solution_phase']),
+                'extrap_model_name': str(self.params['extrap_model_name']),
+                'activity_model': str(self.params['activity_model'])
+            }
+            task_params.append(param_dict)
+
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
             # 提交所有任务
             futures = {
-                executor.submit(self._compute_single_temperature_point, t_val, i): i
-                for i, t_val in enumerate(t_values)
+                executor.submit(compute_temperature_point, params): params['index']
+                for params in task_params
             }
 
             # 处理完成的任务
@@ -318,6 +241,8 @@ class SolubilityWorker(QThread):
                 except Exception as e:
                     index = futures[future]
                     print(f"Task failed for index {index}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     solubility_values[index] = 0.0
                     ideal_solubility_values[index] = 0.0
                     results_list[index] = {'status': 'error', 'message': str(e)}
