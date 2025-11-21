@@ -149,11 +149,12 @@ class SolubilityWorker(QThread):
                 if result['status'] == 'success':
                     solubility_values.append(result['solubility_mole_fraction'])
                 elif result['status'] == 'fully_soluble':
-                    solubility_values.append(1.0)
+                    solubility_values.append(1.0)  # 完全互溶显示为100%
                 elif result['status'] == 'insoluble':
-                    solubility_values.append(0.0)
+                    solubility_values.append(0.0)  # 不溶显示为0
                 else:
-                    solubility_values.append(None)
+                    # 其他失败状态（base_unstable等）也显示为0，避免断点
+                    solubility_values.append(0.0)
 
                 # 处理理想溶解度
                 if ideal_result['status'] == 'success':
@@ -163,12 +164,12 @@ class SolubilityWorker(QThread):
                 elif ideal_result['status'] == 'insoluble':
                     ideal_solubility_values.append(0.0)
                 else:
-                    ideal_solubility_values.append(None)
+                    ideal_solubility_values.append(0.0)
 
             except Exception as e:
                 print(f"Error at X_{variable_comp}={x_var}: {e}")
-                solubility_values.append(None)
-                ideal_solubility_values.append(None)
+                solubility_values.append(0.0)  # 异常情况显示为0
+                ideal_solubility_values.append(0.0)
                 results_list.append({'status': 'error', 'message': str(e)})
                 ideal_results_list.append({'status': 'error', 'message': str(e)})
 
@@ -234,11 +235,12 @@ class SolubilityWorker(QThread):
                 if result['status'] == 'success':
                     solubility_values.append(result['solubility_mole_fraction'])
                 elif result['status'] == 'fully_soluble':
-                    solubility_values.append(1.0)
+                    solubility_values.append(1.0)  # 完全互溶显示为100%
                 elif result['status'] == 'insoluble':
-                    solubility_values.append(0.0)
+                    solubility_values.append(0.0)  # 不溶显示为0
                 else:
-                    solubility_values.append(None)
+                    # 其他失败状态（base_unstable等）也显示为0，避免断点
+                    solubility_values.append(0.0)
 
                 # 处理理想溶解度
                 if ideal_result['status'] == 'success':
@@ -248,12 +250,12 @@ class SolubilityWorker(QThread):
                 elif ideal_result['status'] == 'insoluble':
                     ideal_solubility_values.append(0.0)
                 else:
-                    ideal_solubility_values.append(None)
+                    ideal_solubility_values.append(0.0)
 
             except Exception as e:
                 print(f"Error at T={t_curr}: {e}")
-                solubility_values.append(None)
-                ideal_solubility_values.append(None)
+                solubility_values.append(0.0)  # 异常情况显示为0
+                ideal_solubility_values.append(0.0)
                 results_list.append({'status': 'error', 'message': str(e)})
                 ideal_results_list.append({'status': 'error', 'message': str(e)})
 
@@ -1097,22 +1099,15 @@ class SolubilityWidget(QWidget):
         # 绘制曲线
         self.chart_canvas.axes.clear()
 
-        # 过滤有效数据
-        valid_data = [(x, s) for x, s in zip(x_values, solubility_values) if s is not None]
-        valid_ideal_data = [(x, s) for x, s in zip(x_values, ideal_solubility_values) if s is not None]
-
-        if valid_data or valid_ideal_data:
+        # 直接使用所有数据，不溶解=0%，完全互溶=100%
+        if len(x_values) > 0:
             # 绘制实际溶解度曲线
-            if valid_data:
-                x_plot, s_plot = zip(*valid_data)
-                self.chart_canvas.axes.plot(x_plot, [s*100 for s in s_plot], 'b-o', linewidth=2, markersize=5,
-                                            label=f'实际溶解度 ({extrap_model_name})')
+            self.chart_canvas.axes.plot(x_values, [s*100 for s in solubility_values], 'b-o', linewidth=2, markersize=5,
+                                        label=f'实际溶解度 ({extrap_model_name})')
 
             # 绘制理想溶解度曲线
-            if valid_ideal_data:
-                x_ideal_plot, s_ideal_plot = zip(*valid_ideal_data)
-                self.chart_canvas.axes.plot(x_ideal_plot, [s*100 for s in s_ideal_plot], 'r--s', linewidth=2,
-                                            markersize=5, label='理想溶解度 (γ=1)')
+            self.chart_canvas.axes.plot(x_values, [s*100 for s in ideal_solubility_values], 'r--s', linewidth=2,
+                                        markersize=5, label='理想溶解度 (γ=1)')
 
             # 检测并标注相转变
             phase_transitions = []
@@ -1354,21 +1349,16 @@ class SolubilityWidget(QWidget):
         
         # 5. 绘制图表
         self.chart_canvas.axes.clear()
-        valid_data = [(t, s) for t, s in zip(t_values, solubility_values) if s is not None]
-        valid_ideal_data = [(t, s) for t, s in zip(t_values, ideal_solubility_values) if s is not None]
 
-        if valid_data or valid_ideal_data:
+        # 直接使用所有数据，不溶解=0%，完全互溶=100%
+        if len(t_values) > 0:
             # 绘制实际溶解度曲线
-            if valid_data:
-                x_plot, s_plot = zip(*valid_data)
-                self.chart_canvas.axes.plot(x_plot, [s * 100 for s in s_plot], 'b-o', linewidth=2, markersize=4,
-                                            label=f'实际溶解度 ({extrap_model_name})')
+            self.chart_canvas.axes.plot(t_values, [s * 100 for s in solubility_values], 'b-o', linewidth=2, markersize=4,
+                                        label=f'实际溶解度 ({extrap_model_name})')
 
             # 绘制理想溶解度曲线
-            if valid_ideal_data:
-                x_ideal_plot, s_ideal_plot = zip(*valid_ideal_data)
-                self.chart_canvas.axes.plot(x_ideal_plot, [s * 100 for s in s_ideal_plot], 'r--s', linewidth=2,
-                                            markersize=4, label='理想溶解度 (γ=1)')
+            self.chart_canvas.axes.plot(t_values, [s * 100 for s in ideal_solubility_values], 'r--s', linewidth=2,
+                                        markersize=4, label='理想溶解度 (γ=1)')
 
             # 检测并标注相转变
             phase_transitions = []
