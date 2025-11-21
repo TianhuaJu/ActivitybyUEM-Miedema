@@ -289,6 +289,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			"T": temperature,
 			"solute": solute,
 			"precipitating_phase": precipitating_phase,
+			"solution_phase_name": tdb_solution_phase,  # 溶质实际溶解的相
 			"phase_state": phase_desc,
 			"solvent_element": solvent,
 			"base_stability_at_zero_solute": "stable",  # 已在前面的检查保证
@@ -406,6 +407,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 				"T": temperature,
 				"solute": solute,
 				"precipitating_phase": precipitating_phase,
+				"solution_phase_name": tdb_solution_phase,  # 溶质实际溶解的相
 				"phase_state": phase_desc,
 				"solvent_element": solvent,
 				"solubility_mole_fraction": float(x_ideal),
