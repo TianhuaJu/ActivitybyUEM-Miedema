@@ -1124,6 +1124,25 @@ class SolubilityWidget(QWidget):
                         x_transition = (x_values[i] + x_values[i+1]) / 2
                         phase_transitions.append((x_transition, phase1, phase2))
 
+            # 检测溶解相区域（连续相同的相）
+            phase_regions = []
+            current_phase = None
+            region_start = None
+            for i, result in enumerate(results_list):
+                if result.get('status') == 'success':
+                    phase = result.get('solution_phase_name', '')
+                    if phase:
+                        if phase != current_phase:
+                            # 结束前一个区域
+                            if current_phase is not None and region_start is not None:
+                                phase_regions.append((region_start, x_values[i-1], current_phase))
+                            # 开始新区域
+                            current_phase = phase
+                            region_start = x_values[i]
+            # 添加最后一个区域
+            if current_phase is not None and region_start is not None:
+                phase_regions.append((region_start, x_values[-1], current_phase))
+
             # 在图表中标注相转变
             if phase_transitions:
                 y_min, y_max = self.chart_canvas.axes.get_ylim()
@@ -1137,6 +1156,19 @@ class SolubilityWidget(QWidget):
                                                f'{phase1_simple}→{phase2_simple}',
                                                rotation=90, verticalalignment='top',
                                                fontsize=9, color='green', fontweight='bold')
+
+            # 标注相区域
+            if phase_regions:
+                y_min, y_max = self.chart_canvas.axes.get_ylim()
+                for x_start, x_end, phase in phase_regions:
+                    phase_simple = self.simplify_phase_name(phase)
+                    x_center = (x_start + x_end) / 2
+                    # 在图表顶部标注相区域
+                    self.chart_canvas.axes.text(x_center, y_max * 0.85,
+                                               f'{phase_simple}相区',
+                                               horizontalalignment='center',
+                                               fontsize=10, color='blue', fontweight='bold',
+                                               bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.3))
 
             # 构建更清晰的标签
             # X轴：变化组分的摩尔分数
@@ -1376,6 +1408,25 @@ class SolubilityWidget(QWidget):
                         t_transition = (t_values[i] + t_values[i+1]) / 2
                         phase_transitions.append((t_transition, phase1, phase2))
 
+            # 检测溶解相区域（连续相同的相）
+            phase_regions = []
+            current_phase = None
+            region_start = None
+            for i, result in enumerate(results_list):
+                if result.get('status') == 'success':
+                    phase = result.get('solution_phase_name', '')
+                    if phase:
+                        if phase != current_phase:
+                            # 结束前一个区域
+                            if current_phase is not None and region_start is not None:
+                                phase_regions.append((region_start, t_values[i-1], current_phase))
+                            # 开始新区域
+                            current_phase = phase
+                            region_start = t_values[i]
+            # 添加最后一个区域
+            if current_phase is not None and region_start is not None:
+                phase_regions.append((region_start, t_values[-1], current_phase))
+
             # 在图表中标注相转变
             if phase_transitions:
                 y_min, y_max = self.chart_canvas.axes.get_ylim()
@@ -1389,6 +1440,19 @@ class SolubilityWidget(QWidget):
                                                f'{phase1_simple}→{phase2_simple}',
                                                rotation=90, verticalalignment='top',
                                                fontsize=9, color='green', fontweight='bold')
+
+            # 标注相区域
+            if phase_regions:
+                y_min, y_max = self.chart_canvas.axes.get_ylim()
+                for t_start, t_end, phase in phase_regions:
+                    phase_simple = self.simplify_phase_name(phase)
+                    t_center = (t_start + t_end) / 2
+                    # 在图表顶部标注相区域
+                    self.chart_canvas.axes.text(t_center, y_max * 0.85,
+                                               f'{phase_simple}相区',
+                                               horizontalalignment='center',
+                                               fontsize=10, color='blue', fontweight='bold',
+                                               bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.3))
 
             self.chart_canvas.axes.set_xlabel('温度 (K)', fontsize=11)
             self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
