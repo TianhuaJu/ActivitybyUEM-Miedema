@@ -8,10 +8,8 @@ Solubility Widget
 - 绘制溶解度随基础合金成分变化的曲线
 - 支持液相和固相溶解度计算
 
-作者: Claude
-日期: 2025-11-11
 """
-
+import textwrap
 import sys
 import os
 from datetime import datetime
@@ -971,10 +969,11 @@ class SolubilityWidget(QWidget):
                     display_msg = "不溶"
                 else:
                     display_msg = status
-               
                 
+                indent_prefix = " " * 41
+                formatted_msg = textwrap.fill(display_msg, width=50, subsequent_indent=indent_prefix)
                 
-                text_output += f"{'N/A':<16} {'N/A':<12} {display_msg}\n"
+                text_output += f"{'N/A':<16} {'N/A':<12} {formatted_msg}\n"
         
         text_output += "=" * 70 + "\n"
         # 如果存在高溶解度警告，添加额外说明
@@ -1203,8 +1202,11 @@ class SolubilityWidget(QWidget):
                     display_msg = "完全互溶"
                 else:
                     display_msg = status
+                
+                indent_prefix = " " * 60
+                formatted_msg = textwrap.fill(display_msg, width=60, subsequent_indent=indent_prefix)
 
-                text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {display_msg:<25}\n"
+                text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {formatted_msg:<25}\n"
             
         self.results_text.append(text_output)
         scrollbar = self.results_text.verticalScrollBar()
