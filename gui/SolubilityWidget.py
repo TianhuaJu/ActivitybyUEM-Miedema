@@ -138,7 +138,7 @@ class SolubilityWorker(QThread):
                     base_alloy_composition=base_composition,
                     solute_element=self.params['solute'],
                     solution_phase=self.params['tdb_solution_phase'],
-                    
+                    precipitating_phase="",  # 将被函数内部自动检测覆盖
                     temperature=self.params['temperature']
                 )
 
@@ -223,7 +223,7 @@ class SolubilityWorker(QThread):
                     base_alloy_composition=self.params['base_composition'],
                     solute_element=self.params['solute'],
                     solution_phase=self.params['tdb_solution_phase'],
-                    precipitating_phase=self.params['precipitate'],
+                    precipitating_phase="",  # 将被函数内部自动检测覆盖
                     temperature=t_curr
                 )
 
