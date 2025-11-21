@@ -9,7 +9,6 @@ Solubility Widget
 - 支持液相和固相溶解度计算
 
 """
-import textwrap
 import sys
 import os
 from datetime import datetime
@@ -327,6 +326,24 @@ class SolubilityWidget(QWidget):
 
         # 没有匹配规则，返回原名称
         return phase_name
+
+    @staticmethod
+    def truncate_text(text, max_length=30):
+        """
+        截断文本，超过最大长度时添加省略号
+
+        Args:
+            text: 要截断的文本
+            max_length: 最大长度（默认30字符）
+
+        Returns:
+            截断后的文本
+        """
+        if not text:
+            return text
+        if len(text) <= max_length:
+            return text
+        return text[:max_length-3] + "..."
 
     @staticmethod
     def format_alloy_composition(composition_dict):
@@ -1051,7 +1068,8 @@ class SolubilityWidget(QWidget):
                 text_output += f"{'完全互溶':<16} "
                 text_output += f"{'无上限':<12} "
                 text_output += f"{solution_phase_simple:<10} "
-                text_output += f"可任意添加溶质\n"
+                status_msg = self.truncate_text("可任意添加溶质", max_length=35)
+                text_output += f"{status_msg}\n"
             else:
                 # 【修改 2：处理失败情况，显示详细错误】
                 error_detail = result.get('error_detail', '')
@@ -1069,10 +1087,10 @@ class SolubilityWidget(QWidget):
                 else:
                     display_msg = f"未知状态: {status}"
 
-                indent_prefix = " " * 51
-                formatted_msg = textwrap.fill(display_msg, width=40, subsequent_indent=indent_prefix)
+                # 截断长消息，保持表格紧凑
+                display_msg = self.truncate_text(display_msg, max_length=35)
 
-                text_output += f"{'0':<16} {'N/A':<12} {'N/A':<10} {formatted_msg}\n"
+                text_output += f"{'0':<16} {'N/A':<12} {'N/A':<10} {display_msg}\n"
         
         text_output += "=" * 70 + "\n"
         # 如果存在高溶解度警告，添加额外说明
@@ -1347,7 +1365,9 @@ class SolubilityWidget(QWidget):
                 else:
                     sol_ideal_str = "N/A"
 
-                text_output += f"{temp_k_str} {temp_c_str} {'完全互溶':<18} {sol_ideal_str:<18} {solution_phase_simple:<10} 溶解于{solution_phase_simple:<20}\n"
+                # 截断状态消息
+                status_msg = self.truncate_text(f"溶解于{solution_phase_simple}", max_length=18)
+                text_output += f"{temp_k_str} {temp_c_str} {'完全互溶':<18} {sol_ideal_str:<18} {solution_phase_simple:<10} {status_msg}\n"
 
             else:
                 # 计算失败或不稳定，在曲线上显示为0
@@ -1375,10 +1395,10 @@ class SolubilityWidget(QWidget):
                 else:
                     display_msg = f"未知状态: {status}"
 
-                indent_prefix = " " * 69
-                formatted_msg = textwrap.fill(display_msg, width=50, subsequent_indent=indent_prefix)
+                # 截断长消息，保持表格紧凑
+                display_msg = self.truncate_text(display_msg, max_length=18)
 
-                text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {'N/A':<10} {formatted_msg:<20}\n"
+                text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {'N/A':<10} {display_msg}\n"
             
         self.results_text.append(text_output)
         scrollbar = self.results_text.verticalScrollBar()
