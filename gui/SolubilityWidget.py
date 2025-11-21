@@ -1041,6 +1041,15 @@ class SolubilityWidget(QWidget):
                     text_output += "OK"  # 成功且无警告显示 OK
 
                 text_output += "\n"
+            elif sol is not None and result.get('status') == 'fully_soluble':
+                # 完全互溶的情况
+                solution_phase_name = result.get('solution_phase_name', 'Unknown')
+                solution_phase_simple = self.simplify_phase_name(solution_phase_name)
+
+                text_output += f"{'完全互溶':<16} "
+                text_output += f"{'N/A':<12} "
+                text_output += f"{solution_phase_simple:<10} "
+                text_output += f"溶解于{solution_phase_simple}\n"
             else:
                 # 【修改 2：处理失败情况，显示详细错误】
                 error_detail = result.get('error_detail', '')
@@ -1296,6 +1305,19 @@ class SolubilityWidget(QWidget):
 
                 text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {solution_phase_simple:<10} {status_str:<20}\n"
 
+            elif sol is not None and res.get('status') == 'fully_soluble':
+                # 完全互溶的情况
+                solution_phase_name = res.get('solution_phase_name', 'Unknown')
+                solution_phase_simple = self.simplify_phase_name(solution_phase_name)
+
+                # 理想溶解度
+                if sol_ideal is not None:
+                    sol_ideal_str = f"{sol_ideal:.6e}"
+                else:
+                    sol_ideal_str = "N/A"
+
+                text_output += f"{temp_k_str} {temp_c_str} {'完全互溶':<18} {sol_ideal_str:<18} {solution_phase_simple:<10} 溶解于{solution_phase_simple:<20}\n"
+
             else:
                 # 计算失败或不稳定
                 sol_str = "N/A"
@@ -1318,8 +1340,6 @@ class SolubilityWidget(QWidget):
                     display_msg = "基础合金不稳定"
                 elif status == 'insoluble':
                     display_msg = "不溶"
-                elif status == 'fully_soluble':
-                    display_msg = "完全互溶"
                 else:
                     display_msg = status
 
