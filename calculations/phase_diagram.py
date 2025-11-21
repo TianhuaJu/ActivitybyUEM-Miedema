@@ -63,12 +63,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 		# 配置：定义各元素的估算策略 (全部采用 fixed_diff)
 		# ==================================================
 		stability_config = {
-			# --- 碳 C ---
-			'C': {
-				'stable_phase': 'GRAPHITE',  # 稳定态
-				'proxy_phase': None,  # 禁用代理相 (不使用金刚石)
-				'fixed_diff': 180000.0
-			},
+			
 			
 			# --- 氮 N ---
 			'N': {
@@ -162,7 +157,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			tdb_solution_phase = 'LIQUID'
 			phase_desc = "液相"
 		else:
-			ref = self.tdb_parser.get_reference_phase(solvent)
+			ref = self.tdb_parser.get_stable_phase(solvent,temperature)#选择计算温度下的稳定相结构为参考态
 			tdb_solution_phase = ref if ref else 'BCC_A2'
 			phase_desc = f"固相 ({tdb_solution_phase})"
 		
