@@ -1057,18 +1057,22 @@ class SolubilityWidget(QWidget):
                 error_detail = result.get('error_detail', '')
                 status = result.get('status', 'Unknown')
 
-                # 如果有详细错误信息，优先显示；否则显示状态码
+                # 根据不同状态显示清晰的说明
                 if error_detail:
                     display_msg = error_detail
+                elif status == 'base_unstable':
+                    display_msg = "基础合金不稳定，无法计算溶解度"
                 elif status == 'insoluble':
-                    display_msg = "不溶"
+                    display_msg = "溶质不溶"
+                elif status == 'error':
+                    display_msg = "计算错误"
                 else:
-                    display_msg = status
+                    display_msg = f"未知状态: {status}"
 
                 indent_prefix = " " * 51
                 formatted_msg = textwrap.fill(display_msg, width=40, subsequent_indent=indent_prefix)
 
-                text_output += f"{'N/A':<16} {'N/A':<12} {'N/A':<10} {formatted_msg}\n"
+                text_output += f"{'0':<16} {'N/A':<12} {'N/A':<10} {formatted_msg}\n"
         
         text_output += "=" * 70 + "\n"
         # 如果存在高溶解度警告，添加额外说明
@@ -1314,29 +1318,30 @@ class SolubilityWidget(QWidget):
                 text_output += f"{temp_k_str} {temp_c_str} {'完全互溶':<18} {sol_ideal_str:<18} {solution_phase_simple:<10} 溶解于{solution_phase_simple:<20}\n"
 
             else:
-                # 计算失败或不稳定
-                sol_str = "N/A"
+                # 计算失败或不稳定，在曲线上显示为0
+                sol_str = "0"
 
                 # 理想溶解度（即使实际失败，理想可能成功）
-                if sol_ideal is not None:
+                if sol_ideal is not None and sol_ideal > 0:
                     sol_ideal_str = f"{sol_ideal:.6e}"
                 else:
-                    sol_ideal_str = "N/A"
+                    sol_ideal_str = "0"
 
                 # 获取详细错误信息
                 error_detail = res.get('error_detail', '')
                 status = res.get('status', 'Unknown')
 
-                # 优先显示详细错误，否则显示状态
+                # 根据不同状态显示清晰的说明
                 if error_detail:
-                    # 截断过长信息
                     display_msg = error_detail
                 elif status == 'base_unstable':
-                    display_msg = "基础合金不稳定"
+                    display_msg = "基础合金不稳定，无法计算溶解度"
                 elif status == 'insoluble':
-                    display_msg = "不溶"
+                    display_msg = "溶质不溶"
+                elif status == 'error':
+                    display_msg = "计算错误"
                 else:
-                    display_msg = status
+                    display_msg = f"未知状态: {status}"
 
                 indent_prefix = " " * 69
                 formatted_msg = textwrap.fill(display_msg, width=50, subsequent_indent=indent_prefix)
