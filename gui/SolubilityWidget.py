@@ -76,7 +76,7 @@ class SolubilityWorker(QThread):
             base_alloy_composition=self.params['base_composition'],
             solute_element=self.params['solute'],
             solution_phase=self.params['tdb_solution_phase'],
-            precipitating_phase=self.params['precipitate'],
+            
             temperature=self.params['temperature'],
             extrapolation_func=self.params['extrap_func'],
             extrapolation_model_name=self.params['extrap_model_name'],
@@ -128,7 +128,7 @@ class SolubilityWorker(QThread):
                     base_alloy_composition=base_composition,
                     solute_element=self.params['solute'],
                     solution_phase=self.params['tdb_solution_phase'],
-                    precipitating_phase=self.params['precipitate'],
+                    
                     temperature=self.params['temperature'],
                     extrapolation_func=self.params['extrap_func'],
                     extrapolation_model_name=self.params['extrap_model_name'],
@@ -140,7 +140,7 @@ class SolubilityWorker(QThread):
                     base_alloy_composition=base_composition,
                     solute_element=self.params['solute'],
                     solution_phase=self.params['tdb_solution_phase'],
-                    precipitating_phase=self.params['precipitate'],
+                    
                     temperature=self.params['temperature']
                 )
 
@@ -213,7 +213,7 @@ class SolubilityWorker(QThread):
                     base_alloy_composition=self.params['base_composition'],
                     solute_element=self.params['solute'],
                     solution_phase=self.params['tdb_solution_phase'],
-                    precipitating_phase=self.params['precipitate'],
+                    
                     temperature=t_curr,
                     extrapolation_func=self.params['extrap_func'],
                     extrapolation_model_name=self.params['extrap_model_name'],
@@ -415,7 +415,7 @@ class SolubilityWidget(QWidget):
         row = 0
         
         # ==========================================
-        # 第一部分：基础合金定义 (放在最上方)
+        # 第一部分：基础合金定义
         # ==========================================
         if self.mode_single.isChecked() or self.mode_temp_curve.isChecked():
             self.input_layout.addWidget(QLabel("基础合金:"), row, 0, Qt.AlignRight)
@@ -456,14 +456,6 @@ class SolubilityWidget(QWidget):
         self.input_layout.addWidget(self.solute_input, row, 1)
         row += 1
         
-        self.input_layout.addWidget(QLabel("析出相:"), row, 0, Qt.AlignRight)
-        self.precipitate_combo = QComboBox()
-        self.precipitate_combo.addItems([
-            "GRAPHITE", "BCC_A2", "FCC_A1", "HCP_A3", "DIAMOND_A4",
-            "LIQUID", "SER", "其他..."
-        ])
-        self.input_layout.addWidget(self.precipitate_combo, row, 1)
-        row += 1
         
         # ==========================================
         # 第四部分：模式特定的参数 (温度、范围、采样点)
@@ -635,7 +627,7 @@ class SolubilityWidget(QWidget):
         """计算单点溶解度（多线程版本）"""
         # 获取输入参数
         solute = self.solute_input.text().strip().upper()
-        precipitate = self.precipitate_combo.currentText()
+        
         solution_phase = self._extract_phase_name(self.solution_phase_combo.currentText())
         temperature = float(self.temperature_input.text())
         base_alloy_str = self.base_alloy_input.text().strip()
@@ -671,7 +663,7 @@ class SolubilityWidget(QWidget):
             'base_composition': base_composition,
             'solute': solute,
             'tdb_solution_phase': solution_phase,
-            'precipitate': precipitate,
+            
             'temperature': temperature,
             'extrap_func': extrap_func,
             'extrap_model_name': extrap_model_name,
@@ -698,7 +690,7 @@ class SolubilityWidget(QWidget):
         params = data['params']
         base_alloy_str = params['base_alloy_str']
         solute = params['solute']
-        precipitate = params['precipitate']
+        detected_precipitate = result.get('precipitating_phase', 'Auto-Detect')
         temperature = params['temperature']
         solution_phase = params['tdb_solution_phase']
         base_composition = params['base_composition']
@@ -723,7 +715,7 @@ class SolubilityWidget(QWidget):
             "(⚠️ 不稳定)" if base_stability == "Unstable" else "(✅ 稳定)") + "\n"
         text_output += f"当前相状态: {phase_state_str}\n"  # 明确显示液相/固相
         text_output += f"溶质元素: {solute}\n"
-        text_output += f"析出相: {precipitate}\n"
+        text_output += f"析出相: {detected_precipitate}\n"
         text_output += f"温度: {temperature:.2f} K\n"
         
         # 显示警告（特别是基础合金不稳定的警告）
@@ -813,7 +805,7 @@ class SolubilityWidget(QWidget):
         """计算溶解度随浓度变化的曲线（多线程版本）"""
         # 获取输入参数
         solute = self.solute_input.text().strip().upper()
-        precipitate = self.precipitate_combo.currentText()
+       
         solution_phase = self._extract_phase_name(self.solution_phase_combo.currentText())
         temperature = float(self.temperature_input.text())
 
@@ -857,7 +849,7 @@ class SolubilityWidget(QWidget):
         params = {
             'solute': solute,
             'tdb_solution_phase': solution_phase,
-            'precipitate': precipitate,
+            
             'temperature': temperature,
             'extrap_func': extrap_func,
             'extrap_model_name': extrap_model_name,
@@ -891,10 +883,12 @@ class SolubilityWidget(QWidget):
         results_list = data['results_list']
         ideal_results_list = data['ideal_results_list']
         params = data['params']
+        first_valid = next((r for r in results_list if r.get('status') == 'success'), {})
+        detected_precipitate = first_valid.get('precipitating_phase', 'Auto-Detect')
 
         solute = params['solute']
         solution_phase = params['tdb_solution_phase']
-        precipitate = params['precipitate']
+        
         temperature = params['temperature']
         extrap_model_name = params['extrap_model_name']
         activity_model = params['activity_model']
@@ -907,6 +901,7 @@ class SolubilityWidget(QWidget):
         # 增加计算批次计数，结果文本输出
         self.calculation_count += 1
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
 
         # 显示结果
         text_output = "\n" + "=" * 70 + "\n"
@@ -917,7 +912,7 @@ class SolubilityWidget(QWidget):
         text_output += f"固定基础: {fixed_base_str}\n"
         text_output += f"变化组分: {variable_comp} ({x_min:.3f} ~ {x_max:.3f})\n"
         text_output += f"溶液相: {solution_phase}\n"
-        text_output += f"析出相: {precipitate}\n"
+        text_output += f"析出相: {detected_precipitate}\n"
         text_output += f"温度: {temperature:.2f} K ({temperature - 273.15:.2f} °C)\n"
         text_output += f"外推模型: {extrap_model_name}\n"
         text_output += f"活度模型: {activity_model}\n"
@@ -937,7 +932,7 @@ class SolubilityWidget(QWidget):
         text_output += f"{'X_' + variable_comp:<10} "
         text_output += f"{'X_' + solute + '(溶解度)':<16} "
         text_output += f"{'相对添加量':<12} "
-        text_output += f"{'状态/详情':<35}\n"  # 加宽一点以容纳错误信息
+        text_output += f"{'状态/详情':<50}\n"  # 加宽一点以容纳错误信息
         text_output += "-" * 80 + "\n"
         
         for i, x_var in enumerate(x_values):
@@ -976,10 +971,8 @@ class SolubilityWidget(QWidget):
                     display_msg = "不溶"
                 else:
                     display_msg = status
+               
                 
-                # 截断过长信息
-                if len(display_msg) > 33:
-                    display_msg = display_msg[:30] + "..."
                 
                 text_output += f"{'N/A':<16} {'N/A':<12} {display_msg}\n"
         
@@ -1053,7 +1046,7 @@ class SolubilityWidget(QWidget):
         """计算溶解度随温度变化的曲线（多线程版本）"""
         # 1. 获取参数
         solute = self.solute_input.text().strip().upper()
-        precipitate = self.precipitate_combo.currentText()
+        
         solution_phase = self._extract_phase_name(self.solution_phase_combo.currentText())
         base_alloy_str = self.base_alloy_input.text().strip()
 
@@ -1089,7 +1082,7 @@ class SolubilityWidget(QWidget):
             'base_composition': base_composition,
             'solute': solute,
             'tdb_solution_phase': solution_phase,
-            'precipitate': precipitate,
+            
             'extrap_func': extrap_func,
             'extrap_model_name': extrap_model_name,
             'activity_model': activity_model,
@@ -1123,7 +1116,7 @@ class SolubilityWidget(QWidget):
 
         solute = params['solute']
         solution_phase = params['tdb_solution_phase']
-        precipitate = params['precipitate']
+        
         extrap_model_name = params['extrap_model_name']
         base_alloy_str = params['base_alloy_str']
         t_start = params['t_start']
@@ -1136,6 +1129,7 @@ class SolubilityWidget(QWidget):
         # 提取第一点的溶剂信息用于显示
         first_valid = next((r for r in results_list if r.get('status') == 'success'), {})
         detected_solvent = first_valid.get('solvent_element', 'Unknown')
+        detected_precipitate = first_valid.get('precipitating_phase', 'Auto-Detect')
         
         text_output = "\n" + "=" * 70 + "\n"
         text_output += f"【计算批次 #{self.calculation_count}】 {timestamp}\n"
@@ -1146,7 +1140,7 @@ class SolubilityWidget(QWidget):
         text_output += f"  -> 自动识别溶剂: {detected_solvent}\n"
         text_output += f"温度范围: {t_start:.1f} K ~ {t_end:.1f} K\n"
         text_output += f"基体状态: {solution_phase}\n"
-        text_output += f"析出相: {precipitate}\n\n"
+        text_output += f"析出相: {detected_precipitate}\n\n"
 
         text_output += "说明: 实际溶解度采用UEM-Miedema模型（考虑活度系数），理想溶解度假设活度系数=1\n"
         text_output += "-" * 80 + "\n"
@@ -1200,7 +1194,7 @@ class SolubilityWidget(QWidget):
                 # 优先显示详细错误，否则显示状态
                 if error_detail:
                     # 截断过长信息
-                    display_msg = (error_detail[:22] + '...') if len(error_detail) > 22 else error_detail
+                    display_msg =  error_detail
                 elif status == 'base_unstable':
                     display_msg = "基础合金不稳定"
                 elif status == 'insoluble':

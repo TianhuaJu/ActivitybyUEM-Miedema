@@ -51,7 +51,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 		采用“固定能量差 (Fixed Diff)”模式，将非金属/气体元素转变为金属晶格。
 
 		设定值 (kJ/g-atom -> J/mol):
-		  C:  100 kJ -> 100,000 J
+		 
 		  N:  240 kJ -> 240,000 J
 		  Si: 33 kJ  -> 33,000 J
 		  Ge: 25 kJ  -> 25,000 J
@@ -132,7 +132,6 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 	                          base_alloy_composition: Dict[str, float],
 	                          solute_element: str,
 	                          solution_phase: str,  # 'LIQUID' 或 'SOLID'
-	                          precipitating_phase: str,  # 如 'GRAPHITE'
 	                          temperature: float,
 	                          extrapolation_func: extrap_func,
 	                          extrapolation_model_name: str = 'UEM1',
@@ -142,7 +141,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 		
 		# ==================== 1. 预处理 ====================
 		solute = solute_element.upper()
-		precipitating_phase = self.tdb_parser.get_stable_phase(solute,temperature)#沉淀相为温度T下的稳定相
+		precipitating_phase = self.tdb_parser.get_stable_phase(solute,temperature) #沉淀相为计算温度T下的稳定相
 		
 		total_base = sum(base_alloy_composition.values())
 		if total_base <= 0:
@@ -157,11 +156,11 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			tdb_solution_phase = 'LIQUID'
 			phase_desc = "液相"
 		else:
-			ref = self.tdb_parser.get_stable_phase(solvent,temperature)#选择计算温度下的稳定相结构为参考态
+			ref = self.tdb_parser.get_stable_phase(solvent,temperature) #选择计算温度下的稳定相结构为参考态
 			tdb_solution_phase = ref if ref else 'BCC_A2'
 			phase_desc = f"固相 ({tdb_solution_phase})"
 		
-		# ==================== 2. 检查基础合金本身是否稳定 ====================
+		# ==================== 2. 检查基础合金稳定性 & 自动搜寻稳定相====================
 		stable, issues = self._check_alloy_full_stability(
 				composition=base_comp,
 				temperature=temperature,
@@ -171,17 +170,46 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 				activity_model=activity_model
 		)
 		if not stable:
-			error_msg = "; ".join(issues) if issues else "未知稳定性问题"
-			return {
-				"status": "base_unstable",
-				"solubility_mole_fraction": 0.0,
-				"T": temperature,
-				"solute": solute,
-				"phase_state": phase_desc,
-				"message": "基础合金本身热力学不稳定，已有组分倾向析出，溶解度强制为0",
-				"error_detail": error_msg,
-				"stability_issues": issues
-			}
+			#  检查剩余相的稳定性，如果都不稳定，则报告基础合金相不稳定；如果稳定，则找出最稳定的那个相作为tdb_solution_phase
+			all_phases = self.tdb_parser.get_element_phases(solvent)
+			candidate_phases = [p for p in all_phases if p != tdb_solution_phase and p != 'GAS']
+			found_stable_phase = False
+			combined_issues = list(issues)  # 收集所有尝试过的错误信息
+			
+			for phase in candidate_phases:
+				s_try, i_try = self._check_alloy_full_stability(
+						composition=base_comp,
+						temperature=temperature,
+						tdb_phase=phase,
+						extrapolation_func=extrapolation_func,
+						extrapolation_model_name=extrapolation_model_name,
+						activity_model=activity_model
+				)
+				
+				if s_try:
+					# 找到了稳定的相！更新基体信息
+					tdb_solution_phase = phase
+					phase_desc = "液相" if phase == 'LIQUID' else f"固相 ({phase})"
+					stable = True
+					found_stable_phase = True
+					issues = []  # 清空之前的错误信息
+					break  # 停止搜索
+				else:
+					combined_issues.extend(i_try)
+			
+			# 如果遍历完还是不稳定，则返回错误
+			if not found_stable_phase:
+				error_msg = f"基础合金在所有候选相中均不稳定。详细原因: {'; '.join(combined_issues[:3])}..."
+				return {
+					"status": "unstable",
+					"solubility_mole_fraction": None,
+					"T": temperature,
+					"solute": solute,
+					"phase_state": "Unknown",
+					"message": "基础合金不稳定，无法找到热力学稳定相",
+					"error_detail": error_msg,
+					"warnings": combined_issues
+				}
 		
 		# ==================== 3. 获取析出相纯态能量 ====================
 		g_ppt = self.tdb_parser.get_gibbs_energy(solute, precipitating_phase, temperature)
