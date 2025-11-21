@@ -1010,38 +1010,42 @@ class SolubilityWidget(QWidget):
         text_output += f"{'X_' + variable_comp:<10} "
         text_output += f"{'X_' + solute + '(溶解度)':<16} "
         text_output += f"{'相对添加量':<12} "
-        text_output += f"{'状态/详情':<50}\n"  # 加宽一点以容纳错误信息
-        text_output += "-" * 80 + "\n"
-        
+        text_output += f"{'溶解相':<10} "
+        text_output += f"{'状态/详情':<40}\n"  # 加宽一点以容纳错误信息
+        text_output += "-" * 90 + "\n"
+
         for i, x_var in enumerate(x_values):
             result = results_list[i]
             sol = solubility_values[i]
-            
+
             text_output += f"{x_var:<10.4f} "
-            
+
             if sol is not None and result.get('status') == 'success':
                 rel_add = result.get('relative_addition', 0)
                 warnings = result.get('warnings', [])
-                
+                solution_phase_name = result.get('solution_phase_name', 'Unknown')
+                solution_phase_simple = self.simplify_phase_name(solution_phase_name)
+
                 text_output += f"{sol:<16.6e} "
                 text_output += f"{rel_add:<12.4f} "
-                
+                text_output += f"{solution_phase_simple:<10} "
+
                 if warnings:
                     # 只显示第一个警告的简短版本
                     first_warning = warnings[0]
-                    if len(first_warning) > 33:
-                        text_output += first_warning[:30] + "..."
+                    if len(first_warning) > 28:
+                        text_output += first_warning[:25] + "..."
                     else:
                         text_output += first_warning
                 else:
                     text_output += "OK"  # 成功且无警告显示 OK
-                
+
                 text_output += "\n"
             else:
                 # 【修改 2：处理失败情况，显示详细错误】
                 error_detail = result.get('error_detail', '')
                 status = result.get('status', 'Unknown')
-                
+
                 # 如果有详细错误信息，优先显示；否则显示状态码
                 if error_detail:
                     display_msg = error_detail
@@ -1049,11 +1053,11 @@ class SolubilityWidget(QWidget):
                     display_msg = "不溶"
                 else:
                     display_msg = status
-                
-                indent_prefix = " " * 41
-                formatted_msg = textwrap.fill(display_msg, width=50, subsequent_indent=indent_prefix)
-                
-                text_output += f"{'N/A':<16} {'N/A':<12} {formatted_msg}\n"
+
+                indent_prefix = " " * 51
+                formatted_msg = textwrap.fill(display_msg, width=40, subsequent_indent=indent_prefix)
+
+                text_output += f"{'N/A':<16} {'N/A':<12} {'N/A':<10} {formatted_msg}\n"
         
         text_output += "=" * 70 + "\n"
         # 如果存在高溶解度警告，添加额外说明
@@ -1100,6 +1104,31 @@ class SolubilityWidget(QWidget):
                 x_ideal_plot, s_ideal_plot = zip(*valid_ideal_data)
                 self.chart_canvas.axes.plot(x_ideal_plot, [s*100 for s in s_ideal_plot], 'r--s', linewidth=2,
                                             markersize=5, label='理想溶解度 (γ=1)')
+
+            # 检测并标注相转变
+            phase_transitions = []
+            for i in range(len(results_list) - 1):
+                if results_list[i].get('status') == 'success' and results_list[i+1].get('status') == 'success':
+                    phase1 = results_list[i].get('solution_phase_name', '')
+                    phase2 = results_list[i+1].get('solution_phase_name', '')
+                    if phase1 and phase2 and phase1 != phase2:
+                        # 相转变发生在两点之间
+                        x_transition = (x_values[i] + x_values[i+1]) / 2
+                        phase_transitions.append((x_transition, phase1, phase2))
+
+            # 在图表中标注相转变
+            if phase_transitions:
+                y_min, y_max = self.chart_canvas.axes.get_ylim()
+                for x_trans, phase1, phase2 in phase_transitions:
+                    # 绘制垂直虚线
+                    self.chart_canvas.axes.axvline(x=x_trans, color='green', linestyle=':', linewidth=2, alpha=0.7)
+                    # 添加文字标注
+                    phase1_simple = self.simplify_phase_name(phase1)
+                    phase2_simple = self.simplify_phase_name(phase2)
+                    self.chart_canvas.axes.text(x_trans, y_max * 0.95,
+                                               f'{phase1_simple}→{phase2_simple}',
+                                               rotation=90, verticalalignment='top',
+                                               fontsize=9, color='green', fontweight='bold')
 
             # 构建更清晰的标签
             # X轴：变化组分的摩尔分数
@@ -1229,10 +1258,10 @@ class SolubilityWidget(QWidget):
         text_output += f"析出相(平衡): {detected_precipitate_simple}\n\n"
 
         text_output += "说明: 实际溶解度采用UEM-Miedema模型（考虑活度系数），理想溶解度假设活度系数=1\n"
-        text_output += "-" * 80 + "\n"
+        text_output += "-" * 95 + "\n"
 
-        text_output += f"{'温度(K)':<10} {'温度(°C)':<10} {'实际溶解度':<18} {'理想溶解度':<18} {'状态/备注':<25}\n"
-        text_output += "-" * 80 + "\n"
+        text_output += f"{'温度(K)':<10} {'温度(°C)':<10} {'实际溶解度':<18} {'理想溶解度':<18} {'溶解相':<10} {'状态/备注':<20}\n"
+        text_output += "-" * 95 + "\n"
 
         for i, t_curr in enumerate(t_values):
             sol = solubility_values[i]
@@ -1248,6 +1277,10 @@ class SolubilityWidget(QWidget):
                 # 成功计算出溶解度
                 sol_str = f"{sol:.6e}"
 
+                # 获取溶解相信息
+                solution_phase_name = res.get('solution_phase_name', 'Unknown')
+                solution_phase_simple = self.simplify_phase_name(solution_phase_name)
+
                 # 理想溶解度
                 if sol_ideal is not None:
                     sol_ideal_str = f"{sol_ideal:.6e}"
@@ -1261,7 +1294,7 @@ class SolubilityWidget(QWidget):
                     sol_ideal_str = "N/A"
                     status_str = "理想计算失败"
 
-                text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {status_str:<25}\n"
+                text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {solution_phase_simple:<10} {status_str:<20}\n"
 
             else:
                 # 计算失败或不稳定
@@ -1280,7 +1313,7 @@ class SolubilityWidget(QWidget):
                 # 优先显示详细错误，否则显示状态
                 if error_detail:
                     # 截断过长信息
-                    display_msg =  error_detail
+                    display_msg = error_detail
                 elif status == 'base_unstable':
                     display_msg = "基础合金不稳定"
                 elif status == 'insoluble':
@@ -1289,11 +1322,11 @@ class SolubilityWidget(QWidget):
                     display_msg = "完全互溶"
                 else:
                     display_msg = status
-                
-                indent_prefix = " " * 60
-                formatted_msg = textwrap.fill(display_msg, width=60, subsequent_indent=indent_prefix)
 
-                text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {formatted_msg:<25}\n"
+                indent_prefix = " " * 69
+                formatted_msg = textwrap.fill(display_msg, width=50, subsequent_indent=indent_prefix)
+
+                text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {'N/A':<10} {formatted_msg:<20}\n"
             
         self.results_text.append(text_output)
         scrollbar = self.results_text.verticalScrollBar()
@@ -1316,6 +1349,31 @@ class SolubilityWidget(QWidget):
                 x_ideal_plot, s_ideal_plot = zip(*valid_ideal_data)
                 self.chart_canvas.axes.plot(x_ideal_plot, [s * 100 for s in s_ideal_plot], 'r--s', linewidth=2,
                                             markersize=4, label='理想溶解度 (γ=1)')
+
+            # 检测并标注相转变
+            phase_transitions = []
+            for i in range(len(results_list) - 1):
+                if results_list[i].get('status') == 'success' and results_list[i+1].get('status') == 'success':
+                    phase1 = results_list[i].get('solution_phase_name', '')
+                    phase2 = results_list[i+1].get('solution_phase_name', '')
+                    if phase1 and phase2 and phase1 != phase2:
+                        # 相转变发生在两点之间
+                        t_transition = (t_values[i] + t_values[i+1]) / 2
+                        phase_transitions.append((t_transition, phase1, phase2))
+
+            # 在图表中标注相转变
+            if phase_transitions:
+                y_min, y_max = self.chart_canvas.axes.get_ylim()
+                for t_trans, phase1, phase2 in phase_transitions:
+                    # 绘制垂直虚线
+                    self.chart_canvas.axes.axvline(x=t_trans, color='green', linestyle=':', linewidth=2, alpha=0.7)
+                    # 添加文字标注
+                    phase1_simple = self.simplify_phase_name(phase1)
+                    phase2_simple = self.simplify_phase_name(phase2)
+                    self.chart_canvas.axes.text(t_trans, y_max * 0.95,
+                                               f'{phase1_simple}→{phase2_simple}',
+                                               rotation=90, verticalalignment='top',
+                                               fontsize=9, color='green', fontweight='bold')
 
             self.chart_canvas.axes.set_xlabel('温度 (K)', fontsize=11)
             self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
