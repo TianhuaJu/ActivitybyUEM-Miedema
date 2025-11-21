@@ -326,6 +326,37 @@ class SolubilityWidget(QWidget):
         # 没有匹配规则，返回原名称
         return phase_name
 
+    @staticmethod
+    def format_alloy_composition(composition_dict):
+        """
+        格式化合金成分为显示字符串，包含每个元素的摩尔分数
+        例如: {'Fe': 0.95, 'Si': 0.05} -> 'Fe0.95Si0.05'
+
+        Args:
+            composition_dict: 成分字典 {元素: 摩尔分数}
+
+        Returns:
+            格式化的成分字符串
+        """
+        if not composition_dict:
+            return ""
+
+        # 按元素符号排序，确保显示一致性
+        sorted_items = sorted(composition_dict.items(), key=lambda x: x[0])
+
+        # 格式化为 Element0.xx 的形式
+        parts = []
+        for elem, fraction in sorted_items:
+            # 根据数值大小选择合适的小数位数
+            if fraction >= 0.1:
+                parts.append(f"{elem}{fraction:.2f}")
+            elif fraction >= 0.01:
+                parts.append(f"{elem}{fraction:.3f}")
+            else:
+                parts.append(f"{elem}{fraction:.4f}")
+
+        return "".join(parts)
+
     def setup_ui(self):
         """设置用户界面"""
         layout = QVBoxLayout(self)
@@ -827,13 +858,13 @@ class SolubilityWidget(QWidget):
             solubility = result['solubility_mole_fraction']
             self.chart_canvas.axes.bar([solute], [solubility * 100], color='#3498db', width=0.5)
 
-            # 构建基础合金成分描述
-            base_alloy_desc = "-".join(base_composition.keys())
+            # 构建基础合金成分描述（包含摩尔分数）
+            base_alloy_desc = self.format_alloy_composition(base_composition)
 
             self.chart_canvas.axes.set_ylabel('溶解度 (摩尔%)', fontsize=11)
 
             # 标题：包含溶解相和析出相信息（使用简化名称）
-            # 例如："C 在 Fe-Si(BCC) 中的溶解度 | 析出相: GRAPHITE"
+            # 例如："C 在 Fe0.95Si0.05(BCC) 中的溶解度 | 析出相: GRAPHITE"
             title = f'{solute} 在 {base_alloy_desc}({detected_solution_phase_simple}) 中的溶解度\n析出相: {detected_precipitate_simple}'
             self.chart_canvas.axes.set_title(title, fontsize=11, fontweight='bold')
             self.chart_canvas.axes.grid(True, alpha=0.3, axis='y')
@@ -936,10 +967,14 @@ class SolubilityWidget(QWidget):
         extrap_model_name = params['extrap_model_name']
         activity_model = params['activity_model']
         fixed_base_str = params['fixed_base_str']
+        fixed_base_norm = params['fixed_base_norm']
         variable_comp = params['variable_comp']
         n_points = params['n_points']
         x_min = params['x_min']
         x_max = params['x_max']
+
+        # 格式化固定基础成分用于图表显示
+        fixed_base_formatted = self.format_alloy_composition(fixed_base_norm)
 
         # 增加计算批次计数，结果文本输出
         self.calculation_count += 1
@@ -1073,8 +1108,9 @@ class SolubilityWidget(QWidget):
             # Y轴：溶质的溶解度
             self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
 
-            # 标题：使用检测到的溶液相名称（简化）
-            title = f'{solute} 在 {fixed_base_str}-{variable_comp}({detected_solution_phase_simple}) 中的溶解度 vs. {variable_comp} 含量\n析出相: {detected_precipitate_simple}'
+            # 标题：使用检测到的溶液相名称（简化），并显示固定基础的组成比
+            # 例如："C 在 Fe0.95Si0.05-Cr(BCC) 中的溶解度 vs. Cr 含量"
+            title = f'{solute} 在 {fixed_base_formatted}-{variable_comp}({detected_solution_phase_simple}) 中的溶解度 vs. {variable_comp} 含量\n析出相: {detected_precipitate_simple}'
             self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
 
             self.chart_canvas.axes.grid(True, alpha=0.3)
@@ -1156,7 +1192,8 @@ class SolubilityWidget(QWidget):
 
         solute = params['solute']
         solution_phase = params['tdb_solution_phase']
-        
+        base_composition = params['base_composition']
+
         extrap_model_name = params['extrap_model_name']
         base_alloy_str = params['base_alloy_str']
         t_start = params['t_start']
@@ -1165,7 +1202,7 @@ class SolubilityWidget(QWidget):
         # 结果文本输出
         self.calculation_count += 1
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
+
         # 提取第一点的溶剂信息用于显示
         first_valid = next((r for r in results_list if r.get('status') == 'success'), {})
         detected_solvent = first_valid.get('solvent_element', 'Unknown')
@@ -1175,6 +1212,9 @@ class SolubilityWidget(QWidget):
         # 简化相名称用于显示
         detected_precipitate_simple = self.simplify_phase_name(detected_precipitate)
         detected_solution_phase_simple = self.simplify_phase_name(detected_solution_phase)
+
+        # 格式化基础合金成分用于图表显示
+        base_alloy_formatted = self.format_alloy_composition(base_composition)
 
         text_output = "\n" + "=" * 70 + "\n"
         text_output += f"【计算批次 #{self.calculation_count}】 {timestamp}\n"
@@ -1279,8 +1319,9 @@ class SolubilityWidget(QWidget):
             self.chart_canvas.axes.set_xlabel('温度 (K)', fontsize=11)
             self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
 
-            # 使用检测到的溶液相名称（简化）
-            title = f'{solute} 在 {base_alloy_str}({detected_solution_phase_simple}) 中的溶解度 vs. 温度\n析出相: {detected_precipitate_simple}'
+            # 使用检测到的溶液相名称（简化），并显示基础合金的组成比
+            # 例如："C 在 Fe0.95Si0.05(BCC) 中的溶解度 vs. 温度"
+            title = f'{solute} 在 {base_alloy_formatted}({detected_solution_phase_simple}) 中的溶解度 vs. 温度\n析出相: {detected_precipitate_simple}'
             self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
             self.chart_canvas.axes.grid(True, alpha=0.3)
             self.chart_canvas.axes.legend(loc='best', fontsize=10)
