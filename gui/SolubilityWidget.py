@@ -289,6 +289,43 @@ class SolubilityWidget(QWidget):
         self.worker = None  # 工作线程
         self.setup_ui()
 
+    @staticmethod
+    def simplify_phase_name(phase_name):
+        """
+        简化相名称显示
+        例如: FCC_A1 -> FCC, BCC_A2 -> BCC, HCP_A3 -> HCP
+
+        Args:
+            phase_name: 原始相名称
+
+        Returns:
+            简化后的相名称
+        """
+        if not phase_name or phase_name == 'Unknown':
+            return phase_name
+
+        # 常见相名称简化规则
+        simplification_rules = {
+            'FCC_A1': 'FCC',
+            'BCC_A2': 'BCC',
+            'HCP_A3': 'HCP',
+            'LIQUID': 'LIQUID',
+            'GRAPHITE': 'GRAPHITE',
+            'DIAMOND': 'DIAMOND',
+        }
+
+        # 直接匹配
+        if phase_name in simplification_rules:
+            return simplification_rules[phase_name]
+
+        # 通用规则：如果包含下划线，去掉下划线及之后的部分
+        # 例如：CEMENTITE_D011 -> CEMENTITE
+        if '_' in phase_name:
+            return phase_name.split('_')[0]
+
+        # 没有匹配规则，返回原名称
+        return phase_name
+
     def setup_ui(self):
         """设置用户界面"""
         layout = QVBoxLayout(self)
@@ -690,6 +727,11 @@ class SolubilityWidget(QWidget):
         solute = params['solute']
         detected_precipitate = result.get('precipitating_phase', 'Auto-Detect')
         detected_solution_phase = result.get('solution_phase_name', 'Unknown')
+
+        # 简化相名称用于显示
+        detected_precipitate_simple = self.simplify_phase_name(detected_precipitate)
+        detected_solution_phase_simple = self.simplify_phase_name(detected_solution_phase)
+
         temperature = params['temperature']
         solution_phase = params['tdb_solution_phase']
         base_composition = params['base_composition']
@@ -713,8 +755,8 @@ class SolubilityWidget(QWidget):
         text_output += f"  -> 基础合金状态: {base_stability} " + (
             "(⚠️ 不稳定)" if base_stability == "Unstable" else "(✅ 稳定)") + "\n"
         text_output += f"溶质元素: {solute}\n"
-        text_output += f"  -> 溶解于相: {detected_solution_phase}\n"
-        text_output += f"  -> 析出相(平衡): {detected_precipitate}\n"
+        text_output += f"  -> 溶解于相: {detected_solution_phase_simple}\n"
+        text_output += f"  -> 析出相(平衡): {detected_precipitate_simple}\n"
         text_output += f"温度: {temperature:.2f} K ({temperature - 273.15:.2f} °C)\n"
         
         # 显示警告（特别是基础合金不稳定的警告）
@@ -790,9 +832,9 @@ class SolubilityWidget(QWidget):
 
             self.chart_canvas.axes.set_ylabel('溶解度 (摩尔%)', fontsize=11)
 
-            # 标题：包含溶解相和析出相信息
-            # 例如："C 在 Fe-Si({BCC_A2}) 中的溶解度 | 析出相: GRAPHITE"
-            title = f'{solute} 在 {base_alloy_desc}({detected_solution_phase}) 中的溶解度\n析出相: {detected_precipitate}'
+            # 标题：包含溶解相和析出相信息（使用简化名称）
+            # 例如："C 在 Fe-Si(BCC) 中的溶解度 | 析出相: GRAPHITE"
+            title = f'{solute} 在 {base_alloy_desc}({detected_solution_phase_simple}) 中的溶解度\n析出相: {detected_precipitate_simple}'
             self.chart_canvas.axes.set_title(title, fontsize=11, fontweight='bold')
             self.chart_canvas.axes.grid(True, alpha=0.3, axis='y')
         self.chart_canvas.draw()
@@ -883,6 +925,10 @@ class SolubilityWidget(QWidget):
         detected_precipitate = first_valid.get('precipitating_phase', 'Auto-Detect')
         detected_solution_phase = first_valid.get('solution_phase_name', params.get('tdb_solution_phase', 'Unknown'))
 
+        # 简化相名称用于显示
+        detected_precipitate_simple = self.simplify_phase_name(detected_precipitate)
+        detected_solution_phase_simple = self.simplify_phase_name(detected_solution_phase)
+
         solute = params['solute']
         solution_phase = params['tdb_solution_phase']
 
@@ -908,8 +954,8 @@ class SolubilityWidget(QWidget):
         text_output += f"溶质元素: {solute}\n"
         text_output += f"固定基础: {fixed_base_str}\n"
         text_output += f"变化组分: {variable_comp} ({x_min:.3f} ~ {x_max:.3f})\n"
-        text_output += f"  -> 溶解于相: {detected_solution_phase}\n"
-        text_output += f"析出相(平衡): {detected_precipitate}\n"
+        text_output += f"  -> 溶解于相: {detected_solution_phase_simple}\n"
+        text_output += f"析出相(平衡): {detected_precipitate_simple}\n"
         text_output += f"温度: {temperature:.2f} K ({temperature - 273.15:.2f} °C)\n"
         text_output += f"外推模型: {extrap_model_name}\n"
         text_output += f"活度模型: {activity_model}\n"
@@ -1027,8 +1073,8 @@ class SolubilityWidget(QWidget):
             # Y轴：溶质的溶解度
             self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
 
-            # 标题：使用检测到的溶液相名称
-            title = f'{solute} 在 {fixed_base_str}-{variable_comp}({detected_solution_phase}) 中的溶解度 vs. {variable_comp} 含量\n析出相: {detected_precipitate}'
+            # 标题：使用检测到的溶液相名称（简化）
+            title = f'{solute} 在 {fixed_base_str}-{variable_comp}({detected_solution_phase_simple}) 中的溶解度 vs. {variable_comp} 含量\n析出相: {detected_precipitate_simple}'
             self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
 
             self.chart_canvas.axes.grid(True, alpha=0.3)
@@ -1126,6 +1172,10 @@ class SolubilityWidget(QWidget):
         detected_precipitate = first_valid.get('precipitating_phase', 'Auto-Detect')
         detected_solution_phase = first_valid.get('solution_phase_name', solution_phase)
 
+        # 简化相名称用于显示
+        detected_precipitate_simple = self.simplify_phase_name(detected_precipitate)
+        detected_solution_phase_simple = self.simplify_phase_name(detected_solution_phase)
+
         text_output = "\n" + "=" * 70 + "\n"
         text_output += f"【计算批次 #{self.calculation_count}】 {timestamp}\n"
         text_output += "溶解度-温度曲线计算结果\n"
@@ -1133,9 +1183,9 @@ class SolubilityWidget(QWidget):
         text_output += f"溶质元素: {solute}\n"
         text_output += f"基础合金: {base_alloy_str}\n"
         text_output += f"  -> 自动识别溶剂: {detected_solvent}\n"
-        text_output += f"  -> 溶解于相: {detected_solution_phase}\n"
+        text_output += f"  -> 溶解于相: {detected_solution_phase_simple}\n"
         text_output += f"温度范围: {t_start:.1f} K ~ {t_end:.1f} K\n"
-        text_output += f"析出相(平衡): {detected_precipitate}\n\n"
+        text_output += f"析出相(平衡): {detected_precipitate_simple}\n\n"
 
         text_output += "说明: 实际溶解度采用UEM-Miedema模型（考虑活度系数），理想溶解度假设活度系数=1\n"
         text_output += "-" * 80 + "\n"
@@ -1229,8 +1279,8 @@ class SolubilityWidget(QWidget):
             self.chart_canvas.axes.set_xlabel('温度 (K)', fontsize=11)
             self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
 
-            # 使用检测到的溶液相名称
-            title = f'{solute} 在 {base_alloy_str}({detected_solution_phase}) 中的溶解度 vs. 温度\n析出相: {detected_precipitate}'
+            # 使用检测到的溶液相名称（简化）
+            title = f'{solute} 在 {base_alloy_str}({detected_solution_phase_simple}) 中的溶解度 vs. 温度\n析出相: {detected_precipitate_simple}'
             self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
             self.chart_canvas.axes.grid(True, alpha=0.3)
             self.chart_canvas.axes.legend(loc='best', fontsize=10)
