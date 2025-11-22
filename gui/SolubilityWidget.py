@@ -88,11 +88,13 @@ class SolubilityWorker(QThread):
         })
 
     def _run_curve_calculation(self):
-        """执行浓度曲线计算（多进程并行优化版本）"""
+        """执行浓度曲线计算（多进程并行优化版本 - 使用回调实时更新）"""
         import numpy as np
-        from concurrent.futures import ProcessPoolExecutor, as_completed
+        from concurrent.futures import ProcessPoolExecutor
         from calculations.parallel_solubility import compute_concentration_point
+        from calculations.process_pool_init import init_worker
         import os
+        import threading
 
         x_values = np.linspace(
             self.params['x_min'],
@@ -107,9 +109,15 @@ class SolubilityWorker(QThread):
         results_list = [None] * n_points
         ideal_results_list = [None] * n_points
 
-        # 使用进程池并行计算（最多使用CPU核心数）
-        max_workers = min(os.cpu_count() or 4, n_points)
-        completed_count = 0
+        # 优化进程数选择（避免过多进程导致启动开销）
+        cpu_count = os.cpu_count() or 4
+        if n_points < 10:
+            max_workers = min(4, n_points)  # 少量任务用少量进程
+        else:
+            max_workers = min(cpu_count, n_points)  # 大量任务用全部核心
+
+        completed_count = [0]  # 使用列表以便在回调中修改
+        lock = threading.Lock()  # 保护共享数据
 
         # 准备每个点的参数（必须是可序列化的字典）
         task_params = []
@@ -127,41 +135,61 @@ class SolubilityWorker(QThread):
             }
             task_params.append(param_dict)
 
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            # 提交所有任务
-            futures = {
-                executor.submit(compute_concentration_point, params): params['index']
-                for params in task_params
-            }
+        # 完成事件
+        all_done = threading.Event()
 
-            # 处理完成的任务
-            for future in as_completed(futures):
-                if self._is_cancelled:
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    return
+        # 任务完成回调函数
+        def task_done_callback(future):
+            """单个任务完成时的回调 - 立即更新进度"""
+            if self._is_cancelled:
+                return
 
-                try:
-                    index, sol_value, ideal_sol_value, result, ideal_result = future.result()
+            try:
+                index, sol_value, ideal_sol_value, result, ideal_result = future.result()
 
-                    # 按索引存储结果
+                # 线程安全地更新结果
+                with lock:
                     solubility_values[index] = sol_value
                     ideal_solubility_values[index] = ideal_sol_value
                     results_list[index] = result
                     ideal_results_list[index] = ideal_result
 
-                    # 更新进度
-                    completed_count += 1
-                    self.progress_updated.emit(completed_count, n_points)
+                    completed_count[0] += 1
+                    current = completed_count[0]
 
-                except Exception as e:
-                    index = futures[future]
-                    print(f"Task failed for index {index}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    solubility_values[index] = 0.0
-                    ideal_solubility_values[index] = 0.0
-                    results_list[index] = {'status': 'error', 'message': str(e)}
-                    ideal_results_list[index] = {'status': 'error', 'message': str(e)}
+                # 立即发送进度更新信号（不等待其他任务）
+                self.progress_updated.emit(current, n_points)
+
+                # 所有任务完成
+                if current >= n_points:
+                    all_done.set()
+
+            except Exception as e:
+                print(f"Task callback error: {e}")
+                import traceback
+                traceback.print_exc()
+
+                with lock:
+                    completed_count[0] += 1
+                    current = completed_count[0]
+
+                self.progress_updated.emit(current, n_points)
+
+                if current >= n_points:
+                    all_done.set()
+
+        # 提交所有任务并绑定回调（使用初始化器预热进程池）
+        with ProcessPoolExecutor(max_workers=max_workers, initializer=init_worker) as executor:
+            for params in task_params:
+                if self._is_cancelled:
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    return
+
+                future = executor.submit(compute_concentration_point, params)
+                future.add_done_callback(task_done_callback)  # 关键：添加回调
+
+            # 等待所有任务完成
+            all_done.wait()
 
         # 发送完成信号
         self.calculation_finished.emit({
@@ -175,11 +203,13 @@ class SolubilityWorker(QThread):
         })
 
     def _run_temperature_calculation(self):
-        """执行温度曲线计算（多进程并行优化版本）"""
+        """执行温度曲线计算（多进程并行优化版本 - 使用回调实时更新）"""
         import numpy as np
-        from concurrent.futures import ProcessPoolExecutor, as_completed
+        from concurrent.futures import ProcessPoolExecutor
         from calculations.parallel_solubility import compute_temperature_point
+        from calculations.process_pool_init import init_worker
         import os
+        import threading
 
         t_values = np.linspace(
             self.params['t_start'],
@@ -194,9 +224,15 @@ class SolubilityWorker(QThread):
         results_list = [None] * n_points
         ideal_results_list = [None] * n_points
 
-        # 使用进程池并行计算（最多使用CPU核心数）
-        max_workers = min(os.cpu_count() or 4, n_points)
-        completed_count = 0
+        # 优化进程数选择（避免过多进程导致启动开销）
+        cpu_count = os.cpu_count() or 4
+        if n_points < 10:
+            max_workers = min(4, n_points)  # 少量任务用少量进程
+        else:
+            max_workers = min(cpu_count, n_points)  # 大量任务用全部核心
+
+        completed_count = [0]  # 使用列表以便在回调中修改
+        lock = threading.Lock()  # 保护共享数据
 
         # 准备每个点的参数（必须是可序列化的字典）
         task_params = []
@@ -212,41 +248,61 @@ class SolubilityWorker(QThread):
             }
             task_params.append(param_dict)
 
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            # 提交所有任务
-            futures = {
-                executor.submit(compute_temperature_point, params): params['index']
-                for params in task_params
-            }
+        # 完成事件
+        all_done = threading.Event()
 
-            # 处理完成的任务
-            for future in as_completed(futures):
-                if self._is_cancelled:
-                    executor.shutdown(wait=False, cancel_futures=True)
-                    return
+        # 任务完成回调函数
+        def task_done_callback(future):
+            """单个任务完成时的回调 - 立即更新进度"""
+            if self._is_cancelled:
+                return
 
-                try:
-                    index, sol_value, ideal_sol_value, result, ideal_result = future.result()
+            try:
+                index, sol_value, ideal_sol_value, result, ideal_result = future.result()
 
-                    # 按索引存储结果
+                # 线程安全地更新结果
+                with lock:
                     solubility_values[index] = sol_value
                     ideal_solubility_values[index] = ideal_sol_value
                     results_list[index] = result
                     ideal_results_list[index] = ideal_result
 
-                    # 更新进度
-                    completed_count += 1
-                    self.progress_updated.emit(completed_count, n_points)
+                    completed_count[0] += 1
+                    current = completed_count[0]
 
-                except Exception as e:
-                    index = futures[future]
-                    print(f"Task failed for index {index}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    solubility_values[index] = 0.0
-                    ideal_solubility_values[index] = 0.0
-                    results_list[index] = {'status': 'error', 'message': str(e)}
-                    ideal_results_list[index] = {'status': 'error', 'message': str(e)}
+                # 立即发送进度更新信号（不等待其他任务）
+                self.progress_updated.emit(current, n_points)
+
+                # 所有任务完成
+                if current >= n_points:
+                    all_done.set()
+
+            except Exception as e:
+                print(f"Task callback error: {e}")
+                import traceback
+                traceback.print_exc()
+
+                with lock:
+                    completed_count[0] += 1
+                    current = completed_count[0]
+
+                self.progress_updated.emit(current, n_points)
+
+                if current >= n_points:
+                    all_done.set()
+
+        # 提交所有任务并绑定回调（使用初始化器预热进程池）
+        with ProcessPoolExecutor(max_workers=max_workers, initializer=init_worker) as executor:
+            for params in task_params:
+                if self._is_cancelled:
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    return
+
+                future = executor.submit(compute_temperature_point, params)
+                future.add_done_callback(task_done_callback)  # 关键：添加回调
+
+            # 等待所有任务完成
+            all_done.wait()
 
         # 发送完成信号
         self.calculation_finished.emit({
