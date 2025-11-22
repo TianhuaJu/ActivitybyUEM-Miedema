@@ -898,9 +898,9 @@ class SolubilityWidget(QWidget):
 
             self.chart_canvas.axes.set_ylabel('溶解度 (摩尔%)', fontsize=11)
 
-            # 标题：包含溶解相和析出相信息（使用简化名称）
-            # 例如："C 在 Fe0.95Si0.05(BCC) 中的溶解度 | 析出相: GRAPHITE"
-            title = f'{solute} 在 {base_alloy_desc}({detected_solution_phase_simple}) 中的溶解度\n析出相: {detected_precipitate_simple}'
+            # 标题：仅显示溶质和基础合金信息，不显示析出相
+            # 因为相区已在图上标识清楚，避免产生误解
+            title = f'{solute} 在 {base_alloy_desc}({detected_solution_phase_simple}) 中的溶解度'
             self.chart_canvas.axes.set_title(title, fontsize=11, fontweight='bold')
             self.chart_canvas.axes.grid(True, alpha=0.3, axis='y')
         self.chart_canvas.draw()
@@ -1212,10 +1212,10 @@ class SolubilityWidget(QWidget):
             # Y轴：溶质的溶解度
             self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
 
-            # 标题：使用化学式形式 (AmBn)_{1-x}C_x
-            # 例如："C 在 (Fe0.95Si0.05)_{1-x}Cr_x(BCC) 中的溶解度 vs. Cr 含量"
+            # 标题：使用化学式形式 (AmBn)_{1-x}C_x，不显示析出相
+            # 因为相区已在图上标识清楚，避免产生误解
             alloy_formula = f'({fixed_base_formatted})$_{{1-x}}${variable_comp}$_x$'
-            title = f'{solute} 在 {alloy_formula}({detected_solution_phase_simple}) 中的溶解度 vs. {variable_comp} 含量\n析出相: {detected_precipitate_simple}'
+            title = f'{solute} 在 {alloy_formula}({detected_solution_phase_simple}) 中的溶解度 vs. {variable_comp} 含量'
             self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
 
             self.chart_canvas.axes.grid(True, alpha=0.3)
@@ -1495,9 +1495,9 @@ class SolubilityWidget(QWidget):
             self.chart_canvas.axes.set_xlabel('温度 (K)', fontsize=11)
             self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
 
-            # 使用检测到的溶液相名称（简化），并显示基础合金的组成比
-            # 例如："C 在 Fe0.95Si0.05(BCC) 中的溶解度 vs. 温度"
-            title = f'{solute} 在 {base_alloy_formatted}({detected_solution_phase_simple}) 中的溶解度 vs. 温度\n析出相: {detected_precipitate_simple}'
+            # 使用检测到的溶液相名称（简化），并显示基础合金的组成比，不显示析出相
+            # 因为相区已在图上标识清楚，避免产生误解
+            title = f'{solute} 在 {base_alloy_formatted}({detected_solution_phase_simple}) 中的溶解度 vs. 温度'
             self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
             self.chart_canvas.axes.grid(True, alpha=0.3)
             self.chart_canvas.axes.legend(loc='best', fontsize=10)

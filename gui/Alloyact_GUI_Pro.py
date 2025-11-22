@@ -202,78 +202,114 @@ class AlloyActProGUI(QMainWindow):
 	# self.main_layout.addLayout(title_layout)
 	
 	def create_basic_calculation_tabs (self):
-		"""创建基础计算选项卡"""
-		# 活度计算选项卡
-		self.create_activity_tab()
-		
-		# 相互作用系数计算选项卡
-		self.create_interaction_tab()
-		
-		# 二阶相互作用系数计算选项卡
-		self.create_second_order_tab()
-	
+		"""创建基础计算选项卡 - 归集到热力学计算主标签下"""
+		# 创建热力学计算主标签，包含所有子模块
+		self.create_thermodynamic_calculation_tab()
+
 	def create_advanced_analysis_tabs (self):
 		"""创建高级分析选项卡"""
-		# 温度变化分析选项卡
-		self.create_temperature_variation_tab()
-
-		# 浓度变化分析选项卡
-		self.create_concentration_variation_tab()
-
-		# 热力学性质计算选项卡
-		self.create_thermodynamic_properties_tab()
-
 		# 相图计算选项卡
 		self.create_phase_diagram_tab()
 
 		# 溶解度计算选项卡
 		self.create_solubility_tab()
-	
+
+	def create_thermodynamic_calculation_tab(self):
+		"""创建热力学计算主标签（包含多个子标签）"""
+		# 创建主容器widget
+		thermo_main_widget = QWidget()
+		thermo_layout = QVBoxLayout(thermo_main_widget)
+		thermo_layout.setContentsMargins(0, 0, 0, 0)
+
+		# 创建子标签控件
+		self.thermo_sub_tabs = QTabWidget()
+		thermo_layout.addWidget(self.thermo_sub_tabs)
+
+		# 设置子标签样式
+		self.thermo_sub_tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #c0c0c0;
+                background: #ffffff;
+            }
+            QTabBar::tab {
+                background: #f0f0f0;
+                color: #444444;
+                padding: 8px 15px;
+                margin-right: 1px;
+                border: 1px solid #c0c0c0;
+                border-bottom: none;
+                border-top-left-radius: 3px;
+                border-top-right-radius: 3px;
+                font-size: 14px;
+            }
+            QTabBar::tab:selected {
+                background: #2ecc71;
+                color: white;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #e0e0e0;
+            }
+        """)
+
+		# 添加各个子标签
+		self.create_activity_tab()  # 活度计算
+		self.create_interaction_tab()  # 相互作用系数
+		self.create_second_order_tab()  # 二阶相互作用系数
+		self.create_temperature_variation_tab()  # 温度变化分析
+		self.create_concentration_variation_tab()  # 浓度变化分析
+		self.create_AlloyAdditionWidget()  # 浓度变化分析2
+		self.create_thermodynamic_properties_tab()  # 热力学性质
+
+		# 将主标签添加到主界面
+		self.tabs.addTab(thermo_main_widget, "热力学计算")
+
 	def create_temperature_variation_tab (self):
 		"""创建温度变化分析选项卡"""
 		# 创建温度变化分析组件实例
 		self.temp_variation_widget = ActivityTemperatureVariationWidget(self)
-		
-		# 添加到选项卡
-		self.tabs.addTab(self.temp_variation_widget, "温度变化分析")
+
+		# 添加到子标签
+		self.thermo_sub_tabs.addTab(self.temp_variation_widget, "温度变化分析")
+
 	def create_database_mangner_tabs (self):
 		self.database_widget = DatabaseManagerTab(self)
 		self.tabs.addTab(self.database_widget, "数据管理")
+
 	def create_concentration_variation_tab (self):
 		"""创建浓度变化分析选项卡"""
 		# 创建浓度变化分析组件实例
 		self.conc_variation_widget = CompositionVariationWidget(self)
-		
-		# 添加到选项卡
-		self.tabs.addTab(self.conc_variation_widget, "浓度变化分析")
-	
+
+		# 添加到子标签
+		self.thermo_sub_tabs.addTab(self.conc_variation_widget, "浓度变化分析")
+
 	def create_AlloyAdditionWidget(self):
 		self.AlloyAdditionWidget = AlloyAdditionWidget(self)
-		tab_index = self.tabs.addTab(self.AlloyAdditionWidget,"浓度变化分析2")
-		self.tabs.setTabToolTip(tab_index,
+		tab_index = self.thermo_sub_tabs.addTab(self.AlloyAdditionWidget,"浓度变化分析2")
+		self.thermo_sub_tabs.setTabToolTip(tab_index,
 		                        "Alloy Element Addition Effect Calculator\nFixed base alloy composition, study the effect of adding elements on target component activity/activity coefficient")
 
 	def create_activity_tab (self):
 		"""创建活度计算选项卡"""
 		self.activity_widget = ActivityCalculationWidget()
-		self.tabs.addTab(self.activity_widget, "活度计算")
-	
-		
-	
+		self.thermo_sub_tabs.addTab(self.activity_widget, "活度计算")
+
+
+
 	def create_interaction_tab (self):
 		"""创建相互作用系数计算选项卡"""
 		self.interaction_widget = InteractionCoefficientWidget(self)
-		self.tabs.addTab(self.interaction_widget, "相互作用系数")
-	
+		self.thermo_sub_tabs.addTab(self.interaction_widget, "相互作用系数")
+
 	def create_second_order_tab (self):
 		"""创建二阶相互作用系数计算选项卡"""
 		self.second_order_widget = SecondOrderCoefficientWidget(self)
-		self.tabs.addTab(self.second_order_widget, "二阶相互作用系数")
+		self.thermo_sub_tabs.addTab(self.second_order_widget, "二阶相互作用系数")
 
 	def create_thermodynamic_properties_tab(self):
 		"""创建热力学性质计算选项卡"""
 		self.thermo_properties_widget = ThermodynamicPropertiesWidget()
-		self.tabs.addTab(self.thermo_properties_widget, "热力学性质")
+		self.thermo_sub_tabs.addTab(self.thermo_properties_widget, "热力学性质")
 
 	def create_phase_diagram_tab(self):
 		"""创建相图计算选项卡"""
