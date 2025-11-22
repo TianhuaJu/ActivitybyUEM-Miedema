@@ -8,8 +8,6 @@ Phase Diagram Widget
 - 绘制二元相图
 - 绘制液相线/固相线随成分变化的曲线
 
-作者: Claude
-日期: 2025-11-08
 """
 
 import sys

@@ -6,8 +6,6 @@ TDB (Thermodynamic Database) Parser
 (已修正 - V3)
 - 增加了 get_element_phases 函数，用于获取指定元素的所有可用相
 
-作者: Claude
-日期: 2025-11-08
 """
 
 import re
@@ -130,11 +128,10 @@ class TDBParser:
 		self.elements: Dict[str, ElementData] = {}
 		self.functions: Dict[str, TDBFunction] = {}
 		
-		# (新增) (Element, Phase) -> FunctionName 映射
-		# 例如: {('FE', 'BCC_A2'): 'GHSERFE', ('NI', 'BCC_A2'): 'GBCCNI'}
+		
 		self._phase_function_map: Dict[Tuple[str, str], str] = {}
 		
-		# (新增) (Element, Phase) -> Raw Parameter String 映射
+		
 		# 用于那些没有 FUNCTION 引用的简单 PARAMETER (例如 +1000+10*T)
 		self._phase_raw_expression_map: Dict[Tuple[str, str], str] = {}
 		
@@ -225,7 +222,7 @@ class TDBParser:
 								break
 			self.functions[func_name] = tdb_func
 	
-	# --- (新增方法) ---
+	
 	def _parse_parameters (self, content: str):
 		"""
         (新增) 解析 PARAMETER G(...) 块
@@ -270,7 +267,7 @@ class TDBParser:
 			except Exception as e:
 				print(f"Warning: Failed to parse PARAMETER line: '{match.group(0)}'. Error: {e}")
 	
-	# --- [新增方法] ---
+	
 	def _parse_type_definitions (self, content: str):
 		"""
 		解析 TYPE_DEFINITION 行以获取磁性结构因子 p
@@ -365,13 +362,13 @@ class TDBParser:
 		
 		return stable_phase
 	
-	# --- (重写的方法) ---
+	
 	def get_gibbs_energy (self, element: str, phase: str, temperature: float) -> Optional[float]:
 		element_upper = element.upper()
 		phase_upper = phase.upper()
 		
-		# --- 处理别名 (Step 4 移到前面更高效) ---
-		# 建议将 phase_map 移至 self._phase_alias_map 并在解析时构建
+		
+		
 		phase_alias_map = {'BCC': 'BCC_A2', 'FCC': 'FCC_A1', 'HCP': 'HCP_A3', 'LIQ': 'LIQUID'}
 		phase_upper = phase_alias_map.get(phase_upper, phase_upper)
 		
@@ -396,8 +393,7 @@ class TDBParser:
 			# 检查 raw expression
 			raw_expression = self._phase_raw_expression_map.get(key)
 			if raw_expression:
-				# 假设已优化：raw_expression 是可调用对象而非字符串
-				# 如果仍是字符串，建议在解析阶段处理
+				
 				temp_func = TDBFunction(f"temp_eval", parser=self)
 				g_non_mag = temp_func._evaluate_expression(raw_expression, temperature)
 		
@@ -406,7 +402,7 @@ class TDBParser:
 		
 		# --- 2. [关键修正] 添加磁性贡献 ---
 		# 检查该元素在该相是否有磁性参数 (TC, BMAGN)
-		# 这是一个假设的辅助函数，你需要根据你的 TDB 解析器结构来实现
+		
 		magnetic_contrib = self._calculate_magnetic_contribution(element_upper, phase_upper, temperature)
 		
 		return g_non_mag + magnetic_contrib
@@ -606,7 +602,7 @@ class TDBParser:
         """
 		return self.elements.get(element.upper())
 	
-	# --- (此函数现在使用 self.elements 缓存) ---
+	
 	def get_reference_phase (self, element_symbol: str) -> Optional[str]:
 		"""
         (已修正) 从缓存中获取元素的标准元素参考 (SER) 固相。
