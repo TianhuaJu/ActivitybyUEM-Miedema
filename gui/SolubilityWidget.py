@@ -672,13 +672,32 @@ class SolubilityWidget(QWidget):
         return widget
 
     def cancel_calculation(self):
-        """取消当前计算"""
+        """取消当前计算（改进版：等待线程正确结束）"""
         if self.worker and self.worker.isRunning():
+            # 1. 发送取消信号
             self.worker.cancel()
-            self.results_text.append("\n⚠️ 用户取消计算...\n")
+            self.results_text.append("\n⚠️ 正在取消计算，请稍候...\n")
+
+            # 2. 禁用取消按钮，防止重复点击
+            self.cancel_button.setEnabled(False)
+
+            # 3. 等待线程结束（最多3秒）
+            if self.worker.wait(3000):
+                # 线程正常结束
+                self.results_text.append("✓ 计算已取消\n")
+            else:
+                # 超时，强制终止线程
+                self.results_text.append("⚠️ 强制终止线程...\n")
+                self.worker.terminate()
+                self.worker.wait()  # 等待终止完成
+                self.results_text.append("✓ 计算已强制终止\n")
+
+            # 4. 清空worker引用，允许新计算
+            self.worker = None
+
+            # 5. 恢复UI状态
             self.progress_bar.setVisible(False)
             self.calculate_button.setEnabled(True)
-            self.cancel_button.setEnabled(False)
 
     def on_calculation_started(self):
         """计算开始时的UI状态更新"""
@@ -693,6 +712,8 @@ class SolubilityWidget(QWidget):
         self.cancel_button.setEnabled(False)
         self.progress_bar.setVisible(False)
         self.export_button.setEnabled(True)
+        # 清空worker引用，允许新计算
+        self.worker = None
 
     def on_progress_updated(self, current, total):
         """更新进度条"""
@@ -705,12 +726,37 @@ class SolubilityWidget(QWidget):
         QMessageBox.critical(self, "计算错误", f"计算过程中发生错误:\n{error_msg}")
         self.results_text.append(f"\n❌ 错误: {error_msg}\n")
 
+    def on_worker_thread_finished(self):
+        """
+        线程结束时的清理处理（兜底机制）
+        确保即使出现异常，worker也能被正确清理
+        """
+        # 如果worker还存在（没有被on_calculation_finished清理），说明是异常结束
+        if self.worker is not None:
+            # 清理worker引用
+            self.worker = None
+            # 恢复UI状态（防止按钮卡住）
+            self.calculate_button.setEnabled(True)
+            self.cancel_button.setEnabled(False)
+            self.progress_bar.setVisible(False)
+
     def perform_calculation(self):
-        """执行计算（多线程版本）"""
-        # 如果已有任务在运行，先取消
+        """执行计算（多线程版本 - 改进版）"""
+        # 如果已有任务在运行，询问用户是否取消
         if self.worker and self.worker.isRunning():
-            QMessageBox.warning(self, "提示", "已有计算任务正在运行，请先取消或等待完成！")
-            return
+            reply = QMessageBox.question(
+                self, "提示",
+                "已有计算任务正在运行，是否取消当前任务并开始新计算？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                # 用户选择取消当前任务
+                self.cancel_calculation()
+                # 继续执行新计算
+            else:
+                # 用户选择不取消，直接返回
+                return
 
         try:
             if self.mode_single.isChecked():
@@ -778,6 +824,7 @@ class SolubilityWidget(QWidget):
         self.worker.progress_updated.connect(self.on_progress_updated)
         self.worker.calculation_finished.connect(self.on_single_point_finished)
         self.worker.error_occurred.connect(self.on_error_occurred)
+        self.worker.finished.connect(self.on_worker_thread_finished)  # 线程结束时清理
 
         self.on_calculation_started()
         self.results_text.append(f"\n🔄 正在计算单点溶解度...\n")
@@ -973,6 +1020,7 @@ class SolubilityWidget(QWidget):
         self.worker.progress_updated.connect(self.on_progress_updated)
         self.worker.calculation_finished.connect(self.on_curve_finished)
         self.worker.error_occurred.connect(self.on_error_occurred)
+        self.worker.finished.connect(self.on_worker_thread_finished)  # 线程结束时清理
 
         self.on_calculation_started()
         self.results_text.append(f"\n🔄 正在计算溶解度-浓度曲线 ({n_points} 个点)...\n")
@@ -1280,6 +1328,7 @@ class SolubilityWidget(QWidget):
         self.worker.progress_updated.connect(self.on_progress_updated)
         self.worker.calculation_finished.connect(self.on_temperature_finished)
         self.worker.error_occurred.connect(self.on_error_occurred)
+        self.worker.finished.connect(self.on_worker_thread_finished)  # 线程结束时清理
 
         self.on_calculation_started()
         self.results_text.append(f"\n🔄 正在计算溶解度-温度曲线 ({n_points} 个点)...\n")
