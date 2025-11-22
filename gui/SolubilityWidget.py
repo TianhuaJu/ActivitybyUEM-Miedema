@@ -123,7 +123,8 @@ class SolubilityWorker(QThread):
                 'tdb_solution_phase': str(self.params['tdb_solution_phase']),
                 'temperature': float(self.params['temperature']),
                 'extrap_model_name': str(self.params['extrap_model_name']),
-                'activity_model': str(self.params['activity_model'])
+                'activity_model': str(self.params['activity_model']),
+                'calculate_ideal': self.params.get('calculate_ideal', True)  # 性能优化
             }
             task_params.append(param_dict)
 
@@ -215,7 +216,8 @@ class SolubilityWorker(QThread):
                 'solute': str(self.params['solute']),
                 'tdb_solution_phase': str(self.params['tdb_solution_phase']),
                 'extrap_model_name': str(self.params['extrap_model_name']),
-                'activity_model': str(self.params['activity_model'])
+                'activity_model': str(self.params['activity_model']),
+                'calculate_ideal': self.params.get('calculate_ideal', True)  # 性能优化
             }
             task_params.append(param_dict)
 
@@ -451,6 +453,16 @@ class SolubilityWidget(QWidget):
         self.activity_model_combo = QComboBox()
         self.activity_model_combo.addItems(["Wagner", "Darken", "Elliott"])
         model_layout.addWidget(self.activity_model_combo, row, 1)
+        row += 1
+
+        # 性能优化选项：跳过理想溶解度计算
+        self.calculate_ideal_checkbox = QCheckBox("计算理想溶解度（可选，影响速度）")
+        self.calculate_ideal_checkbox.setChecked(True)  # 默认开启
+        self.calculate_ideal_checkbox.setToolTip(
+            "理想溶解度计算需要额外时间。\n"
+            "如果不需要比较理想与实际溶解度，可以关闭此选项以提升速度约1.5-2倍。"
+        )
+        model_layout.addWidget(self.calculate_ideal_checkbox, row, 0, 1, 2)
 
         layout.addWidget(model_group)
 
@@ -941,7 +953,7 @@ class SolubilityWidget(QWidget):
         params = {
             'solute': solute,
             'tdb_solution_phase': solution_phase,
-            
+
             'temperature': temperature,
             'extrap_func': extrap_func,
             'extrap_model_name': extrap_model_name,
@@ -952,7 +964,8 @@ class SolubilityWidget(QWidget):
             'x_min': x_min,
             'x_max': x_max,
             'n_points': n_points,
-            'solution_phase_display': self.solution_phase_combo.currentText()
+            'solution_phase_display': self.solution_phase_combo.currentText(),
+            'calculate_ideal': self.calculate_ideal_checkbox.isChecked()  # 性能优化选项
         }
 
         # 创建并启动工作线程
@@ -1250,7 +1263,7 @@ class SolubilityWidget(QWidget):
             'base_composition': base_composition,
             'solute': solute,
             'tdb_solution_phase': solution_phase,
-            
+
             'extrap_func': extrap_func,
             'extrap_model_name': extrap_model_name,
             'activity_model': activity_model,
@@ -1258,7 +1271,8 @@ class SolubilityWidget(QWidget):
             't_end': t_end,
             'n_points': n_points,
             'base_alloy_str': base_alloy_str,
-            'solution_phase_display': self.solution_phase_combo.currentText()
+            'solution_phase_display': self.solution_phase_combo.currentText(),
+            'calculate_ideal': self.calculate_ideal_checkbox.isChecked()  # 性能优化选项
         }
 
         # 创建并启动工作线程

@@ -44,6 +44,7 @@ def compute_concentration_point(params):
             - temperature: 温度
             - extrap_model_name: 外推模型名称
             - activity_model: 活度模型
+            - calculate_ideal: 是否计算理想溶解度（可选，默认True）
 
     Returns:
         (index, sol_value, ideal_sol_value, result, ideal_result)
@@ -83,14 +84,18 @@ def compute_concentration_point(params):
             activity_model=params['activity_model']
         )
 
-        # 理想溶解度计算
-        ideal_result = phase_calc.calculate_ideal_solubility(
-            base_alloy_composition=base_composition,
-            solute_element=params['solute'],
-            solution_phase=params['tdb_solution_phase'],
-            precipitating_phase="",
-            temperature=params['temperature']
-        )
+        # 理想溶解度计算（可选，提升速度）
+        if params.get('calculate_ideal', True):
+            ideal_result = phase_calc.calculate_ideal_solubility(
+                base_alloy_composition=base_composition,
+                solute_element=params['solute'],
+                solution_phase=params['tdb_solution_phase'],
+                precipitating_phase="",
+                temperature=params['temperature']
+            )
+        else:
+            # 跳过理想溶解度计算以提升速度
+            ideal_result = {'status': 'skipped', 'solubility_mole_fraction': None}
 
         # 处理实际溶解度
         if result['status'] == 'success':
@@ -135,6 +140,7 @@ def compute_temperature_point(params):
             - tdb_solution_phase: TDB溶液相
             - extrap_model_name: 外推模型名称
             - activity_model: 活度模型
+            - calculate_ideal: 是否计算理想溶解度（可选，默认True）
 
     Returns:
         (index, sol_value, ideal_sol_value, result, ideal_result)
@@ -163,14 +169,18 @@ def compute_temperature_point(params):
             activity_model=params['activity_model']
         )
 
-        # 理想溶解度计算
-        ideal_result = phase_calc.calculate_ideal_solubility(
-            base_alloy_composition=params['base_composition'],
-            solute_element=params['solute'],
-            solution_phase=params['tdb_solution_phase'],
-            precipitating_phase="",
-            temperature=params['t_curr']
-        )
+        # 理想溶解度计算（可选，提升速度）
+        if params.get('calculate_ideal', True):
+            ideal_result = phase_calc.calculate_ideal_solubility(
+                base_alloy_composition=params['base_composition'],
+                solute_element=params['solute'],
+                solution_phase=params['tdb_solution_phase'],
+                precipitating_phase="",
+                temperature=params['t_curr']
+            )
+        else:
+            # 跳过理想溶解度计算以提升速度
+            ideal_result = {'status': 'skipped', 'solubility_mole_fraction': None}
 
         # 处理实际溶解度
         if result['status'] == 'success':

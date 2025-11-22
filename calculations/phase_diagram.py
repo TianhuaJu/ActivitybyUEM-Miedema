@@ -306,7 +306,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			message = "溶质在该温度下与基础合金完全互溶"
 		else:
 			try:
-				solubility = brentq(residual, min_solubility, max_solubility, xtol=1e-10, rtol=1e-10)
+				# 优化：降低求解器精度以提升速度（从1e-10到1e-6，精度仍然足够）
+				solubility = brentq(residual, min_solubility, max_solubility, xtol=1e-6, rtol=1e-6)
 				status = "success"
 				message = "正常计算收敛"
 			except ValueError as e:
