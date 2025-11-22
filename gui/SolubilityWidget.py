@@ -1544,8 +1544,7 @@ class SolubilityWidget(QWidget):
             self.chart_canvas.axes.set_xlabel('温度 (K)', fontsize=11)
             self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
 
-            # 不显示溶液相和析出相名称，仅显示基础合金组成比
-            # 因为相区已在图上标识清楚，避免产生误解
+            
             title = f'{solute} 在 {base_alloy_formatted} 中的溶解度 vs. 温度'
             self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
             self.chart_canvas.axes.grid(True, alpha=0.3)

@@ -6,8 +6,6 @@ TDB (Thermodynamic Database) Parser
 (已修正 - V3)
 - 增加了 get_element_phases 函数，用于获取指定元素的所有可用相
 
-作者: Claude
-日期: 2025-11-08
 """
 
 import re

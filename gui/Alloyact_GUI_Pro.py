@@ -101,14 +101,18 @@ class AlloyActProGUI(QMainWindow):
 		# 设置选项卡样式
 		self.setup_tab_styles()
 		
-		# 创建基础计算选项卡
-		self.create_basic_calculation_tabs()
+		
 		
 		# 创建高级分析选项卡
 		self.create_advanced_analysis_tabs()
-		self.create_AlloyAdditionWidget()
-		self.create_database_mangner_tabs()
 		
+		
+		
+		# 创建基础计算选项卡
+		self.create_basic_calculation_tabs()
+		
+		#数据库管理
+		self.create_database_mangner_tabs()
 		# 创建状态栏
 		self.status_bar = QStatusBar()
 		self.setStatusBar(self.status_bar)
@@ -325,7 +329,7 @@ class AlloyActProGUI(QMainWindow):
 		"""显示关于对话框"""
 		about_text = """
         <h3>AlloyAct Pro - 合金热力学计算器</h3>
-        <p><b>版本:</b> 2.2 (扩展版)</p>
+        <p>基于uem-miedema模型</p>
         <p><b>功能特性:</b></p>
         <ul>
         <li>活度和活度系数计算</li>
@@ -334,16 +338,16 @@ class AlloyActProGUI(QMainWindow):
         <li>温度变化分析</li>
         <li>浓度变化分析</li>
         <li>多种外推模型支持 (UEM1, UEM2, GSM, Muggianu, etc)</li>
-        <li><b>新增:</b> 完整热力学性质计算 (活度、化学势、摩尔焓、吉布斯自由能)</li>
-        <li><b>新增:</b> 液相线/固相线温度计算</li>
-        <li><b>新增:</b> 相图绘制与分析</li>
-        <li><b>新增:</b> 溶解度计算 (液相与固相)</li>
-        <li><b>新增:</b> 溶解度-浓度关系曲线分析</li>
-        <li><b>新增:</b> 基于SGTE Unary Database的纯物质热力学数据</li>
+        <li>完整热力学性质计算 (活度、化学势、摩尔焓、吉布斯自由能)</li>
+        <li>液相线/固相线温度计算</li>
+        <li>相图绘制与分析</li>
+        <li>溶解度计算 (液相与固相)</li>
+        <li>溶解度-浓度关系曲线分析</li>
+        <li>基于SGTE Unary Database的纯物质热力学数据</li>
         </ul>
         <p><b>开发团队:</b> 合金热力学计算实验室</p>
         <p><b>技术支持:</b> <a href="mailto:jutianhua@gxu.edu.cn">jutianhua@gxu.edu.cn</a></p>
-        <p><b>扩展开发:</b> Claude AI Assistant (2025)</p>
+        
         """
 		QMessageBox.about(self, "关于 AlloyAct Pro", about_text)
 		
