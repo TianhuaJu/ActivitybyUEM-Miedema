@@ -15,7 +15,7 @@ from datetime import datetime
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QLabel, QLineEdit, QComboBox, QPushButton,
                              QSplitter, QFrame, QGroupBox, QTextEdit,
-                             QMessageBox, QRadioButton, QButtonGroup, QProgressBar)
+                             QMessageBox, QRadioButton, QButtonGroup, QProgressBar, QCheckBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -456,11 +456,11 @@ class SolubilityWidget(QWidget):
         row += 1
 
         # 性能优化选项：跳过理想溶解度计算
-        self.calculate_ideal_checkbox = QCheckBox("计算理想溶解度（可选，影响速度）")
+        self.calculate_ideal_checkbox = QCheckBox("计算理想溶解度")
         self.calculate_ideal_checkbox.setChecked(True)  # 默认开启
         self.calculate_ideal_checkbox.setToolTip(
             "理想溶解度计算需要额外时间。\n"
-            "如果不需要比较理想与实际溶解度，可以关闭此选项以提升速度约1.5-2倍。"
+            "如果不需要比较理想与实际溶解度，可以关闭此选项。"
         )
         model_layout.addWidget(self.calculate_ideal_checkbox, row, 0, 1, 2)
 
@@ -1213,9 +1213,9 @@ class SolubilityWidget(QWidget):
             self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
 
             # 标题：使用化学式形式 (AmBn)_{1-x}C_x
-            # 例如："C 在 (Fe0.95Si0.05)_{1-x}Cr_x(BCC) 中的溶解度 vs. Cr 含量"
+            # 例如："C 在 (Fe0.95Si0.05)_{1-x}Cr_x 中的溶解度 vs. Cr 含量"
             alloy_formula = f'({fixed_base_formatted})$_{{1-x}}${variable_comp}$_x$'
-            title = f'{solute} 在 {alloy_formula}({detected_solution_phase_simple}) 中的溶解度 vs. {variable_comp} 含量\n析出相: {detected_precipitate_simple}'
+            title = f'{solute} 在 {alloy_formula} 中的溶解度 vs. {variable_comp} 含量\n析出相: {detected_precipitate_simple}'
             self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
 
             self.chart_canvas.axes.grid(True, alpha=0.3)
@@ -1496,8 +1496,8 @@ class SolubilityWidget(QWidget):
             self.chart_canvas.axes.set_ylabel(f'{solute} 溶解度 (摩尔%)', fontsize=11)
 
             # 使用检测到的溶液相名称（简化），并显示基础合金的组成比
-            # 例如："C 在 Fe0.95Si0.05(BCC) 中的溶解度 vs. 温度"
-            title = f'{solute} 在 {base_alloy_formatted}({detected_solution_phase_simple}) 中的溶解度 vs. 温度\n析出相: {detected_precipitate_simple}'
+            # 例如："C 在 Fe0.95Si0.05 中的溶解度 vs. 温度"
+            title = f'{solute} 在 {base_alloy_formatted} 中的溶解度 vs. 温度\n析出相: {detected_precipitate_simple}'
             self.chart_canvas.axes.set_title(title, fontsize=12, fontweight='bold')
             self.chart_canvas.axes.grid(True, alpha=0.3)
             self.chart_canvas.axes.legend(loc='best', fontsize=10)
