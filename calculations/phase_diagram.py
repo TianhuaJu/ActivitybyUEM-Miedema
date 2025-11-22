@@ -459,105 +459,33 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 	                                 extrapolation_model_name, activity_model, ignore_component=None, tolerance=10.0):
 		"""
 		@tdb_phase:合金相
-		检查合金组分是否析出"""
+		检查合金组分是否析出,只检查该合金的稳定性"""
 		issues = []
 		
 		# =========================================================
 		# 1. 计算当前相的化学势和总能量
 		# =========================================================
-		current_mus = {}
-		current_G_total = 0.0
-		valid_current = True
+		is_stable = True
 		
-		for el, x_el in composition.items():
+		for el,x_el  in composition.items():
 			if x_el < 1e-12: continue
-			mu = self._get_chemical_potential(composition, el, temperature, tdb_phase, extrapolation_func,
+			
+			mu_el = self._get_chemical_potential(composition, el, temperature, tdb_phase, extrapolation_func,
 			                                  extrapolation_model_name, activity_model)
-			if mu is None:
-				valid_current = False
+			if mu_el is None:
 				break
-			current_mus[el] = mu
-			current_G_total += x_el * mu
-		
-		if not valid_current:
-			# 如果连当前相的能量都算不出来，保守返回 True (或根据需求抛错)
-			return True, []
-		
-		# =========================================================
-		# 2. 检查组分析出 (Component Precipitation) - 原有逻辑
-		# =========================================================
-		for el, mu_el in current_mus.items():
-			if el == ignore_component: continue  # 忽略强制溶解的溶质
-			
-			# 获取纯组元在当前温度下的最低能量 (稳定态)
-			# 优先找 get_stable_phase，找不到则兜底搜索
-			ref_phase = self.tdb_parser.get_stable_phase(el, temperature)
-			g_stable = self.tdb_parser.get_gibbs_energy(el, ref_phase, temperature) if ref_phase else None
-			
-			if g_stable is None:
-				# 兜底搜索
-				for ph in ['FCC_A1', 'BCC_A2', 'HCP_A3', 'LIQUID']:
-					g_stable = self.tdb_parser.get_gibbs_energy(el, ph, temperature)
-					if g_stable: break
-			
-			# 判据：化学势 > 纯组元能量 + 容差
-			if g_stable and (mu_el - g_stable > tolerance):
+			stable_phase = self.tdb_parser.get_stable_phase(el,temperature)
+			g_stable_pure = self.tdb_parser.get_gibbs_energy(el, stable_phase , temperature)
+			if mu_el - g_stable_pure > tolerance:
+				'合金不稳定'
 				issues.append(
-					f"组分不稳定: {el} 在 {tdb_phase} 中的化学势过高 (Δμ={mu_el - g_stable:.1f})，倾向以纯态析出")
-		
-		# 如果已经发现组分析出，直接返回不稳定，无需继续算相竞争
-		if issues:
-			return False, issues
-		
-		# =========================================================
-		# 3. 检查相竞争 (Phase Competition) - 新增逻辑
-		# =========================================================
-		# 定义需要与当前相进行比较的竞争对手
-		# 这是一个通用集合，涵盖金属材料最常见的结构
-		competitor_phases = {'LIQUID', 'BCC_A2', 'FCC_A1', 'HCP_A3'}
-		
-		# 移除当前相自己 (避免自己比自己)
-		if tdb_phase in competitor_phases:
-			competitor_phases.remove(tdb_phase)
-		
-		for comp_phase in competitor_phases:
-			try:
-				comp_G_total = 0.0
-				valid_comp = True
-				
-				# 计算竞争相的总能量
-				for el, x_el in composition.items():
-					if x_el < 1e-12: continue
-					
-					# 尝试获取组分在竞争相中的化学势
-					mu_comp = self._get_chemical_potential(composition, el, temperature, comp_phase,
-					                                       extrapolation_func, extrapolation_model_name, activity_model)
-					
-					# 如果某个组分在竞争相中没有定义参数 (返回 None)，则该竞争相无效，跳过
-					if mu_comp is None:
-						valid_comp = False
-						break
-					
-					comp_G_total += x_el * mu_comp
-				
-				if not valid_comp:
-					continue
-				
-				# 判据：如果当前相能量显著高于竞争相 (G_current > G_comp + tolerance)
-				# 这意味着系统会自发发生整体相变 (例如从 Liquid 结晶为 BCC)
-				diff = current_G_total - comp_G_total
-				if diff > tolerance:
-					issues.append(
-						f"相不稳定: 当前 {tdb_phase} 能量高于 {comp_phase} (ΔG={diff:.1f} J/mol)，倾向发生相变")
-					# 只要发现一个能量更低的相，就可以判定不稳定并返回
-					return False, issues
+						f"组分不稳定: {el} 在 {tdb_phase} 中的化学势过高 (Δμ={mu_el - g_stable_pure:.1f})，倾向以纯态析出")
+				is_stable = False
+				return False, issues
 			
-			except Exception:
-				# 容错处理：如果竞争相计算出错，忽略该竞争相
-				continue
+		return is_stable, issues
+			
 		
-		# 如果通过了所有检查
-		return True, []
 	
 	def _get_chemical_potential (self,
 	                             composition: Dict[str, float],
