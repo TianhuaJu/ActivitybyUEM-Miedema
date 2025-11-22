@@ -173,10 +173,16 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			#  检查剩余相的稳定性，如果都不稳定，则报告基础合金相不稳定；如果稳定，则找出最稳定的那个相作为tdb_solution_phase
 			all_phases = self.tdb_parser.get_element_phases(solvent)
 			candidate_phases = [p for p in all_phases if p != tdb_solution_phase and p != 'GAS']
+			
 			found_stable_phase = False
 			combined_issues = list(issues)  # 收集所有尝试过的错误信息
 			
+			# === 新增变量：用于追踪最稳定的相 ===
+			best_phase_name = None
+			min_gibbs_energy = float('inf')  # 初始化为无穷大
+			
 			for phase in candidate_phases:
+				# 1. 首先检查该相本身是否稳定 (没有析出，没有不合理的化学势)
 				s_try, i_try = self._check_alloy_full_stability(
 						composition=base_comp,
 						temperature=temperature,
@@ -187,17 +193,48 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 				)
 				
 				if s_try:
-					# 找到了稳定的相！更新基体信息
-					tdb_solution_phase = phase
-					phase_desc = "液相" if phase == 'LIQUID' else f"固相 ({phase})"
-					stable = True
-					found_stable_phase = True
-					issues = []  # 清空之前的错误信息
-					break  # 停止搜索
+					# === 修改点：找到稳定相后，不立即退出，而是计算能量 ===
+					current_energy = 0.0
+					calculation_valid = True
+					
+					# 计算该相在当前成分下的总吉布斯自由能 G = sum(x_i * mu_i)
+					# 注意：这里需要重新调用 _get_chemical_potential 来获取数值
+					for el, x_el in base_comp.items():
+						mu = self._get_chemical_potential(
+								composition=base_comp,
+								component=el,
+								temperature=temperature,
+								tdb_phase=phase,
+								extrapolation_model_func=extrapolation_func,
+								extrapolation_model=extrapolation_model_name,
+								activity_model=activity_model
+						)
+						
+						if mu is None:
+							calculation_valid = False
+							break
+						current_energy += x_el * mu
+					
+					# 如果能量计算成功，与当前最小值比较
+					if calculation_valid:
+						if current_energy < min_gibbs_energy:
+							min_gibbs_energy = current_energy
+							best_phase_name = phase
+							found_stable_phase = True
+							issues = []  # 既然找到了至少一个可行解，之前的错误就不重要了
+				
+				# 注意：这里没有 break，循环继续以寻找更低能量的相
 				else:
 					combined_issues.extend(i_try)
 			
-			# 如果遍历完还是不稳定，则返回错误
+			# === 循环结束后，应用找到的最优相 ===
+			if found_stable_phase and best_phase_name:
+				tdb_solution_phase = best_phase_name
+				phase_desc = "液相" if best_phase_name == 'LIQUID' else f"固相 ({best_phase_name})"
+				stable = True
+			# 可以在这里打印日志：print(f"自动切换至最稳定相: {best_phase_name} (G={min_gibbs_energy:.2f})")
+			
+			# 如果遍历完还是没有找到任何稳定相，则返回错误
 			if not found_stable_phase:
 				error_msg = f"基础合金在所有候选相中均不稳定。详细原因: {'; '.join(combined_issues[:3])}..."
 				return {
