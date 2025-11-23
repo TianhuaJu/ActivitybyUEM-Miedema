@@ -1,34 +1,48 @@
 """
-Phase Equilibrium Calculator
-=============================
-相平衡计算模块 - 基于吉布斯自由能最小化原理
+Phase Equilibrium Calculator (Recursive Phase Separation Algorithm)
+====================================================================
+相平衡计算模块 - 基于递归相分离算法
 
-功能:
-1. 计算给定合金组成在一定温度下的平衡相及其占比
-2. 计算相平衡随温度的变化
-3. 计算相平衡随组分的变化
+算法原理:
+1. 判断给定合金组成的相稳定性
+   - 如果稳定 → 单一相
+   - 如果不稳定 → 分解成多相
+
+2. 对于不稳定情况：
+   - 找出吉布斯自由能最小的相作为基础相
+   - 计算其他元素在该相中的最大溶解度
+   - 按最大溶解度固定主相组成
+
+3. 处理剩余成分：
+   - 剩余成分构成新的基础合金
+   - 递归执行步骤1-2
+   - 直至所有成分都处于稳定相中
+
+4. 根据物质守恒计算各相的相分数
 
 理论基础:
-- 平衡条件: ∂G/∂ξ = 0 (吉布斯自由能最小化)
-- 化学势平衡: μᵢᵅ = μᵢᵝ (各相中同一组分的化学势相等)
+- 相稳定性判据: 所有组分化学势不超过其纯态能量
+- 溶解度平衡: μᵢ(溶液) = G⁰ᵢ(析出相)
 - 物质守恒: Σ(xᵢᵅ × fᵅ) = xᵢ_total
 
 作者: Claude
+版本: v2.0 (递归相分离算法)
 日期: 2025-11-23
 """
 
 import math
 import sys
 import os
-from typing import Dict, List, Tuple, Optional, Callable
+from typing import Dict, List, Tuple, Optional, Callable, Set
 import numpy as np
-from scipy.optimize import minimize, root
-from dataclasses import dataclass
+from scipy.optimize import minimize, root, nnls
+from dataclasses import dataclass, field
+from copy import deepcopy
 
 # 添加项目路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from calculations.thermodynamic_properties import ThermodynamicProperties
+from calculations.phase_diagram import PhaseDiagramCalculator
 from models.extrapolation_models import BinaryModel
 
 
@@ -36,16 +50,17 @@ from models.extrapolation_models import BinaryModel
 class PhaseInfo:
     """相信息数据类"""
     name: str  # 相名称 (LIQUID, BCC_A2, FCC_A1, HCP_A3)
-    fraction: float  # 相分数 (0-1)
-    composition: Dict[str, float]  # 相组成 {元素: 摩尔分数}
-    gibbs_energy: float  # 该相的摩尔吉布斯自由能 (J/mol)
+    fraction: float = 0.0  # 相分数 (0-1)
+    composition: Dict[str, float] = field(default_factory=dict)  # 相组成 {元素: 摩尔分数}
+    gibbs_energy: float = 0.0  # 该相的摩尔吉布斯自由能 (J/mol)
+    absolute_amounts: Dict[str, float] = field(default_factory=dict)  # 绝对量 (用于物质守恒计算)
 
 
-class PhaseEquilibriumCalculator(ThermodynamicProperties):
+class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
     """
-    相平衡计算器
+    相平衡计算器 (递归相分离算法)
 
-    基于吉布斯自由能最小化原理计算多相平衡
+    继承自 PhaseDiagramCalculator，利用已有的溶解度计算和稳定性检查功能
     """
 
     def __init__(self):
@@ -55,6 +70,12 @@ class PhaseEquilibriumCalculator(ThermodynamicProperties):
         # 定义常见的固相相结构
         self.solid_phases = ['BCC_A2', 'FCC_A1', 'HCP_A3']
         self.all_phases = ['LIQUID'] + self.solid_phases
+
+        # 递归深度限制 (防止无限递归)
+        self.max_recursion_depth = 10
+
+        # 最小组分阈值
+        self.min_composition_threshold = 1e-9
 
     def calculate_single_phase_energy(self,
                                      composition: Dict[str, float],
