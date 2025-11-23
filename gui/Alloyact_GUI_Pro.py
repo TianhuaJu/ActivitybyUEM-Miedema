@@ -38,6 +38,7 @@ from gui.SecondOrderCoefficientWidget import SecondOrderCoefficientWidget
 from gui.ThermodynamicPropertiesWidget import ThermodynamicPropertiesWidget
 from gui.PhaseDiagramWidget import PhaseDiagramWidget
 from gui.SolubilityWidget import SolubilityWidget
+from gui.PhaseEquilibriumWidget import PhaseEquilibriumWidget
 
 
 class MplCanvas(FigureCanvas):
@@ -218,6 +219,9 @@ class AlloyActProGUI(QMainWindow):
 		# 溶解度计算选项卡
 		self.create_solubility_tab()
 
+		# 相平衡计算选项卡
+		self.create_phase_equilibrium_tab()
+
 	def create_thermodynamic_calculation_tab(self):
 		"""创建热力学计算主标签（包含多个子标签）"""
 		# 创建主容器widget
@@ -325,6 +329,11 @@ class AlloyActProGUI(QMainWindow):
 		self.solubility_widget = SolubilityWidget()
 		self.tabs.addTab(self.solubility_widget, "溶解度计算")
 
+	def create_phase_equilibrium_tab(self):
+		"""创建相平衡计算选项卡"""
+		self.phase_equilibrium_widget = PhaseEquilibriumWidget()
+		self.tabs.addTab(self.phase_equilibrium_widget, "相平衡计算")
+
 	def show_about (self):
 		"""显示关于对话框"""
 		about_text = """
@@ -343,6 +352,9 @@ class AlloyActProGUI(QMainWindow):
         <li>相图绘制与分析</li>
         <li>溶解度计算 (液相与固相)</li>
         <li>溶解度-浓度关系曲线分析</li>
+        <li>相平衡计算 (吉布斯自由能最小化)</li>
+        <li>平衡相组成及相分数计算</li>
+        <li>相平衡随温度和组分的变化分析</li>
         <li>基于SGTE Unary Database的纯物质热力学数据</li>
         </ul>
         <p><b>开发团队:</b> 合金热力学计算实验室</p>
