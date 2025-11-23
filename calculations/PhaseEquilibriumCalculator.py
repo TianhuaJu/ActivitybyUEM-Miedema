@@ -323,8 +323,8 @@ if __name__ == '__main__':
 	# 第三步：剥离出近乎纯铝的 FCC 相。
 	# 第四步：剩余物变成高 Cu 浓度的相 (Al2Cu 前体)。
 	
-	my_alloy = {'AL': 0.66, 'CU': 0.14,'SI':0.2}
-	T_test = 400.0
+	my_alloy = {'FE': 0.70, 'C': 0.14, 'SI': 0.16}
+	T_test = 1800.0
 	
 	# 4. 运行
 	res = calc.calculate_phase_equilibrium(
