@@ -105,7 +105,7 @@ class AlloyActProGUI(QMainWindow):
 		
 		# 创建高级分析选项卡
 		self.create_advanced_analysis_tabs()
-		self.create_AlloyAdditionWidget()
+		
 		
 		
 		# 创建基础计算选项卡
