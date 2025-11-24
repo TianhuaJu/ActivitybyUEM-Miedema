@@ -5,7 +5,7 @@ from copy import deepcopy
 from typing import Callable, Dict
 
 from core.element import Element
-from models.activity_interaction_parameters import TernaryMelts
+from models.activity_interaction_parameters import multicomponentSolution
 
 extrap_func = Callable[[str, str, str, float, str], float]
 
@@ -48,7 +48,7 @@ class ActivityCoefficient:
         solui = Element(solute_i)
         solute_keys = [k for k in comp_dict.keys() if k != solvent]
         
-        ternary_melts = TernaryMelts(Tem, state)
+        ternary_melts = multicomponentSolution(Tem, state)
         ln_yi_0 = ternary_melts.ln_y0(solv, solui)
 
         linear_sum = 0.0
@@ -142,7 +142,7 @@ class ActivityCoefficient:
         if not solute_keys:
             return 0.0
 
-        ternary_melts = TernaryMelts(Tem, state)
+        ternary_melts = multicomponentSolution(Tem, state)
         
         quadratic_sum = 0.0
         # 根据UIPF公式进行双重求和

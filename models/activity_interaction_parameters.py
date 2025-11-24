@@ -11,7 +11,7 @@ from .extrapolation_models import BinaryModel
 extrap_func = Callable[[str, str, str, float, str], float]
 
 
-class TernaryMelts:
+class multicomponentSolution:
 	def __init__ (self, t=0.0, phase_state="liquid", is_se=False):
 		self._temperature = t
 		self._state = phase_state

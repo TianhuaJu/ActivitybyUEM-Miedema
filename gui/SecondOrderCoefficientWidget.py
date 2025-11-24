@@ -7,7 +7,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 from core.element import Element
-from models.activity_interaction_parameters import TernaryMelts
+from models.activity_interaction_parameters import multicomponentSolution
 
 
 class MplCanvas(FigureCanvas):
@@ -236,9 +236,9 @@ class SecondOrderCoefficientWidget(QWidget):
 			# 获取模型函数
 			model_func = self.get_model_function(model_name)
 			
-			# 创建 TernaryMelts 实例
+			# 创建 multicomponentSolution 实例
 			is_entropy = False
-			ternary = TernaryMelts(temp, state, is_entropy)
+			ternary = multicomponentSolution(temp, state, is_entropy)
 			
 			# 计算二阶系数
 			ri_ii = ternary.roui_ii(solv, solui, temp, state, model_func, model_name)
