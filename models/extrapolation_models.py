@@ -8,8 +8,8 @@ from core.constants import Constants
 from core.element import Element
 import mpmath
 
-# 导入 TernaryMelts 会导致循环导入，需要重构或延迟导入
-# from ternary_model import TernaryMelts
+# 导入 multicomponentSolution 会导致循环导入，需要重构或延迟导入
+# from ternary_model import multicomponentSolution
 
 
 class BinaryModel:
