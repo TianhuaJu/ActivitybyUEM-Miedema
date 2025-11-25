@@ -232,7 +232,8 @@ class RecursivePhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 gibbs_energy=G if G is not None else 0.0
             )
             phases.append(phase_info)
-            calc_log.append(f"{indent}添加相: {stable_phase}, G={G:.2f} J/mol")
+            G_display = G if G is not None else 0.0
+            calc_log.append(f"{indent}添加相: {stable_phase}, G={G_display:.2f} J/mol")
             calc_log.append("")
             return
 
@@ -337,7 +338,8 @@ class RecursivePhaseEquilibriumCalculator(PhaseDiagramCalculator):
         )
         phases.append(phase_info)
         calc_log.append(f"{indent}添加相: {best_phase}, 组成: {phase_composition}")
-        calc_log.append(f"{indent}该相摩尔数: {phase_moles:.6f}, G={G:.2f} J/mol")
+        G_display = G if G is not None else 0.0
+        calc_log.append(f"{indent}该相摩尔数: {phase_moles:.6f}, G={G_display:.2f} J/mol")
 
         # ===== 步骤4: 处理剩余成分（递归） =====
         if len(precipitated_amounts) > 0:
