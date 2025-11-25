@@ -30,7 +30,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.utils import parse_composition_static
-from calculations.phase_equilibrium_calculator import PhaseEquilibriumCalculator
+from calculations.phase_equilibrium_calculator import RecursivePhaseEquilibriumCalculator
 from models.extrapolation_models import BinaryModel
 
 
@@ -69,7 +69,7 @@ class PhaseEquilibriumWidget(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.calculator = PhaseEquilibriumCalculator()
+        self.calculator = RecursivePhaseEquilibriumCalculator()
         self.binary_model = BinaryModel()
         self.calc_thread = None
         self.current_results = None
@@ -162,12 +162,10 @@ class PhaseEquilibriumWidget(QWidget):
         input_layout.addWidget(self.sp_activity_model_combo, row, 1)
         row += 1
 
-        # 最大相数
-        input_layout.addWidget(QLabel("最大相数:"), row, 0, Qt.AlignRight)
-        self.sp_max_phases_combo = QComboBox()
-        self.sp_max_phases_combo.addItems(["1", "2"])
-        self.sp_max_phases_combo.setCurrentText("2")
-        input_layout.addWidget(self.sp_max_phases_combo, row, 1)
+        # 添加说明标签
+        note_label = QLabel("注: 平衡相数由算法自动确定")
+        note_label.setStyleSheet("color: #666; font-style: italic; font-size: 10pt;")
+        input_layout.addWidget(note_label, row, 0, 1, 2, Qt.AlignCenter)
         row += 1
 
         layout.addWidget(input_group)
@@ -206,10 +204,22 @@ class PhaseEquilibriumWidget(QWidget):
 
         self.sp_results_text = QTextEdit()
         self.sp_results_text.setReadOnly(True)
-        self.sp_results_text.setMinimumHeight(200)
+        self.sp_results_text.setMinimumHeight(150)
         results_layout.addWidget(self.sp_results_text)
 
         layout.addWidget(results_group)
+
+        # 计算日志
+        log_group = QGroupBox("计算日志")
+        log_layout = QVBoxLayout(log_group)
+
+        self.sp_log_text = QTextEdit()
+        self.sp_log_text.setReadOnly(True)
+        self.sp_log_text.setMinimumHeight(200)
+        self.sp_log_text.setStyleSheet("font-family: 'Courier New', monospace; font-size: 10pt;")
+        log_layout.addWidget(self.sp_log_text)
+
+        layout.addWidget(log_group)
 
         # 结果表格
         table_group = QGroupBox("相平衡详细信息")
@@ -518,7 +528,6 @@ class PhaseEquilibriumWidget(QWidget):
             temperature = float(self.sp_temperature_input.text())
             extrap_model_name = self.sp_extrap_model_combo.currentText()
             activity_model = self.sp_activity_model_combo.currentText()
-            max_phases = int(self.sp_max_phases_combo.currentText())
 
             # 获取外推模型函数
             extrap_func = getattr(self.binary_model, extrap_model_name)
@@ -527,10 +536,10 @@ class PhaseEquilibriumWidget(QWidget):
             self.sp_progress_bar.setVisible(True)
             self.sp_calculate_button.setEnabled(False)
 
-            # 执行计算
-            result = self.calculator.calculate_phase_equilibrium_at_temperature(
+            # 执行计算（使用新的递归相分离算法）
+            result = self.calculator.calculate_phase_equilibrium(
                 composition, temperature, extrap_func,
-                extrap_model_name, activity_model, max_phases
+                extrap_model_name, activity_model
             )
 
             # 显示结果
@@ -547,7 +556,7 @@ class PhaseEquilibriumWidget(QWidget):
     def display_single_point_results(self, result):
         """显示单点计算结果"""
         # 显示文本结果
-        text = f"=== 相平衡计算结果 ===\n\n"
+        text = f"=== 相平衡计算结果（递归相分离算法）===\n\n"
         text += f"状态: {result.get('status', 'unknown')}\n"
         text += f"温度: {result.get('temperature', 0):.2f} K\n"
         text += f"总组成: {result.get('total_composition', {})}\n"
@@ -555,7 +564,7 @@ class PhaseEquilibriumWidget(QWidget):
         text += f"消息: {result.get('message', '')}\n\n"
 
         if 'phases' in result and result['phases']:
-            text += f"平衡相数: {len(result['phases'])}\n\n"
+            text += f"自动确定的平衡相数: {len(result['phases'])}\n\n"
 
             for i, phase in enumerate(result['phases'], 1):
                 text += f"相 {i}: {phase.name}\n"
@@ -564,6 +573,13 @@ class PhaseEquilibriumWidget(QWidget):
                 text += f"  组成: {phase.composition}\n\n"
 
         self.sp_results_text.setPlainText(text)
+
+        # 显示计算日志
+        if 'calculation_log' in result:
+            log_text = '\n'.join(result['calculation_log'])
+            self.sp_log_text.setPlainText(log_text)
+        else:
+            self.sp_log_text.setPlainText("（无计算日志）")
 
         # 填充表格
         self.fill_single_point_table(result)
@@ -650,6 +666,7 @@ class PhaseEquilibriumWidget(QWidget):
     def clear_single_point_results(self):
         """清除单点计算结果"""
         self.sp_results_text.clear()
+        self.sp_log_text.clear()
         self.sp_results_table.setRowCount(0)
         self.sp_canvas.axes.clear()
         self.sp_canvas.draw()
