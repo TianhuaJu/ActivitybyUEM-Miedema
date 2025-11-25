@@ -30,7 +30,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.utils import parse_composition_static
-from calculations.phase_equilibrium_calculator import RecursivePhaseEquilibriumCalculator
+from calculations.phase_equilibrium_calculator import PhaseEquilibriumCalculator
 from models.extrapolation_models import BinaryModel
 
 
@@ -69,7 +69,7 @@ class PhaseEquilibriumWidget(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.calculator = RecursivePhaseEquilibriumCalculator()
+        self.calculator = PhaseEquilibriumCalculator()
         self.binary_model = BinaryModel()
         self.calc_thread = None
         self.current_results = None
