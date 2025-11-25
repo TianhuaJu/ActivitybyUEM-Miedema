@@ -542,19 +542,43 @@ class PhaseEquilibriumWidget(QWidget):
                 extrap_model_name, activity_model
             )
 
+            # 调试：检查返回类型
+            if not isinstance(result, dict):
+                QMessageBox.critical(
+                    self, "计算错误",
+                    f"计算器返回了错误的数据类型: {type(result).__name__}\n"
+                    f"期望: dict\n"
+                    f"这可能是由于代码缓存问题导致。请重启应用程序。"
+                )
+                return
+
             # 显示结果
             self.display_single_point_results(result)
 
         except ValueError as e:
             QMessageBox.warning(self, "输入错误", f"输入参数无效:\n{str(e)}")
         except Exception as e:
-            QMessageBox.critical(self, "计算错误", f"计算过程中发生错误:\n{str(e)}")
+            import traceback
+            error_details = traceback.format_exc()
+            QMessageBox.critical(
+                self, "计算错误",
+                f"计算过程中发生错误:\n{str(e)}\n\n详细信息:\n{error_details}"
+            )
         finally:
             self.sp_progress_bar.setVisible(False)
             self.sp_calculate_button.setEnabled(True)
 
     def display_single_point_results(self, result):
         """显示单点计算结果"""
+        # 类型检查
+        if not isinstance(result, dict):
+            QMessageBox.critical(
+                self, "数据错误",
+                f"计算结果格式错误：期望字典类型，实际得到 {type(result).__name__} 类型。\n"
+                f"请重启应用程序并重试。"
+            )
+            return
+
         # 显示文本结果
         text = f"=== 相平衡计算结果（递归相分离算法）===\n\n"
         text += f"状态: {result.get('status', 'unknown')}\n"
@@ -590,6 +614,9 @@ class PhaseEquilibriumWidget(QWidget):
     def fill_single_point_table(self, result):
         """填充单点计算表格"""
         self.sp_results_table.setRowCount(0)
+
+        if not isinstance(result, dict):
+            return
 
         if 'phases' not in result or not result['phases']:
             return
@@ -640,6 +667,10 @@ class PhaseEquilibriumWidget(QWidget):
     def plot_single_point_chart(self, result):
         """绘制单点计算饼图"""
         self.sp_canvas.axes.clear()
+
+        if not isinstance(result, dict):
+            self.sp_canvas.draw()
+            return
 
         if 'phases' not in result or not result['phases']:
             self.sp_canvas.draw()
