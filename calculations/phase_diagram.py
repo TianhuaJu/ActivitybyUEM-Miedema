@@ -23,6 +23,7 @@ from scipy.optimize import root, brentq
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from calculations.thermodynamic_properties import ThermodynamicProperties, extrap_func
+from core.intermetallic_compounds import intermetallic_db
 
 
 class PhaseDiagramCalculator(ThermodynamicProperties):
@@ -33,6 +34,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 	
 	def __init__ (self):
 		super().__init__()
+		self.intermetallic_db = intermetallic_db  # 金属间化合物数据库
 	
 	@staticmethod
 	def _check_bounds (x, epsilon=1e-9):
@@ -125,9 +127,85 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 		
 		# 3. 返回估算的 Gibbs 能量 (G_target = G_stable + Fixed_Diff)
 		return g_stable + delta_g
-	
 
-	
+	def _determine_precipitating_phase(self,
+	                                   solute: str,
+	                                   base_composition: Dict[str, float],
+	                                   temperature: float) -> Tuple[str, str]:
+		"""
+		确定析出相：考虑纯组元和金属间化合物的竞争
+
+		参数:
+		    solute: 溶质元素
+		    base_composition: 基体组成
+		    temperature: 温度
+
+		返回:
+		    (析出相类型, 析出相名称)
+		    析出相类型: 'PURE' 或 'COMPOUND'
+		"""
+
+		# 默认：纯组元析出
+		pure_phase = self.tdb_parser.get_stable_phase(solute, temperature)
+		if not pure_phase:
+			pure_phase = 'FCC_A1'  # 默认
+
+		# 获取纯组元的吉布斯能量
+		g_pure = self.tdb_parser.get_gibbs_energy(solute, pure_phase, temperature)
+
+		best_phase_type = 'PURE'
+		best_phase_name = pure_phase
+		best_energy = g_pure if g_pure is not None else float('inf')
+
+		# 检查可能的金属间化合物
+		for base_elem in base_composition.keys():
+			if base_elem == solute:
+				continue
+
+			# 查找可能的化合物
+			possible_compounds = self.intermetallic_db.get_possible_compounds(solute, base_elem)
+
+			for compound_name in possible_compounds:
+				# 尝试从TDB获取化合物的能量
+				# 化合物通常作为独立的相存在，名称可能需要映射
+				# 例如: FE3C 可能在TDB中命名为 CEMENTITE 或 FE3C
+
+				# 尝试多种可能的TDB相名
+				possible_tdb_names = [
+					compound_name,
+					compound_name.replace('_', ''),
+					compound_name + '_D03',  # 某些化合物的晶体结构标记
+				]
+
+				compound_energy = None
+				for tdb_name in possible_tdb_names:
+					# 尝试获取化合物的吉布斯能量
+					# 注意：化合物的能量需要按化学计量比计算
+					elem1, elem2, n1, n2 = self.intermetallic_db.get_compound_stoichiometry(compound_name)
+
+					# 简化处理：尝试从TDB直接获取化合物相的能量
+					g_compound = self.tdb_parser.get_gibbs_energy(elem1, tdb_name, temperature)
+
+					if g_compound is not None:
+						compound_energy = g_compound
+						break
+
+				# 如果TDB中没有化合物数据，使用近似估算
+				if compound_energy is None:
+					# 使用Miedema模型或其他方法估算化合物形成焓
+					# 这里简化处理：假设化合物比纯组元稳定一定的能量
+					# 实际应用中应该使用更精确的方法
+					compound_energy = best_energy - 5000.0  # J/mol (示例值)
+
+				# 比较能量
+				if compound_energy < best_energy:
+					best_energy = compound_energy
+					best_phase_type = 'COMPOUND'
+					best_phase_name = compound_name
+
+		return best_phase_type, best_phase_name
+
+
 	def calculate_solubility (self,
 	                          base_alloy_composition: Dict[str, float],
 	                          solute_element: str,
@@ -138,10 +216,17 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 	                          activity_model: str = 'Wagner',
 	                          min_solubility: float = 1e-12,
 	                          max_solubility: float = 0.999) -> dict:
-		
+
 		# ==================== 1. 预处理 ====================
 		solute = solute_element.upper()
-		precipitating_phase = self.tdb_parser.get_stable_phase(solute,temperature) #沉淀相为计算温度T下的稳定相
+
+		# ==================== 新增：确定析出相（考虑金属间化合物） ====================
+		precipitating_phase_type, precipitating_phase = self._determine_precipitating_phase(
+			solute, base_alloy_composition, temperature
+		)
+
+		# 原有逻辑的兼容：如果是纯组元析出，保持原有行为
+		# precipitating_phase = self.tdb_parser.get_stable_phase(solute,temperature)
 		
 		total_base = sum(base_alloy_composition.values())
 		if total_base <= 0:
@@ -247,11 +332,34 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 					"error_detail": error_msg,
 					"warnings": combined_issues
 				}
-		
-		# ==================== 3. 获取析出相纯态能量 ====================
-		g_ppt = self.tdb_parser.get_gibbs_energy(solute, precipitating_phase, temperature)
+
+		# ==================== 3. 获取析出相能量 ====================
+		if precipitating_phase_type == 'PURE':
+			# 纯组元析出
+			g_ppt = self.tdb_parser.get_gibbs_energy(solute, precipitating_phase, temperature)
+		else:
+			# 金属间化合物析出
+			# 获取化合物的化学计量比和能量
+			elem1, elem2, n1, n2 = self.intermetallic_db.get_compound_stoichiometry(precipitating_phase)
+
+			# 尝试从TDB获取化合物能量
+			# （这里简化处理，实际应该更复杂）
+			g_ppt = self.tdb_parser.get_gibbs_energy(elem1, precipitating_phase, temperature)
+
+			# 如果TDB中没有，使用组成元素的能量估算
+			if g_ppt is None:
+				g1 = self.tdb_parser.get_gibbs_energy(elem1, 'LIQUID', temperature)
+				g2 = self.tdb_parser.get_gibbs_energy(elem2, 'LIQUID', temperature)
+
+				if g1 and g2:
+					# 简化估算：加权平均 + 形成焓（负值表示稳定）
+					total_atoms = n1 + n2
+					g_ppt = (n1 * g1 + n2 * g2) / total_atoms - 10000.0  # J/mol (示例)
+				else:
+					g_ppt = None
+
 		if g_ppt is None:
-			raise RuntimeError(f"无法获取 {solute} 在 {precipitating_phase} 相的 Gibbs 能量")
+			raise RuntimeError(f"无法获取析出相 {precipitating_phase} 的 Gibbs 能量")
 		
 		# ==================== 4. 残差函数（最严格版）===================
 		def residual (x_solute: float) -> float:
@@ -327,6 +435,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			"T": temperature,
 			"solute": solute,
 			"precipitating_phase": precipitating_phase,
+			"precipitating_phase_type": precipitating_phase_type,  # 新增
 			"solution_phase_name": tdb_solution_phase,  # 溶质实际溶解的相
 			"phase_state": phase_desc,
 			"solvent_element": solvent,
