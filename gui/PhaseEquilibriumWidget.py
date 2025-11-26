@@ -198,13 +198,14 @@ class PhaseEquilibriumWidget(QWidget):
         self.sp_progress_bar.setRange(0, 0)
         layout.addWidget(self.sp_progress_bar)
 
-        # 结果文本（增加高度）
+        # 结果文本（增加高度以显示完整的相律验证）
         results_group = QGroupBox("计算结果")
         results_layout = QVBoxLayout(results_group)
 
         self.sp_results_text = QTextEdit()
         self.sp_results_text.setReadOnly(True)
-        self.sp_results_text.setMinimumHeight(200)  # 从150增加到200
+        self.sp_results_text.setMinimumHeight(350)  # 从200增加到350，确保相律验证可见
+        self.sp_results_text.setMaximumHeight(450)  # 设置最大高度
         results_layout.addWidget(self.sp_results_text)
 
         layout.addWidget(results_group)
@@ -219,6 +220,18 @@ class PhaseEquilibriumWidget(QWidget):
             "相名称", "相分数 (%)", "元素", "摩尔分数", "质量分数"
         ])
         self.sp_results_table.setMinimumHeight(300)  # 增加最小高度
+
+        # 设置列宽以优化显示
+        self.sp_results_table.setColumnWidth(0, 120)  # 相名称
+        self.sp_results_table.setColumnWidth(1, 120)  # 相分数 (%)
+        self.sp_results_table.setColumnWidth(2, 80)   # 元素
+        self.sp_results_table.setColumnWidth(3, 120)  # 摩尔分数
+        self.sp_results_table.setColumnWidth(4, 120)  # 质量分数
+
+        # 设置表格样式
+        self.sp_results_table.setAlternatingRowColors(True)  # 交替行颜色
+        self.sp_results_table.horizontalHeader().setStretchLastSection(True)  # 最后一列拉伸
+
         table_layout.addWidget(self.sp_results_table)
 
         layout.addWidget(table_group)
@@ -666,7 +679,8 @@ class PhaseEquilibriumWidget(QWidget):
 
                 row += 1
 
-        self.sp_results_table.resizeColumnsToContents()
+        # 不再需要自动调整列宽，因为我们已经手动设置了固定列宽
+        # self.sp_results_table.resizeColumnsToContents()
 
     def plot_single_point_chart(self, result):
         """绘制单点计算饼图"""
