@@ -214,9 +214,9 @@ class PhaseEquilibriumWidget(QWidget):
         table_layout = QVBoxLayout(table_group)
 
         self.sp_results_table = QTableWidget()
-        self.sp_results_table.setColumnCount(6)
+        self.sp_results_table.setColumnCount(5)
         self.sp_results_table.setHorizontalHeaderLabels([
-            "相名称", "相分数 (%)", "吉布斯能 (J/mol)", "元素", "摩尔分数", "质量分数"
+            "相名称", "相分数 (%)", "元素", "摩尔分数", "质量分数"
         ])
         self.sp_results_table.setMinimumHeight(300)  # 增加最小高度
         table_layout.addWidget(self.sp_results_table)
@@ -573,17 +573,41 @@ class PhaseEquilibriumWidget(QWidget):
         text += f"状态: {result.get('status', 'unknown')}\n"
         text += f"温度: {result.get('temperature', 0):.2f} K\n"
         text += f"总组成: {result.get('total_composition', {})}\n"
-        text += f"总吉布斯自由能: {result.get('total_gibbs_energy', 0):.2f} J/mol\n"
         text += f"消息: {result.get('message', '')}\n\n"
 
         if 'phases' in result and result['phases']:
-            text += f"自动确定的平衡相数: {len(result['phases'])}\n\n"
+            # 计算组分数和相数
+            total_comp = result.get('total_composition', {})
+            num_components = len(total_comp)  # 组分数 C
 
+            # 统计独立相数（相同名称的相只算一次）
+            unique_phases = set(phase.name for phase in result['phases'])
+            num_phases = len(unique_phases)  # 相数 P
+
+            text += f"自动确定的平衡相数: {num_phases}\n"
+            text += f"组分数 (C): {num_components}\n"
+
+            # Gibbs相律验证 (给定温度和压力，F = C - P)
+            degrees_of_freedom = num_components - num_phases
+            text += f"\n--- Gibbs相律验证 ---\n"
+            text += f"自由度 (F) = C - P = {num_components} - {num_phases} = {degrees_of_freedom}\n"
+
+            if degrees_of_freedom >= 0:
+                text += f"✓ 满足Gibbs相律 (F ≥ 0)\n"
+                if degrees_of_freedom == 0:
+                    text += f"  → 无变式系统：温度和组成完全确定相平衡\n"
+                elif degrees_of_freedom == 1:
+                    text += f"  → 单变式系统：可改变温度或一个组分含量\n"
+                else:
+                    text += f"  → 多变式系统：可改变 {degrees_of_freedom} 个变量\n"
+            else:
+                text += f"⚠ 警告：F < 0，可能存在计算问题或相数过多\n"
+
+            text += f"\n详细相信息:\n"
             for i, phase in enumerate(result['phases'], 1):
-                text += f"相 {i}: {phase.name}\n"
+                text += f"\n相 {i}: {phase.name}\n"
                 text += f"  相分数: {phase.fraction:.4f} ({phase.fraction*100:.2f}%)\n"
-                text += f"  吉布斯能: {phase.gibbs_energy:.2f} J/mol\n"
-                text += f"  组成: {phase.composition}\n\n"
+                text += f"  组成: {phase.composition}\n"
 
         self.sp_results_text.setPlainText(text)
 
@@ -633,14 +657,12 @@ class PhaseEquilibriumWidget(QWidget):
                 self.sp_results_table.setItem(row, 0, QTableWidgetItem(phase.name))
                 # 相分数
                 self.sp_results_table.setItem(row, 1, QTableWidgetItem(f"{phase.fraction*100:.2f}"))
-                # 吉布斯能
-                self.sp_results_table.setItem(row, 2, QTableWidgetItem(f"{phase.gibbs_energy:.2f}"))
                 # 元素
-                self.sp_results_table.setItem(row, 3, QTableWidgetItem(elem))
+                self.sp_results_table.setItem(row, 2, QTableWidgetItem(elem))
                 # 摩尔分数
-                self.sp_results_table.setItem(row, 4, QTableWidgetItem(f"{mole_frac:.6f}"))
+                self.sp_results_table.setItem(row, 3, QTableWidgetItem(f"{mole_frac:.6f}"))
                 # 质量分数
-                self.sp_results_table.setItem(row, 5, QTableWidgetItem(f"{mass_frac:.6f}"))
+                self.sp_results_table.setItem(row, 4, QTableWidgetItem(f"{mass_frac:.6f}"))
 
                 row += 1
 
