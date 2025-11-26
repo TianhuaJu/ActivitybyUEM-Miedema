@@ -698,17 +698,50 @@ class PhaseEquilibriumWidget(QWidget):
         labels = [phase.name for phase in result['phases']]
         fractions = [phase.fraction for phase in result['phases']]
 
-        # 定义颜色
-        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8']
+        # 定义更丰富的颜色方案
+        color_scheme = {
+            'LIQUID': '#FF6B6B',
+            'BCC_A2': '#4ECDC4',
+            'FCC_A1': '#45B7D1',
+            'HCP_A3': '#FFA07A',
+            'GRAPHITE': '#95E1D3',
+            'DIAMOND_A4': '#F38181',
+        }
+        colors = [color_scheme.get(label, '#CCCCCC') for label in labels]
+
+        # 突出显示最大的相
+        max_index = fractions.index(max(fractions))
+        explode = [0.05 if i == max_index else 0 for i in range(len(labels))]
 
         # 绘制饼图
-        self.sp_canvas.axes.pie(
-            fractions, labels=labels, autopct='%1.1f%%',
-            startangle=90, colors=colors[:len(labels)]
+        wedges, texts, autotexts = self.sp_canvas.axes.pie(
+            fractions,
+            labels=labels,
+            autopct='%1.1f%%',
+            startangle=90,
+            colors=colors,
+            explode=explode,
+            shadow=True,
+            textprops={'fontsize': 11, 'weight': 'bold'},
+            wedgeprops={'edgecolor': 'white', 'linewidth': 2}
         )
+
+        # 优化百分比文字样式
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_fontsize(10)
+            autotext.set_weight('bold')
+
+        # 设置标题
         self.sp_canvas.axes.set_title(
-            f'相分数分布 (T={result.get("temperature", 0):.0f}K)'
+            f'相分数分布 (T={result.get("temperature", 0):.0f}K)',
+            fontsize=14,
+            weight='bold',
+            pad=20
         )
+
+        # 确保饼图是圆形
+        self.sp_canvas.axes.axis('equal')
 
         self.sp_canvas.draw()
 
