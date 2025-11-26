@@ -198,30 +198,18 @@ class PhaseEquilibriumWidget(QWidget):
         self.sp_progress_bar.setRange(0, 0)
         layout.addWidget(self.sp_progress_bar)
 
-        # 结果文本
+        # 结果文本（增加高度）
         results_group = QGroupBox("计算结果")
         results_layout = QVBoxLayout(results_group)
 
         self.sp_results_text = QTextEdit()
         self.sp_results_text.setReadOnly(True)
-        self.sp_results_text.setMinimumHeight(150)
+        self.sp_results_text.setMinimumHeight(200)  # 从150增加到200
         results_layout.addWidget(self.sp_results_text)
 
         layout.addWidget(results_group)
 
-        # 计算日志
-        log_group = QGroupBox("计算日志")
-        log_layout = QVBoxLayout(log_group)
-
-        self.sp_log_text = QTextEdit()
-        self.sp_log_text.setReadOnly(True)
-        self.sp_log_text.setMinimumHeight(200)
-        self.sp_log_text.setStyleSheet("font-family: 'Courier New', monospace; font-size: 10pt;")
-        log_layout.addWidget(self.sp_log_text)
-
-        layout.addWidget(log_group)
-
-        # 结果表格
+        # 结果表格（增加高度）
         table_group = QGroupBox("相平衡详细信息")
         table_layout = QVBoxLayout(table_group)
 
@@ -230,15 +218,16 @@ class PhaseEquilibriumWidget(QWidget):
         self.sp_results_table.setHorizontalHeaderLabels([
             "相名称", "相分数 (%)", "吉布斯能 (J/mol)", "元素", "摩尔分数", "质量分数"
         ])
+        self.sp_results_table.setMinimumHeight(300)  # 增加最小高度
         table_layout.addWidget(self.sp_results_table)
 
         layout.addWidget(table_group)
 
-        # 饼图
+        # 饼图（增加高度）
         chart_group = QGroupBox("相分数可视化")
         chart_layout = QVBoxLayout(chart_group)
 
-        self.sp_canvas = MplCanvas(self, width=6, height=4, dpi=100)
+        self.sp_canvas = MplCanvas(self, width=8, height=6, dpi=100)  # 从6x4增加到8x6
         chart_layout.addWidget(self.sp_canvas)
 
         layout.addWidget(chart_group)
@@ -598,13 +587,6 @@ class PhaseEquilibriumWidget(QWidget):
 
         self.sp_results_text.setPlainText(text)
 
-        # 显示计算日志
-        if 'calculation_log' in result:
-            log_text = '\n'.join(result['calculation_log'])
-            self.sp_log_text.setPlainText(log_text)
-        else:
-            self.sp_log_text.setPlainText("（无计算日志）")
-
         # 填充表格
         self.fill_single_point_table(result)
 
@@ -697,7 +679,6 @@ class PhaseEquilibriumWidget(QWidget):
     def clear_single_point_results(self):
         """清除单点计算结果"""
         self.sp_results_text.clear()
-        self.sp_log_text.clear()
         self.sp_results_table.setRowCount(0)
         self.sp_canvas.axes.clear()
         self.sp_canvas.draw()
