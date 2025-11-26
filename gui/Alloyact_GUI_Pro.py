@@ -54,7 +54,7 @@ class MplCanvas(FigureCanvas):
 class AlloyActProGUI(QMainWindow):
 	def __init__ (self):
 		super().__init__()
-		self.setWindowTitle("AlloyAct Pro - 合金热力学计算器")
+		self.setWindowTitle("AlloyThermoCal Pro - 合金热力学计算器")
 		self.resize(1400, 1000)
 		self.setMinimumSize(1000, 1200)
 		
