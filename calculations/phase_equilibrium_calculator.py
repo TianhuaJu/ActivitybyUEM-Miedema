@@ -492,6 +492,7 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
         temperatures = np.linspace(T_min, T_max, n_points)
         results = []
         phase_fractions = {}
+        all_phases = set()  # 跟踪所有出现过的相
 
         for i, T in enumerate(temperatures):
             if progress_callback:
@@ -505,12 +506,25 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
                 results.append(result)
 
-                # 记录相分数
+                # 收集当前温度点的相分数
+                current_phases = {}
                 if result['status'] == 'success' and result['phases']:
                     for phase_info in result['phases']:
-                        if phase_info.name not in phase_fractions:
-                            phase_fractions[phase_info.name] = []
-                        phase_fractions[phase_info.name].append(phase_info.fraction)
+                        current_phases[phase_info.name] = phase_info.fraction
+                        all_phases.add(phase_info.name)
+
+                # 为所有已知相添加分数（如果不存在则为0）
+                for phase_name in all_phases:
+                    if phase_name not in phase_fractions:
+                        # 新相，需要为之前的所有温度点填充0
+                        phase_fractions[phase_name] = [0.0] * i
+                    # 添加当前温度点的分数
+                    phase_fractions[phase_name].append(current_phases.get(phase_name, 0.0))
+
+                # 为之前已知但当前不存在的相添加0
+                for phase_name in phase_fractions:
+                    if len(phase_fractions[phase_name]) < i + 1:
+                        phase_fractions[phase_name].append(0.0)
 
             except Exception as e:
                 print(f"温度 {T:.1f} K 计算失败: {str(e)}")
@@ -519,6 +533,11 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
                     'message': str(e),
                     'phases': []
                 })
+
+                # 为所有已知相在失败的温度点添加0
+                for phase_name in phase_fractions:
+                    if len(phase_fractions[phase_name]) < i + 1:
+                        phase_fractions[phase_name].append(0.0)
 
         return {
             'status': 'success',
@@ -569,6 +588,7 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
         compositions = np.linspace(x_min, x_max, n_points)
         results = []
         phase_fractions = {}
+        all_phases = set()  # 跟踪所有出现过的相
 
         # 归一化基础组成
         base_total = sum(base_composition.values())
@@ -598,12 +618,25 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
                 results.append(result)
 
-                # 记录相分数
+                # 收集当前组分点的相分数
+                current_phases = {}
                 if result['status'] == 'success' and result['phases']:
                     for phase_info in result['phases']:
-                        if phase_info.name not in phase_fractions:
-                            phase_fractions[phase_info.name] = []
-                        phase_fractions[phase_info.name].append(phase_info.fraction)
+                        current_phases[phase_info.name] = phase_info.fraction
+                        all_phases.add(phase_info.name)
+
+                # 为所有已知相添加分数（如果不存在则为0）
+                for phase_name in all_phases:
+                    if phase_name not in phase_fractions:
+                        # 新相，需要为之前的所有组分点填充0
+                        phase_fractions[phase_name] = [0.0] * i
+                    # 添加当前组分点的分数
+                    phase_fractions[phase_name].append(current_phases.get(phase_name, 0.0))
+
+                # 为之前已知但当前不存在的相添加0
+                for phase_name in phase_fractions:
+                    if len(phase_fractions[phase_name]) < i + 1:
+                        phase_fractions[phase_name].append(0.0)
 
             except Exception as e:
                 print(f"组分 {x_var:.3f} 计算失败: {str(e)}")
@@ -612,6 +645,11 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
                     'message': str(e),
                     'phases': []
                 })
+
+                # 为所有已知相在失败的组分点添加0
+                for phase_name in phase_fractions:
+                    if len(phase_fractions[phase_name]) < i + 1:
+                        phase_fractions[phase_name].append(0.0)
 
         return {
             'status': 'success',
