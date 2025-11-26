@@ -536,13 +536,43 @@ class PhaseEquilibriumWidget(QWidget):
 
             # 显示进度
             self.sp_progress_bar.setVisible(True)
+            self.sp_progress_bar.setRange(0, 0)  # 不确定进度
             self.sp_calculate_button.setEnabled(False)
 
-            # 执行计算（使用新的递归相分离算法）
-            result = self.calculator.calculate_phase_equilibrium(
+            # 创建计算线程
+            self.calc_thread = CalculationThread(
+                self.calculator.calculate_phase_equilibrium,
                 composition, temperature, extrap_func,
                 extrap_model_name, activity_model
             )
+
+            # 连接信号
+            self.calc_thread.finished.connect(self.on_single_point_calculation_finished)
+            self.calc_thread.error.connect(self.on_calculation_error)
+
+            # 启动线程
+            self.calc_thread.start()
+
+        except ValueError as e:
+            QMessageBox.warning(self, "输入错误", f"输入参数无效:\n{str(e)}")
+            self.sp_progress_bar.setVisible(False)
+            self.sp_calculate_button.setEnabled(True)
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            QMessageBox.critical(
+                self, "计算错误",
+                f"启动计算失败:\n{str(e)}\n\n详细信息:\n{error_details}"
+            )
+            self.sp_progress_bar.setVisible(False)
+            self.sp_calculate_button.setEnabled(True)
+
+    def on_single_point_calculation_finished(self, result):
+        """单点计算完成回调"""
+        try:
+            # 隐藏进度条
+            self.sp_progress_bar.setVisible(False)
+            self.sp_calculate_button.setEnabled(True)
 
             # 调试：检查返回类型
             if not isinstance(result, dict):
@@ -557,18 +587,27 @@ class PhaseEquilibriumWidget(QWidget):
             # 显示结果
             self.display_single_point_results(result)
 
-        except ValueError as e:
-            QMessageBox.warning(self, "输入错误", f"输入参数无效:\n{str(e)}")
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
             QMessageBox.critical(
-                self, "计算错误",
-                f"计算过程中发生错误:\n{str(e)}\n\n详细信息:\n{error_details}"
+                self, "显示错误",
+                f"显示结果时发生错误:\n{str(e)}\n\n详细信息:\n{error_details}"
             )
-        finally:
             self.sp_progress_bar.setVisible(False)
             self.sp_calculate_button.setEnabled(True)
+
+    def on_calculation_error(self, error_msg):
+        """计算错误回调"""
+        QMessageBox.critical(self, "计算错误", f"计算过程中发生错误:\n{error_msg}")
+        self.sp_progress_bar.setVisible(False)
+        self.sp_calculate_button.setEnabled(True)
+        if hasattr(self, 'tv_progress_bar'):
+            self.tv_progress_bar.setVisible(False)
+            self.tv_calculate_button.setEnabled(True)
+        if hasattr(self, 'cv_progress_bar'):
+            self.cv_progress_bar.setVisible(False)
+            self.cv_calculate_button.setEnabled(True)
 
     def display_single_point_results(self, result):
         """显示单点计算结果"""
@@ -778,23 +817,38 @@ class PhaseEquilibriumWidget(QWidget):
             self.tv_progress_bar.setRange(0, n_points)
             self.tv_calculate_button.setEnabled(False)
 
-            # 执行计算
-            result = self.calculator.calculate_phase_equilibrium_vs_temperature(
+            # 保存组成用于显示
+            self.tv_current_composition = composition
+
+            # 创建计算线程
+            self.calc_thread = CalculationThread(
+                self.calculator.calculate_phase_equilibrium_vs_temperature,
                 composition, T_min, T_max, n_points,
                 extrap_func, extrap_model_name, activity_model,
                 progress_callback=self.update_tv_progress
             )
 
-            # 显示结果
-            self.display_temperature_variation_results(result, composition)
+            # 连接信号
+            self.calc_thread.finished.connect(self.on_temperature_variation_finished)
+            self.calc_thread.error.connect(self.on_calculation_error)
+
+            # 启动线程
+            self.calc_thread.start()
 
         except ValueError as e:
             QMessageBox.warning(self, "输入错误", f"输入参数无效:\n{str(e)}")
-        except Exception as e:
-            QMessageBox.critical(self, "计算错误", f"计算过程中发生错误:\n{str(e)}")
-        finally:
             self.tv_progress_bar.setVisible(False)
             self.tv_calculate_button.setEnabled(True)
+        except Exception as e:
+            QMessageBox.critical(self, "计算错误", f"启动计算失败:\n{str(e)}")
+            self.tv_progress_bar.setVisible(False)
+            self.tv_calculate_button.setEnabled(True)
+
+    def on_temperature_variation_finished(self, result):
+        """温度变化计算完成回调"""
+        self.tv_progress_bar.setVisible(False)
+        self.tv_calculate_button.setEnabled(True)
+        self.display_temperature_variation_results(result, self.tv_current_composition)
 
     def update_tv_progress(self, current, total):
         """更新温度变化进度条"""
@@ -889,23 +943,38 @@ class PhaseEquilibriumWidget(QWidget):
             self.cv_progress_bar.setRange(0, n_points)
             self.cv_calculate_button.setEnabled(False)
 
-            # 执行计算
-            result = self.calculator.calculate_phase_equilibrium_vs_composition(
+            # 保存基础组成用于显示
+            self.cv_current_base_composition = base_composition
+
+            # 创建计算线程
+            self.calc_thread = CalculationThread(
+                self.calculator.calculate_phase_equilibrium_vs_composition,
                 base_composition, variable_element, x_min, x_max, temperature,
                 n_points, extrap_func, extrap_model_name, activity_model,
                 progress_callback=self.update_cv_progress
             )
 
-            # 显示结果
-            self.display_composition_variation_results(result, base_composition)
+            # 连接信号
+            self.calc_thread.finished.connect(self.on_composition_variation_finished)
+            self.calc_thread.error.connect(self.on_calculation_error)
+
+            # 启动线程
+            self.calc_thread.start()
 
         except ValueError as e:
             QMessageBox.warning(self, "输入错误", f"输入参数无效:\n{str(e)}")
-        except Exception as e:
-            QMessageBox.critical(self, "计算错误", f"计算过程中发生错误:\n{str(e)}")
-        finally:
             self.cv_progress_bar.setVisible(False)
             self.cv_calculate_button.setEnabled(True)
+        except Exception as e:
+            QMessageBox.critical(self, "计算错误", f"启动计算失败:\n{str(e)}")
+            self.cv_progress_bar.setVisible(False)
+            self.cv_calculate_button.setEnabled(True)
+
+    def on_composition_variation_finished(self, result):
+        """组分变化计算完成回调"""
+        self.cv_progress_bar.setVisible(False)
+        self.cv_calculate_button.setEnabled(True)
+        self.display_composition_variation_results(result, self.cv_current_base_composition)
 
     def update_cv_progress(self, current, total):
         """更新组分变化进度条"""
