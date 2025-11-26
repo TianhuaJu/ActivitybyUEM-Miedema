@@ -814,10 +814,8 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 				return self.calculate_solidus_temp_robust_ss(composition, solid_phase_map, extrapolation_model_func,
 				                                             extrapolation_model_name, activity_model)
 			else:
-				return self.calculate_solidus_temp_robust_pure(composition, solid_phase_map,
-				                                               extrapolation_func=extrapolation_model_func,
-				                                               extrapolation_model_name=extrapolation_model_name,
-				                                               activity_model=activity_model)
+				return self.calculate_solidus_temp_robust_pure(composition, solid_phase_map,extrapolation_model_func,
+				                                               extrapolation_model_name,activity_model)
 	
 	# ================================================================
 	# =================== 内部辅助函数 & 求解器 =======================
