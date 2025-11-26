@@ -457,6 +457,172 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
         """格式化输出组成"""
         return ", ".join([f"{k}:{v:.4f}" for k, v in comp.items() if v > 1e-4])
 
+    def calculate_phase_equilibrium_vs_temperature(self,
+                                                   total_composition: Dict[str, float],
+                                                   T_min: float,
+                                                   T_max: float,
+                                                   n_points: int = 50,
+                                                   extrapolation_model_func = None,
+                                                   extrapolation_model_name: str = 'UEM1',
+                                                   activity_model: str = 'Wagner',
+                                                   progress_callback = None) -> Dict:
+        """
+        计算相平衡随温度的变化
+
+        参数:
+            total_composition: 总组成
+            T_min: 最低温度 (K)
+            T_max: 最高温度 (K)
+            n_points: 温度点数
+            extrapolation_model_func: 外推模型函数
+            extrapolation_model_name: 外推模型名称
+            activity_model: 活度模型
+            progress_callback: 进度回调函数 callback(current, total)
+
+        返回:
+            {
+                'status': 'success',
+                'temperatures': [温度列表],
+                'phase_fractions': {相名: [分数列表]},
+                'results': [每个温度的完整结果]
+            }
+        """
+        import numpy as np
+
+        temperatures = np.linspace(T_min, T_max, n_points)
+        results = []
+        phase_fractions = {}
+
+        for i, T in enumerate(temperatures):
+            if progress_callback:
+                progress_callback(i + 1, n_points)
+
+            try:
+                result = self.calculate_phase_equilibrium(
+                    total_composition, T,
+                    extrapolation_model_func, extrapolation_model_name, activity_model
+                )
+
+                results.append(result)
+
+                # 记录相分数
+                if result['status'] == 'success' and result['phases']:
+                    for phase_info in result['phases']:
+                        if phase_info.name not in phase_fractions:
+                            phase_fractions[phase_info.name] = []
+                        phase_fractions[phase_info.name].append(phase_info.fraction)
+
+            except Exception as e:
+                print(f"温度 {T:.1f} K 计算失败: {str(e)}")
+                results.append({
+                    'status': 'error',
+                    'message': str(e),
+                    'phases': []
+                })
+
+        return {
+            'status': 'success',
+            'temperatures': temperatures.tolist(),
+            'phase_fractions': phase_fractions,
+            'results': results
+        }
+
+    def calculate_phase_equilibrium_vs_composition(self,
+                                                   base_composition: Dict[str, float],
+                                                   variable_element: str,
+                                                   x_min: float,
+                                                   x_max: float,
+                                                   temperature: float,
+                                                   n_points: int = 50,
+                                                   extrapolation_model_func = None,
+                                                   extrapolation_model_name: str = 'UEM1',
+                                                   activity_model: str = 'Wagner',
+                                                   progress_callback = None) -> Dict:
+        """
+        计算相平衡随组分的变化
+
+        参数:
+            base_composition: 基础组成（不包括变化元素）
+            variable_element: 变化的元素
+            x_min: 最小摩尔分数
+            x_max: 最大摩尔分数
+            temperature: 温度 (K)
+            n_points: 组分点数
+            extrapolation_model_func: 外推模型函数
+            extrapolation_model_name: 外推模型名称
+            activity_model: 活度模型
+            progress_callback: 进度回调函数 callback(current, total)
+
+        返回:
+            {
+                'status': 'success',
+                'compositions': [组分列表],
+                'variable_element': 变化元素,
+                'temperature': 温度,
+                'phase_fractions': {相名: [分数列表]},
+                'results': [每个组分的完整结果]
+            }
+        """
+        import numpy as np
+
+        variable_element = variable_element.upper()
+        compositions = np.linspace(x_min, x_max, n_points)
+        results = []
+        phase_fractions = {}
+
+        # 归一化基础组成
+        base_total = sum(base_composition.values())
+        base_norm = {k.upper(): v/base_total for k, v in base_composition.items()
+                     if k.upper() != variable_element}
+
+        for i, x_var in enumerate(compositions):
+            if progress_callback:
+                progress_callback(i + 1, n_points)
+
+            try:
+                # 构建当前组成
+                remaining = 1.0 - x_var
+                current_comp = {variable_element: x_var}
+
+                for elem, frac in base_norm.items():
+                    current_comp[elem] = frac * remaining
+
+                # 归一化
+                total = sum(current_comp.values())
+                current_comp = {k: v/total for k, v in current_comp.items()}
+
+                result = self.calculate_phase_equilibrium(
+                    current_comp, temperature,
+                    extrapolation_model_func, extrapolation_model_name, activity_model
+                )
+
+                results.append(result)
+
+                # 记录相分数
+                if result['status'] == 'success' and result['phases']:
+                    for phase_info in result['phases']:
+                        if phase_info.name not in phase_fractions:
+                            phase_fractions[phase_info.name] = []
+                        phase_fractions[phase_info.name].append(phase_info.fraction)
+
+            except Exception as e:
+                print(f"组分 {x_var:.3f} 计算失败: {str(e)}")
+                results.append({
+                    'status': 'error',
+                    'message': str(e),
+                    'phases': []
+                })
+
+        return {
+            'status': 'success',
+            'compositions': compositions.tolist(),
+            'variable_element': variable_element,
+            'temperature': temperature,
+            'phase_fractions': phase_fractions,
+            'results': results
+        }
+
+
 
 # =============================================================================
 # 使用示例
