@@ -32,8 +32,8 @@ class GEMSolver:
 	2. 归一化 (Sum of Fractions = 1)
 	"""
 	
-	def __init__ (self, tolerance: float = 1e-6):
-		self.tolerance = tolerance
+	def __init__ (self, tolerance: float = 1e-3):
+		self.tolerance = tolerance  # 提高到1e-3以过滤微量相
 	
 	def solve (self,
 	           system_composition: Dict[str, float],

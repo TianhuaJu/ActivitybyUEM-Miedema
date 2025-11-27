@@ -97,10 +97,10 @@ class PhaseEquilibriumCalculator:
 				if g_test > 0.9e9:
 					continue
 				
-				# 判据 2: 相对稳定性检查 (可选)
-				# 如果某相能量比液相高出太多 (例如 > 200 kJ/mol)，说明极不稳定，可忽略
+				# 判据 2: 相对稳定性检查 (严格过滤)
+				# 如果某相能量比液相高出太多 (例如 > 50 kJ/mol)，说明极不稳定，可忽略
 				# 这能有效过滤掉那些完全不可能存在的复杂高能相
-				if g_test - ref_liq_g > 200000:
+				if g_test - ref_liq_g > 50000:  # 从200 kJ降低到50 kJ
 					continue
 				
 				phases.append(phase_obj)
@@ -121,8 +121,8 @@ class PhaseEquilibriumCalculator:
 				# H_form 是相对于纯组元固相的
 				h_form_solid = model_comp.calculate_enthalpy(x1, T=298.15)
 				
-				# 筛选不稳定相
-				if h_form_solid > -100.0: continue
+				# 筛选不稳定相（更严格：只考虑形成焓很负的化合物）
+				if h_form_solid > -10000.0: continue  # 只保留形成焓 < -10 kJ/mol 的稳定化合物
 				
 				# 2. 计算物理熔点 (基于 G_liq = G_solid)
 				tm_phys = self._calculate_physical_melting_point(
@@ -137,7 +137,30 @@ class PhaseEquilibriumCalculator:
 						Tm=tm_phys,
 						phase_name=phase_name
 				))
-		
+
+		# === 候选相数量限制 ===
+		# 为避免优化问题，限制候选相总数
+		num_components = len(elements)
+		max_candidates = num_components * 3  # 最多3倍于组分数的候选相
+
+		if len(phases) > max_candidates:
+			# 按能量排序，只保留能量最低的相
+			phases_with_energy = []
+			for phase in phases:
+				try:
+					g = phase.get_molar_gibbs_energy(composition, temperature)
+					phases_with_energy.append((phase, g))
+				except:
+					phases_with_energy.append((phase, 1e9))
+
+			# 按能量升序排列
+			phases_with_energy.sort(key=lambda x: x[1])
+			phases = [p for p, g in phases_with_energy[:max_candidates]]
+
+			print(f"候选相过滤: {len(phases_with_energy)} -> {len(phases)} (保留能量最低的{max_candidates}个)")
+
+		print(f"最终候选相数量: {len(phases)}, 相名: {[p.name for p in phases]}")
+
 		return phases
 	
 	def _calculate_physical_melting_point (self, el1: str, el2: str, x1: float, x2: float,
@@ -247,7 +270,7 @@ class PhaseEquilibriumCalculator:
 			# 转换为PhaseInfo对象列表
 			phase_info_list = []
 			for phase_dict in gem_result.stable_phases:
-				if phase_dict['fraction'] > 1e-6:  # 过滤极小的相
+				if phase_dict['fraction'] > 1e-3:  # 过滤微量相（提高阈值到0.1%）
 					phase_info = PhaseInfo(
 						name=phase_dict['name'],
 						composition=phase_dict['composition'],
@@ -256,6 +279,31 @@ class PhaseEquilibriumCalculator:
 						fraction=phase_dict['fraction']
 					)
 					phase_info_list.append(phase_info)
+
+			# === Gibbs相律强制检查 ===
+			# F = C - P (固定温度和压力)
+			# 要使F ≥ 0，则 P ≤ C
+			num_components = len(composition)
+			max_allowed_phases = num_components + 1  # 允许C+1个相（留一点余地）
+
+			if len(phase_info_list) > max_allowed_phases:
+				# 按分数降序排列，只保留前max_allowed_phases个
+				phase_info_list.sort(key=lambda p: p.fraction, reverse=True)
+				discarded_phases = phase_info_list[max_allowed_phases:]
+				phase_info_list = phase_info_list[:max_allowed_phases]
+
+				# 重新归一化相分数
+				total_frac = sum(p.fraction for p in phase_info_list)
+				for p in phase_info_list:
+					p.fraction = p.fraction / total_frac
+					p.absolute_moles = p.fraction
+
+				# 添加警告信息
+				discarded_names = ', '.join(p.name for p in discarded_phases)
+				warning_msg = (f"Gibbs相律检查: 系统有{num_components}个组分，"
+				              f"最多允许{max_allowed_phases}个相。"
+				              f"已丢弃{len(discarded_phases)}个微量相: {discarded_names}")
+				print(warning_msg)
 
 			# 返回GUI期望的格式
 			return {
