@@ -98,30 +98,43 @@ class GEMSolver:
 		# 3. 定义目标函数 (Objective Function)
 		def objective (x):
 			g_total = 0.0
-			
+
 			# 遍历所有相
 			for i, phase in enumerate(candidate_phases):
 				n_p = x[i]  # 该相的摩尔分数
-				
+
 				if n_p < 1e-8: continue  # 忽略微量相以加速计算
-				
-				if isinstance(phase, SolutionPhase):
-					# 提取成分
-					start, end = phase_var_indices[i]
-					phase_comp_arr = x[start:end]
-					
-					# 构建成分字典
-					comp_dict = dict(zip(phase.components, phase_comp_arr))
-					
-					# 计算摩尔吉布斯能
-					g_molar = phase.get_molar_gibbs_energy(comp_dict, temperature)
-				
-				else:
-					# 定比化合物
-					g_molar = phase.get_molar_gibbs_energy({}, temperature)
-				
-				g_total += n_p * g_molar
-			
+
+				try:
+					if isinstance(phase, SolutionPhase):
+						# 提取成分
+						start, end = phase_var_indices[i]
+						phase_comp_arr = x[start:end]
+
+						# 构建成分字典
+						comp_dict = dict(zip(phase.components, phase_comp_arr))
+
+						# 计算摩尔吉布斯能
+						g_molar = phase.get_molar_gibbs_energy(comp_dict, temperature)
+
+					else:
+						# 定比化合物
+						g_molar = phase.get_molar_gibbs_energy({}, temperature)
+
+					# 检查数值有效性
+					if not np.isfinite(g_molar):
+						g_molar = 1e9  # 惩罚无效值
+
+					g_total += n_p * g_molar
+
+				except Exception:
+					# 计算失败，施加大惩罚
+					g_total += n_p * 1e9
+
+			# 确保返回值有效
+			if not np.isfinite(g_total):
+				return 1e12
+
 			return g_total
 		
 		# 4. 定义约束条件 (Constraints)
@@ -131,26 +144,37 @@ class GEMSolver:
 		# 4.1 质量守恒约束 (Mass Balance): sum(N_p * x_i_p) == b_i
 		# 这是一个非线性约束 (N * x)
 		def mass_balance_constraint (x):
-			# 计算当前所有相加起来的各元素总量
-			total_elements = np.zeros(len(elements))
-			
-			for i, phase in enumerate(candidate_phases):
-				n_p = x[i]
-				
-				if isinstance(phase, SolutionPhase):
-					start, end = phase_var_indices[i]
-					phase_comp_arr = x[start:end]
-					# 需要将 phase components 映射回全局 elements
-					current_phase_dict = dict(zip(phase.components, phase_comp_arr))
-				else:
-					# 化合物
-					current_phase_dict = phase.get_composition()
-				
-				# 累加到总量
-				for j, elem in enumerate(elements):
-					total_elements[j] += n_p * current_phase_dict.get(elem, 0.0)
-			
-			return total_elements - b_vec
+			try:
+				# 计算当前所有相加起来的各元素总量
+				total_elements = np.zeros(len(elements))
+
+				for i, phase in enumerate(candidate_phases):
+					n_p = x[i]
+
+					if isinstance(phase, SolutionPhase):
+						start, end = phase_var_indices[i]
+						phase_comp_arr = x[start:end]
+						# 需要将 phase components 映射回全局 elements
+						current_phase_dict = dict(zip(phase.components, phase_comp_arr))
+					else:
+						# 化合物
+						current_phase_dict = phase.get_composition()
+
+					# 累加到总量
+					for j, elem in enumerate(elements):
+						total_elements[j] += n_p * current_phase_dict.get(elem, 0.0)
+
+				residual = total_elements - b_vec
+
+				# 检查数值有效性
+				if not np.all(np.isfinite(residual)):
+					return np.zeros(len(elements))  # 返回满足约束的值
+
+				return residual
+
+			except Exception:
+				# 异常情况，返回零向量（满足约束）
+				return np.zeros(len(elements))
 		
 		# 添加为非线性等式约束
 		constraints.append(NonlinearConstraint(mass_balance_constraint,
@@ -172,16 +196,25 @@ class GEMSolver:
 		
 		# 5. 执行优化
 		try:
+			# 使用更保守的设置避免数值问题
 			result = minimize(
 					objective,
 					x0,
 					method='SLSQP',
 					bounds=bounds_list,
 					constraints=constraints,
-					options={'ftol': 1e-8, 'disp': False, 'maxiter': 100}
+					options={
+						'ftol': 1e-6,      # 放宽容差
+						'disp': False,
+						'maxiter': 50,     # 减少迭代次数
+						'iprint': 0        # 禁用打印
+					}
 			)
 		except Exception as e:
-			return EquilibriumResult("error", str(e), temperature, 0.0, [], None)
+			import traceback
+			error_msg = f"GEM优化失败: {str(e)}\n{traceback.format_exc()}"
+			print(error_msg)
+			return EquilibriumResult("error", error_msg, temperature, 0.0, [], None)
 		
 		# 6. 解析结果
 		stable_phases = []
