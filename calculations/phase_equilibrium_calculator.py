@@ -1,692 +1,235 @@
+import sys
+import os
+import itertools
+import math
 import numpy as np
-from typing import Dict, List, Optional, Tuple
-import copy
-from dataclasses import dataclass, field
-from calculations.phase_diagram import PhaseDiagramCalculator
+from typing import Dict, List, Any
+
+from core.properties_estimator import get_properties_estimator
+
+# 确保能导入 core 和 models
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core.gem_solver import GEMSolver, EquilibriumResult
+from core.gem_structures import SolutionPhase, MiedemaPhaseFactory
+from core.element import Element
+from models.miedema_model import MiedemaModel, MiedemaConstants
+from core.tdb_parser import get_tdb_parser
 
 
-@dataclass
-class PhaseInfo:
-    """相信息数据类"""
-    name: str  # 相名称
-    composition: Dict[str, float] = field(default_factory=dict)  # 相组成（摩尔分数）
-    absolute_moles: float = 0.0  # 该相的绝对摩尔数（用于计算相分数）
-    gibbs_energy: float = 0.0  # 摩尔吉布斯能量 (J/mol)
-    fraction: float = 0.0  # 相分数
+class PhaseEquilibriumCalculator:
+	"""
+	通用相平衡计算器 (物理增强版)。
 
+	特性：
+	1. 普适性 TDB 加载: 自动扫描所有相，通过能量试算筛选，不依赖白名单。
+	2. 物理熔点预测: 基于 G_liquid = G_solid 平衡条件精确估算虚拟化合物熔点。
+	"""
+	
+	def __init__ (self):
+		self.tdb_parser = get_tdb_parser()
+		self.solver = GEMSolver()
+		
+		# 常见金属间化合物比例
+		self.stoichiometry_ratios = [
+			(0.833, 0.167), (0.750, 0.250), (0.667, 0.333),
+			(0.500, 0.500),
+			(0.333, 0.667), (0.250, 0.750), (0.167, 0.833),
+		]
+	
+	def calculate_phase_equilibrium (self,
+	                                 composition: Dict[str, float],
+	                                 temperature: float) -> EquilibriumResult:
+		candidate_phases = self._build_candidate_phases(composition, temperature)
+		result = self.solver.solve(composition, temperature, candidate_phases)
+		return result
+	
+	def _build_candidate_phases (self, composition: Dict[str, float], temperature: float) -> List[Any]:
+		phases = []
+		elements = sorted(list(composition.keys()))
+		
+		# 构建 TDB 上下文适配器
+		class TDBContext:
+			def __init__ (self, parser): self.tdb_parser = parser
+		
+		context = TDBContext(self.tdb_parser)
+		
+		# =========================================================================
+		# A. 动态 TDB 相筛选 (Energy-based Filtering)
+		# =========================================================================
+		# 1. 发现所有可能的相
+		possible_tdb_phases = set()
+		for elem in elements:
+			try:
+				possible_tdb_phases.update(self.tdb_parser.get_element_phases(elem))
+			except:
+				continue
+		possible_tdb_phases.add('LIQUID')
+		
+		# 2. 计算基准能量 (液相能量) 用于相对稳定性判断
+		ref_liq_g = 0.0
+		try:
+			liq_phase = SolutionPhase('LIQUID', elements, context)
+			ref_liq_g = liq_phase.get_molar_gibbs_energy(composition, temperature)
+		except:
+			ref_liq_g = 0.0  # 如果液相都算不出，则无法比较，设为0
+		
+		# 3. 遍历并筛选
+		for p_name in sorted(list(possible_tdb_phases)):
+			# 确定该相支持的元素
+			valid_components = []
+			for elem in elements:
+				if p_name == 'LIQUID' or p_name in self.tdb_parser.get_element_phases(elem):
+					valid_components.append(elem)
+			
+			if not valid_components: continue
+			
+			try:
+				# 实例化相
+				phase_obj = SolutionPhase(p_name, valid_components, context)
+				
+				# 【关键逻辑】试算能量进行筛选
+				# 使用当前体系成分试算 G。如果成分不匹配（例如 Graphite 只有 C），
+				# get_molar_gibbs_energy 内部会自动归一化处理。
+				g_test = phase_obj.get_molar_gibbs_energy(composition, temperature)
+				
+				# 判据 1: 是否返回有效值 (SolutionPhase 遇到无法计算会返回 1e9)
+				if g_test > 0.9e9:
+					continue
+				
+				# 判据 2: 相对稳定性检查 (可选)
+				# 如果某相能量比液相高出太多 (例如 > 200 kJ/mol)，说明极不稳定，可忽略
+				# 这能有效过滤掉那些完全不可能存在的复杂高能相
+				if g_test - ref_liq_g > 200000:
+					continue
+				
+				phases.append(phase_obj)
+			
+			except Exception:
+				continue
+		
+		# =========================================================================
+		# B. Miedema 虚拟化合物 (物理熔点估算)
+		# =========================================================================
+		for el1, el2 in itertools.combinations(elements, 2):
+			# 分别创建 compound 和 liquid 模型用于计算 enthalpy differences
+			model_comp = MiedemaModel((el1, el2), phase='COMPOUND')
+			model_liq = MiedemaModel((el1, el2), phase='LIQUID')
+			
+			for x1, x2 in self.stoichiometry_ratios:
+				# 1. 计算形成焓 (Compound vs Pure Solid)
+				# H_form 是相对于纯组元固相的
+				h_form_solid = model_comp.calculate_enthalpy(x1, T=298.15)
+				
+				# 筛选不稳定相
+				if h_form_solid > -100.0: continue
+				
+				# 2. 计算物理熔点 (基于 G_liq = G_solid)
+				tm_phys = self._calculate_physical_melting_point(
+						el1, el2, x1, x2, h_form_solid, model_liq
+				)
+				
+				# 3. 创建对象
+				phase_name = f"Virt_{el1}{x1:.2f}{el2}{x2:.2f}"
+				phases.append(MiedemaPhaseFactory.create_virtual_compound(
+						el1, el2, x1, x2,
+						calculator_instance=context,
+						Tm=tm_phys,
+						phase_name=phase_name
+				))
+		
+		return phases
+	
+	def _calculate_physical_melting_point (self, el1: str, el2: str, x1: float, x2: float,
+	                                       h_form_solid: float, model_liq: MiedemaModel) -> float:
+		"""
+		基于物理模型估算化合物熔点 Tm。
 
-class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
-    """
-    基于溶解度约束和稳定性迭代调整的多相平衡计算器。
-
-    算法逻辑：
-    1. 确定溶剂（含量最多的元素）
-    2. 计算各溶质在溶剂相中的最大溶解度
-    3. 构建饱和组成（每个溶质不超过溶解度）
-    4. 判断饱和组成是否稳定
-    5. 如果不稳定，逐步减少影响最大的溶质，直至稳定
-    6. 得到第一相的组成和分数
-    7. 计算剩余组成，重复以上步骤
-    """
-    
-    def __init__(self):
-        super().__init__()
-    
-    def calculate_phase_equilibrium(self,
-                                     alloy_composition: Dict[str, float],
-                                     temperature: float,
-                                     extrapolation_model_func=None,
-                                     extrapolation_model_name='UEM1',
-                                     activity_model='Wagner',
-                                     min_phase_fraction: float = 1e-4,
-                                     max_iterations: int = 10,
-                                     adjustment_factor: float = 0.95) -> List[Dict]:
-        """
-        计算特定合金组成下的多相平衡。
-        
-        改进的算法流程：
-        1. 计算溶质在溶剂中的溶解度
-        2. 构建不超过溶解度的饱和组成
-        3. 检查饱和组成的稳定性
-        4. 若不稳定，逐步减少最不稳定元素的含量
-        5. 得到稳定相后，剩余组分继续迭代
-
-        参数:
-            adjustment_factor: 调整系数，每次减少不稳定元素含量时的乘数（默认0.95）
-        
-        返回:
-            List[Dict]: 包含各稳定相信息的列表
-        """
-        
-        print(f"\n{'='*60}")
-        print(f"开始多相平衡计算（改进算法）")
-        print(f"初始合金组成: {self._format_comp(alloy_composition)}")
-        print(f"温度: {temperature} K")
-        print(f"{'='*60}\n")
-        
-        results = []
-        current_comp = alloy_composition.copy()
-        remaining_moles = 1.0
-        
-        # 记录每个元素的绝对摩尔量
-        current_moles_dict = {k: v * remaining_moles for k, v in current_comp.items()}
-        
-        for iteration in range(max_iterations):
-            print(f"{'─'*60}")
-            print(f"迭代 {iteration + 1}:")
-            print(f"当前剩余成分: {self._format_comp(current_comp)}")
-            print(f"剩余摩尔分数: {remaining_moles:.6f}\n")
-            
-            # 归一化当前成分
-            total_current = sum(current_comp.values())
-            if total_current <= 1e-9:
-                print("剩余物质几乎为零，计算结束")
-                break
-            current_comp = {k: v / total_current for k, v in current_comp.items()}
-            
-            # 确定溶剂（含量最多的元素）
-            solvent = max(current_comp.items(), key=lambda x: x[1])[0]
-            print(f"  溶剂元素: {solvent} (含量: {current_comp[solvent]:.4f})")
-            
-            # 寻找能量最低的相作为基体相
-            matrix_phase = self._find_lowest_energy_phase(current_comp, temperature)
-            print(f"  基体相: {matrix_phase}\n")
-            
-            # 计算各溶质在该相中的溶解度限
-            solubility_limits = self._calculate_solubility_limits(
-                solvent=solvent,
-                current_comp=current_comp,
-                matrix_phase=matrix_phase,
-                temperature=temperature,
-                extrapolation_func=extrapolation_model_func,
-                model_params=(extrapolation_model_name, activity_model)
-            )
-            
-            # 构建初始饱和组成（不超过溶解度）
-            saturated_comp = self._build_saturated_composition(
-                current_comp=current_comp,
-                solvent=solvent,
-                solubility_limits=solubility_limits
-            )
-            
-            print(f"  初始饱和组成: {self._format_comp(saturated_comp)}")
-            
-            # 迭代调整组成直至稳定
-            stable_comp = self._adjust_to_stability(
-                initial_comp=saturated_comp,
-                solvent=solvent,
-                matrix_phase=matrix_phase,
-                temperature=temperature,
-                extrapolation_func=extrapolation_model_func,
-                model_params=(extrapolation_model_name, activity_model),
-                adjustment_factor=adjustment_factor
-            )
-            
-            print(f"  稳定相组成: {self._format_comp(stable_comp)}\n")
-            
-            # 根据物质守恒计算该相的摩尔数
-            phase_moles, limiting_element = self._calculate_phase_moles(
-                current_moles_dict,
-                stable_comp
-            )
-            
-            print(f"  相摩尔分数: {phase_moles:.6f} (受限于: {limiting_element})")
-            
-            # 检查相分数是否过小
-            if phase_moles < min_phase_fraction:
-                print(f"  ⚠ 相分数 {phase_moles:.4e} 小于阈值 {min_phase_fraction}")
-                print(f"  → 将剩余物质归入最后一相\n")
-                results.append({
-                    'phase_name': "Residual_Phase",
-                    'composition': current_comp,
-                    'mole_fraction': remaining_moles,
-                    'type': 'Residue',
-                    'note': 'Below minimum phase fraction threshold'
-                })
-                break
-            
-            # 记录该相
-            results.append({
-                'phase_name': matrix_phase,
-                'composition': stable_comp,
-                'mole_fraction': phase_moles,
-                'type': 'Matrix' if iteration == 0 else 'Precipitate'
-            })
-            
-            # 计算剩余组成
-            new_moles_dict = {}
-            for el in current_moles_dict:
-                n_consumed = phase_moles * stable_comp.get(el, 0.0)
-                n_remaining = current_moles_dict[el] - n_consumed
-                n_remaining = max(0.0, n_remaining)
-                new_moles_dict[el] = n_remaining
-            
-            # 更新剩余物质
-            current_moles_dict = new_moles_dict
-            remaining_moles = sum(current_moles_dict.values())
-            
-            print(f"  剩余摩尔分数: {remaining_moles:.6f}\n")
-            
-            # 检查是否还有剩余物质
-            if remaining_moles < 1e-6:
-                print("所有物质已完全分配，计算结束")
-                break
-            
-            # 重新归一化得到新的组成
-            current_comp = {k: v / remaining_moles for k, v in current_moles_dict.items()}
-            current_moles_dict = new_moles_dict
-        
-        # 输出最终结果摘要
-        print(f"{'='*60}")
-        print(f"相平衡计算完成")
-        print(f"共形成 {len(results)} 个相:\n")
-        total_fraction = 0.0
-        for i, phase in enumerate(results, 1):
-            frac = phase['mole_fraction']
-            total_fraction += frac
-            print(f"{i}. {phase['phase_name']}: {frac:.6f} ({frac*100:.2f}%)")
-            print(f"   组成: {self._format_comp(phase['composition'])}")
-        print(f"\n总摩尔分数: {total_fraction:.6f}")
-        print(f"{'='*60}\n")
-
-        # 转换为PhaseInfo对象列表
-        phase_info_list = []
-        for phase in results:
-            phase_info = PhaseInfo(
-                name=phase['phase_name'],
-                composition=phase['composition'],
-                absolute_moles=phase['mole_fraction'],  # 使用mole_fraction作为absolute_moles
-                gibbs_energy=0.0,  # 当前算法未计算吉布斯能量
-                fraction=phase['mole_fraction']
-            )
-            phase_info_list.append(phase_info)
-
-        # 计算总吉布斯能量（简化为0）
-        total_gibbs = 0.0
-
-        # 包装成字典格式返回，兼容GUI
-        return {
-            'status': 'success',
-            'temperature': temperature,
-            'total_composition': alloy_composition,
-            'phases': phase_info_list,
-            'total_gibbs_energy': total_gibbs,
-            'message': f'成功计算出 {len(results)} 个平衡相',
-            'calculation_log': []  # 当前算法使用print输出，未收集日志
-        }
-    
-    def _calculate_solubility_limits(self, solvent, current_comp, matrix_phase, 
-                                     temperature, extrapolation_func, model_params):
-        """
-        计算各溶质在溶剂相中的溶解度限。
-        
-        参数:
-            solvent: 溶剂元素
-            current_comp: 当前合金组成
-            matrix_phase: 基体相名称
-            temperature: 温度
-            extrapolation_func: 外推函数
-            model_params: (模型名称, 活度模型)
-            
-        返回:
-            solubility_limits: {溶质: 溶解度} 字典
-        """
-        extrap_name, act_model = model_params
-        solubility_limits = {}
-        
-        solutes = [k for k in current_comp.keys() if k != solvent]
-        
-        print(f"  计算溶解度限:")
-        
-        for solute in solutes:
-            proxy_base = {solvent: 1.0}
-            
-            try:
-                res = self.calculate_solubility(
-                    base_alloy_composition=proxy_base,
-                    solute_element=solute,
-                    solution_phase='SOLID' if 'LIQUID' not in matrix_phase else 'LIQUID',
-                    temperature=temperature,
-                    extrapolation_func=extrapolation_func,
-                    extrapolation_model_name=extrap_name,
-                    activity_model=act_model
-                )
-                
-                limit = res.get('solubility_mole_fraction', 1.0)
-                if limit is None or limit > 1.0:
-                    limit = 1.0
-                    
-                solubility_limits[solute] = limit
-                print(f"    {solute}: {limit:.6f}")
-                
-            except Exception as e:
-                print(f"    {solute}: 计算失败，假设完全互溶")
-                solubility_limits[solute] = 1.0
-        
-        print()
-        return solubility_limits
-    
-    def _build_saturated_composition(self, current_comp, solvent, solubility_limits):
-        """
-        构建饱和组成：每个溶质不超过其溶解度限。
-        
-        参数:
-            current_comp: 当前组成
-            solvent: 溶剂元素
-            solubility_limits: 溶解度限字典
-            
-        返回:
-            saturated_comp: 饱和组成
-        """
-        saturated_comp = {}
-        sum_solutes = 0.0
-        
-        solutes = [k for k in current_comp.keys() if k != solvent]
-        
-        for solute in solutes:
-            current_x = current_comp[solute]
-            limit_x = solubility_limits.get(solute, 1.0)
-            
-            # 取较小值：不超过溶解度
-            sat_x = min(current_x, limit_x)
-            saturated_comp[solute] = sat_x
-            sum_solutes += sat_x
-        
-        # 溶剂占剩余部分
-        saturated_comp[solvent] = max(0.0, 1.0 - sum_solutes)
-        
-        return saturated_comp
-    
-    def _adjust_to_stability(self, initial_comp, solvent, matrix_phase, temperature,
-                            extrapolation_func, model_params, adjustment_factor=0.95):
-        """
-        迭代调整组成直至稳定。
-        
-        如果组成不稳定，找到影响最大的溶质（化学势偏离最大的），
-        减少其含量，直至组成稳定。
-        
-        参数:
-            initial_comp: 初始组成
-            solvent: 溶剂元素
-            matrix_phase: 基体相
-            temperature: 温度
-            extrapolation_func: 外推函数
-            model_params: (模型名称, 活度模型)
-            adjustment_factor: 调整因子（每次乘以此值减少含量）
-            
-        返回:
-            stable_comp: 稳定的组成
-        """
-        extrap_name, act_model = model_params
-        max_adjust_iterations = 30
-        
-        current_comp = initial_comp.copy()
-        
-        print(f"  调整组成至稳定:")
-        
-        for i in range(max_adjust_iterations):
-            # 归一化
-            total = sum(current_comp.values())
-            current_comp = {k: v / total for k, v in current_comp.items()}
-            
-            # 检查稳定性
-            is_stable, issues = self._check_alloy_full_stability(
-                composition=current_comp,
-                temperature=temperature,
-                tdb_phase=matrix_phase,
-                extrapolation_func=extrapolation_func,
-                extrapolation_model_name=extrap_name,
-                activity_model=act_model
-            )
-            
-            if is_stable:
-                print(f"    → 第 {i+1} 次调整后稳定\n")
-                return current_comp
-            
-            # 找到最不稳定的元素
-            most_unstable, max_deviation = self._find_most_unstable_element(issues)
-            
-            if most_unstable is None or most_unstable == solvent:
-                print(f"    → 无法进一步调整，返回当前组成\n")
-                return current_comp
-            
-            # 减少该元素的含量
-            old_x = current_comp[most_unstable]
-            current_comp[most_unstable] *= adjustment_factor
-            new_x = current_comp[most_unstable]
-            
-            print(f"    第 {i+1} 次: 减少 {most_unstable} ({old_x:.6f} → {new_x:.6f}), Δμ={max_deviation:.1f}")
-        
-        print(f"    ⚠ 达到最大调整次数，返回当前组成\n")
-        return current_comp
-    
-    def _find_most_unstable_element(self, stability_issues):
-        """
-        从稳定性问题列表中找到最不稳定的元素。
-        
-        参数:
-            stability_issues: 稳定性问题列表，格式如：
-                ['组分不稳定: AL 在 FCC_A1 中的化学势过高 (Δμ=4789.4)，倾向以纯态析出']
-        
-        返回:
-            (element, deviation): 最不稳定的元素和化学势偏离值
-        """
-        max_deviation = 0.0
-        most_unstable = None
-        
-        for issue in stability_issues:
-            # 解析问题描述，提取元素和化学势偏离
-            # 格式: "组分不稳定: AL 在 FCC_A1 中的化学势过高 (Δμ=4789.4)，倾向以纯态析出"
-            try:
-                if '组分不稳定:' in issue and 'Δμ=' in issue:
-                    # 提取元素名
-                    parts = issue.split()
-                    element = parts[1]  # "AL"
-                    
-                    # 提取Δμ值
-                    mu_part = issue.split('Δμ=')[1].split(')')[0]
-                    deviation = abs(float(mu_part))
-                    
-                    if deviation > max_deviation:
-                        max_deviation = deviation
-                        most_unstable = element
-            except:
-                continue
-        
-        return most_unstable, max_deviation
-    
-    def _calculate_phase_moles(self, current_moles_dict, saturated_comp):
-        """
-        根据物质守恒计算该相能形成的最大摩尔数。
-        
-        参数:
-            current_moles_dict: 当前剩余的各元素摩尔量
-            saturated_comp: 相的组成
-            
-        返回:
-            (phase_moles, limiting_element)
-        """
-        max_moles = float('inf')
-        limiting_element = None
-        
-        for element, x_element in saturated_comp.items():
-            if x_element < 1e-12:
-                continue
-                
-            n_available = current_moles_dict.get(element, 0.0)
-            possible_moles = n_available / x_element
-            
-            if possible_moles < max_moles:
-                max_moles = possible_moles
-                limiting_element = element
-        
-        return max_moles, limiting_element
-    
-    def _find_lowest_energy_phase(self, composition, temperature):
-        """
-        找到吉布斯自由能最低的相作为基体。
-        
-        参数:
-            composition: 合金组成
-            temperature: 温度
-            
-        返回:
-            phase_name: 能量最低的相名称
-        """
-        solvent = max(composition.items(), key=lambda x: x[1])[0]
-        phases = [p for p in self.tdb_parser.get_element_phases(solvent) 
-                 if p != 'GAS']
-        
-        best_phase = 'FCC_A1'  # 默认相
-        min_g = float('inf')
-        
-        for phase in phases:
-            try:
-                g_pure = self.tdb_parser.get_gibbs_energy(solvent, phase, temperature)
-                
-                if g_pure is not None and g_pure < min_g:
-                    min_g = g_pure
-                    best_phase = phase
-                    
-            except Exception as e:
-                continue
-        
-        return best_phase
-    
-    def _format_comp(self, comp):
-        """格式化输出组成"""
-        return ", ".join([f"{k}:{v:.4f}" for k, v in comp.items() if v > 1e-4])
-
-    def calculate_phase_equilibrium_vs_temperature(self,
-                                                   total_composition: Dict[str, float],
-                                                   T_min: float,
-                                                   T_max: float,
-                                                   n_points: int = 50,
-                                                   extrapolation_model_func = None,
-                                                   extrapolation_model_name: str = 'UEM1',
-                                                   activity_model: str = 'Wagner',
-                                                   progress_callback = None) -> Dict:
-        """
-        计算相平衡随温度的变化
-
-        参数:
-            total_composition: 总组成
-            T_min: 最低温度 (K)
-            T_max: 最高温度 (K)
-            n_points: 温度点数
-            extrapolation_model_func: 外推模型函数
-            extrapolation_model_name: 外推模型名称
-            activity_model: 活度模型
-            progress_callback: 进度回调函数 callback(current, total)
-
-        返回:
-            {
-                'status': 'success',
-                'temperatures': [温度列表],
-                'phase_fractions': {相名: [分数列表]},
-                'results': [每个温度的完整结果]
-            }
-        """
-        import numpy as np
-
-        temperatures = np.linspace(T_min, T_max, n_points)
-        results = []
-        phase_fractions = {}
-        all_phases = set()  # 跟踪所有出现过的相
-
-        for i, T in enumerate(temperatures):
-            if progress_callback:
-                progress_callback(i + 1, n_points)
-
-            try:
-                result = self.calculate_phase_equilibrium(
-                    total_composition, T,
-                    extrapolation_model_func, extrapolation_model_name, activity_model
-                )
-
-                results.append(result)
-
-                # 收集当前温度点的相分数
-                current_phases = {}
-                if result['status'] == 'success' and result['phases']:
-                    for phase_info in result['phases']:
-                        current_phases[phase_info.name] = phase_info.fraction
-                        all_phases.add(phase_info.name)
-
-                # 为所有已知相添加分数（如果不存在则为0）
-                for phase_name in all_phases:
-                    if phase_name not in phase_fractions:
-                        # 新相，需要为之前的所有温度点填充0
-                        phase_fractions[phase_name] = [0.0] * i
-                    # 添加当前温度点的分数
-                    phase_fractions[phase_name].append(current_phases.get(phase_name, 0.0))
-
-                # 为之前已知但当前不存在的相添加0
-                for phase_name in phase_fractions:
-                    if len(phase_fractions[phase_name]) < i + 1:
-                        phase_fractions[phase_name].append(0.0)
-
-            except Exception as e:
-                print(f"温度 {T:.1f} K 计算失败: {str(e)}")
-                results.append({
-                    'status': 'error',
-                    'message': str(e),
-                    'phases': []
-                })
-
-                # 为所有已知相在失败的温度点添加0
-                for phase_name in phase_fractions:
-                    if len(phase_fractions[phase_name]) < i + 1:
-                        phase_fractions[phase_name].append(0.0)
-
-        return {
-            'status': 'success',
-            'temperatures': temperatures.tolist(),
-            'phase_fractions': phase_fractions,
-            'results': results
-        }
-
-    def calculate_phase_equilibrium_vs_composition(self,
-                                                   base_composition: Dict[str, float],
-                                                   variable_element: str,
-                                                   x_min: float,
-                                                   x_max: float,
-                                                   temperature: float,
-                                                   n_points: int = 50,
-                                                   extrapolation_model_func = None,
-                                                   extrapolation_model_name: str = 'UEM1',
-                                                   activity_model: str = 'Wagner',
-                                                   progress_callback = None) -> Dict:
-        """
-        计算相平衡随组分的变化
-
-        参数:
-            base_composition: 基础组成（不包括变化元素）
-            variable_element: 变化的元素
-            x_min: 最小摩尔分数
-            x_max: 最大摩尔分数
-            temperature: 温度 (K)
-            n_points: 组分点数
-            extrapolation_model_func: 外推模型函数
-            extrapolation_model_name: 外推模型名称
-            activity_model: 活度模型
-            progress_callback: 进度回调函数 callback(current, total)
-
-        返回:
-            {
-                'status': 'success',
-                'compositions': [组分列表],
-                'variable_element': 变化元素,
-                'temperature': 温度,
-                'phase_fractions': {相名: [分数列表]},
-                'results': [每个组分的完整结果]
-            }
-        """
-        import numpy as np
-
-        variable_element = variable_element.upper()
-        compositions = np.linspace(x_min, x_max, n_points)
-        results = []
-        phase_fractions = {}
-        all_phases = set()  # 跟踪所有出现过的相
-
-        # 归一化基础组成
-        base_total = sum(base_composition.values())
-        base_norm = {k.upper(): v/base_total for k, v in base_composition.items()
-                     if k.upper() != variable_element}
-
-        for i, x_var in enumerate(compositions):
-            if progress_callback:
-                progress_callback(i + 1, n_points)
-
-            try:
-                # 构建当前组成
-                remaining = 1.0 - x_var
-                current_comp = {variable_element: x_var}
-
-                for elem, frac in base_norm.items():
-                    current_comp[elem] = frac * remaining
-
-                # 归一化
-                total = sum(current_comp.values())
-                current_comp = {k: v/total for k, v in current_comp.items()}
-
-                result = self.calculate_phase_equilibrium(
-                    current_comp, temperature,
-                    extrapolation_model_func, extrapolation_model_name, activity_model
-                )
-
-                results.append(result)
-
-                # 收集当前组分点的相分数
-                current_phases = {}
-                if result['status'] == 'success' and result['phases']:
-                    for phase_info in result['phases']:
-                        current_phases[phase_info.name] = phase_info.fraction
-                        all_phases.add(phase_info.name)
-
-                # 为所有已知相添加分数（如果不存在则为0）
-                for phase_name in all_phases:
-                    if phase_name not in phase_fractions:
-                        # 新相，需要为之前的所有组分点填充0
-                        phase_fractions[phase_name] = [0.0] * i
-                    # 添加当前组分点的分数
-                    phase_fractions[phase_name].append(current_phases.get(phase_name, 0.0))
-
-                # 为之前已知但当前不存在的相添加0
-                for phase_name in phase_fractions:
-                    if len(phase_fractions[phase_name]) < i + 1:
-                        phase_fractions[phase_name].append(0.0)
-
-            except Exception as e:
-                print(f"组分 {x_var:.3f} 计算失败: {str(e)}")
-                results.append({
-                    'status': 'error',
-                    'message': str(e),
-                    'phases': []
-                })
-
-                # 为所有已知相在失败的组分点添加0
-                for phase_name in phase_fractions:
-                    if len(phase_fractions[phase_name]) < i + 1:
-                        phase_fractions[phase_name].append(0.0)
-
-        return {
-            'status': 'success',
-            'compositions': compositions.tolist(),
-            'variable_element': variable_element,
-            'temperature': temperature,
-            'phase_fractions': phase_fractions,
-            'results': results
-        }
-
-
-
-# =============================================================================
-# 使用示例
-# =============================================================================
-if __name__ == '__main__':
-    # 1. 初始化计算器
-    calculator = PhaseEquilibriumCalculator()
-    from models.extrapolation_models import BinaryModel
-    
-    extrapolation_model_func = BinaryModel().UEM1
-    
-    # 2. 定义合金和温度
-    my_alloy = {'AL': 0.70, 'FE': 0.14, 'MG': 0.16}
-    T_calc = 400  # K
-
-    # 3. 运行计算
-    results = calculator.calculate_phase_equilibrium(
-        my_alloy, 
-        T_calc,
-        extrapolation_model_func=extrapolation_model_func,
-        adjustment_factor=0.95  # 每次调整时减少5%
-    )
-
-    # 4. 打印结果
-    print("\n最终结果:")
-    for i, phase in enumerate(results, 1):
-        print(f"\n相 {i}: {phase['phase_name']}")
-        print(f"  摩尔分数: {phase['mole_fraction']:.6f} ({phase['mole_fraction']*100:.2f}%)")
-        print(f"  组成: {phase['composition']}")
+		修正：
+		1. 基础热力学数据(Tm, Sf)改为从 TDB 动态获取，确保与 SolutionPhase 一致。
+		2. 保留短程有序(SRO)修正逻辑 (gamma因子)。
+		"""
+		# 获取属性估算器
+		estimator = get_properties_estimator()
+		
+		# 1. 获取纯组元熔化参数 (动态 TDB 数据)
+		props1 = estimator.get_element_properties(el1)
+		props2 = estimator.get_element_properties(el2)
+		
+		tm1 = props1['Tm']
+		sf1 = props1['Sf']
+		tm2 = props2['Tm']
+		sf2 = props2['Sf']
+		
+		# 纯组元熔化焓贡献 (结构破坏)
+		# H_fusion = Tm * Sf
+		hf1 = tm1 * sf1
+		hf2 = tm2 * sf2
+		
+		term_structure_H = x1 * hf1 + x2 * hf2
+		
+		# 2. 化学键破坏贡献 (Chemical Bond Breaking)
+		# H_disorder_cost = H_liquid(disordered) - H_solid(ordered)
+		# 假设液相是无序的 Miedema 混合能 (高温 2000K)
+		h_mix_liquid_disordered = model_liq.calculate_enthalpy(x1, T=2000.0)
+		chem_diff = h_mix_liquid_disordered - h_form_solid
+		
+		# SRO 因子: 假设液相保留了 70% 的有序度，只破坏 30%
+		gamma = 0.1
+		term_chemical_H = gamma * chem_diff
+		
+		# 3. 总熔化焓
+		delta_H_total = term_structure_H + term_chemical_H
+		
+		# 4. 总熔化熵
+		# Delta S = 结构熵(TDB) + gamma * 构型熵(Ideal)
+		R = 8.314
+		if x1 > 1e-9 and x2 > 1e-9:
+			s_ideal_mix = -R * (x1 * math.log(x1) + x2 * math.log(x2))
+		else:
+			s_ideal_mix = 0.0
+		
+		term_structure_S = x1 * sf1 + x2 * sf2
+		term_config_S = gamma * s_ideal_mix
+		
+		delta_S_total = term_structure_S + term_config_S
+		
+		# 5. 计算 Tm = dH / dS
+		if delta_S_total <= 1.0:
+			# 异常保护：如果没有熵增，熔点将趋于无穷
+			return 2500.0
+		
+		Tm = delta_H_total / delta_S_total
+		
+		# 安全范围限制
+		return max(300.0, min(Tm, 5000.0))
+	
+if __name__ == "__main__":
+	try:
+		calc = PhaseEquilibriumCalculator()
+		comp = {'Fe': 0.7, 'Si': 0.27, 'C': 0.03}
+		T = 1873.0
+		
+		print(f"=== 通用相平衡计算测试 (T={T} K) ===")
+		print(f"System: {comp}")
+		
+		res = calc.calculate_phase_equilibrium(comp, T)
+		
+		print(f"\n计算状态: {res.status}")
+		print(f"总 Gibbs 能量: {res.total_gibbs_energy:.2f} J/mol")
+		print("\n稳定相组成:")
+		for p in res.stable_phases:
+			if p['fraction'] > 0.001:
+				comp_str = ", ".join([f"{k}:{v:.4f}" for k, v in p['composition'].items()])
+				# 如果是虚拟相，显示估算的熔点
+				extra_info = ""
+				if "Virt" in p['name']:
+					# 这里 hack 一下找回对象来显示熔点，实际项目可以优化结构
+					pass
+				print(f"  -> {p['name']:<20} 摩尔分数: {p['fraction']:.4f}  | 成分: {comp_str}")
+	
+	except Exception as e:
+		print(f"\nError: {e}")
+		import traceback
+		
+		traceback.print_exc()
