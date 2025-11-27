@@ -541,7 +541,7 @@ class PhaseEquilibriumWidget(QWidget):
 
             # 创建计算线程
             self.calc_thread = CalculationThread(
-                self.calculator.calculate_phase_equilibrium,
+                self.calculator.calculate_phase_equilibrium_gui_compatible,
                 composition, temperature, extrap_func,
                 extrap_model_name, activity_model
             )
