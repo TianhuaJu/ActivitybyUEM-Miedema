@@ -141,7 +141,7 @@ class PhaseEquilibriumCalculator:
 		# === 候选相数量限制 ===
 		# 为避免优化问题，限制候选相总数
 		num_components = len(elements)
-		max_candidates = num_components * 3  # 最多3倍于组分数的候选相
+		max_candidates = min(num_components * 2 + 2, 8)  # 更保守：最多8个候选相
 
 		if len(phases) > max_candidates:
 			# 按能量排序，只保留能量最低的相
@@ -346,14 +346,20 @@ class PhaseEquilibriumCalculator:
 		all_phases = set()
 
 		for i, T in enumerate(temperatures):
-			if progress_callback:
-				progress_callback(i + 1, n_points)
+			# 禁用progress_callback避免线程问题
+			# if progress_callback:
+			# 	progress_callback(i + 1, n_points)
+
+			print(f"计算温度点 {i+1}/{n_points}: {T:.1f} K")
 
 			try:
 				result = self.calculate_phase_equilibrium_gui_compatible(
 					total_composition, T,
 					extrapolation_model_func, extrapolation_model_name, activity_model
 				)
+
+				if result['status'] == 'error':
+					print(f"  警告: 温度{T:.1f}K计算失败: {result['message']}")
 
 				results.append(result)
 
@@ -421,8 +427,11 @@ class PhaseEquilibriumCalculator:
 		             if k.upper() != variable_element}
 
 		for i, x_var in enumerate(compositions):
-			if progress_callback:
-				progress_callback(i + 1, n_points)
+			# 禁用progress_callback避免线程问题
+			# if progress_callback:
+			# 	progress_callback(i + 1, n_points)
+
+			print(f"计算组分点 {i+1}/{n_points}: {variable_element}={x_var:.4f}")
 
 			try:
 				# 构建当前组成
@@ -440,6 +449,9 @@ class PhaseEquilibriumCalculator:
 					current_comp, temperature,
 					extrapolation_model_func, extrapolation_model_name, activity_model
 				)
+
+				if result['status'] == 'error':
+					print(f"  警告: 组分{x_var:.4f}计算失败: {result['message']}")
 
 				results.append(result)
 
