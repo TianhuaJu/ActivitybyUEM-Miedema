@@ -49,7 +49,7 @@ def run_gui ():
 		
 		# 显示加载信息
 		splash.showMessage(
-				"正在加载 AlloyAct Pro...",
+				"正在加载 AlloyThermocal Pro...",
 				Qt.AlignBottom | Qt.AlignCenter,
 				Qt.white
 		)
@@ -222,7 +222,7 @@ def create_default_splash ():
 	layout.setAlignment(Qt.AlignCenter)
 	
 	# 标题
-	title_label = QLabel("AlloyAct Pro")
+	title_label = QLabel("AlloyThermoCal Pro")
 	title_label.setAlignment(Qt.AlignCenter)
 	title_label.setFont(QFont("Arial", 24, QFont.Bold))
 	title_label.setStyleSheet("color: #2C3E50; margin: 20px;")
@@ -274,7 +274,7 @@ if __name__ == "__main__":
 #    - 尺寸：包含多种尺寸（16x16, 32x32, 48x48, 256x256）
 #
 # 3. 示例启动画面设计要素：
-#    - 应用程序名称：AlloyAct Pro
+#    - 应用程序名称：AlloyThermoCal Pro
 #    - Logo 或图标
 #    - 版本信息
 #    - 公司/组织名称

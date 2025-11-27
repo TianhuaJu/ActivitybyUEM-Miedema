@@ -337,7 +337,7 @@ class AlloyActProGUI(QMainWindow):
 	def show_about (self):
 		"""显示关于对话框"""
 		about_text = """
-        <h3>AlloyAct Pro - 合金热力学计算器</h3>
+        <h3>AlloyThermoCal Pro - 合金热力学计算器</h3>
         <p>基于uem-miedema模型</p>
         <p><b>功能特性:</b></p>
         <ul>

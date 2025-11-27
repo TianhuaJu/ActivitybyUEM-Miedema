@@ -198,7 +198,7 @@ class PhaseEquilibriumCalculator:
 		chem_diff = h_mix_liquid_disordered - h_form_solid
 		
 		# SRO 因子: 假设液相保留了 70% 的有序度，只破坏 30%
-		gamma = 0.1
+		gamma = 0.25
 		term_chemical_H = gamma * chem_diff
 		
 		# 3. 总熔化焓
