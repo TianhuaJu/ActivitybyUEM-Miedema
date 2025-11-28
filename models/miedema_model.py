@@ -118,8 +118,8 @@ class MiedemaModel:
 		if not (self.A.is_exist and self.B.is_exist): return 0.0
 		
 		# 1. 摩尔体积项 V^(2/3)
-		V23_A = self.A.v ** (2.0 / 3.0)
-		V23_B = self.B.v ** (2.0 / 3.0)
+		V23_A = self.A.v
+		V23_B = self.B.v
 		
 		# 2. 表面浓度
 		denom = cA * V23_A + cB * V23_B
@@ -194,14 +194,14 @@ class MiedemaModel:
 		return S_weighted + S_mix
 	
 	def _is_transition_metal (self, elem: Element) -> bool:
-		tm_list = ['Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd',
-		           'Ag', 'La', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au']
-		return elem.name in tm_list or (hasattr(elem, 'is_trans_group') and elem.is_trans_group)
+		
+		
+		return  elem.is_trans_group
 	
 	def _calculate_interface_enthalpy (self, elem_i: Element, elem_j: Element) -> float:
-		n_i = elem_i.n_ws ** (1.0 / 3.0);
-		n_j = elem_j.n_ws ** (1.0 / 3.0)
-		phi_i = elem_i.phi;
+		n_i = elem_i.n_ws
+		n_j = elem_j.n_ws 
+		phi_i = elem_i.phi
 		phi_j = elem_j.phi
 		P = self._determine_P(elem_i, elem_j)
 		R = self._determine_R(elem_i, elem_j, P)
