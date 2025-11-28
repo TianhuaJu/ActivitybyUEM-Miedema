@@ -216,6 +216,266 @@ class PhaseEquilibriumCalculator:
 		# 安全范围限制
 		return max(300.0, min(Tm, 5000.0))
 
+	# =========================================================================
+	# GUI 兼容层 (前端接口)
+	# =========================================================================
+
+	def calculate_phase_equilibrium_gui_compatible(self,
+	                                                composition: Dict[str, float],
+	                                                temperature: float,
+	                                                extrapolation_model_func=None,
+	                                                extrapolation_model_name: str = 'UEM1',
+	                                                activity_model: str = 'Wagner') -> Dict:
+		"""
+		GUI兼容版本：将GEM结果转换为GUI期望的格式。
+
+		Args:
+			composition: 合金组成
+			temperature: 温度(K)
+			extrapolation_model_func: 外推模型函数(未使用，保持接口兼容)
+			extrapolation_model_name: 外推模型名称(未使用，保持接口兼容)
+			activity_model: 活度模型(未使用，保持接口兼容)
+
+		Returns:
+			Dict: GUI期望的字典格式
+		"""
+		from dataclasses import dataclass, field
+
+		@dataclass
+		class PhaseInfo:
+			"""相信息数据类 - 与GUI兼容"""
+			name: str
+			composition: Dict[str, float] = field(default_factory=dict)
+			absolute_moles: float = 0.0
+			gibbs_energy: float = 0.0
+			fraction: float = 0.0
+
+		try:
+			# 调用核心计算方法
+			gem_result = self.calculate_phase_equilibrium(composition, temperature)
+
+			# 转换为PhaseInfo对象列表
+			phase_info_list = []
+			for phase_dict in gem_result.stable_phases:
+				if phase_dict['fraction'] > 1e-3:  # 过滤微量相
+					phase_info = PhaseInfo(
+						name=phase_dict['name'],
+						composition=phase_dict['composition'],
+						absolute_moles=phase_dict['fraction'],
+						gibbs_energy=phase_dict.get('gibbs_energy', 0.0),
+						fraction=phase_dict['fraction']
+					)
+					phase_info_list.append(phase_info)
+
+			# === Gibbs相律强制检查 ===
+			num_components = len(composition)
+			max_allowed_phases = num_components + 1
+
+			if len(phase_info_list) > max_allowed_phases:
+				# 按分数降序排列，只保留前max_allowed_phases个
+				phase_info_list.sort(key=lambda p: p.fraction, reverse=True)
+				discarded_phases = phase_info_list[max_allowed_phases:]
+				phase_info_list = phase_info_list[:max_allowed_phases]
+
+				# 重新归一化相分数
+				total_frac = sum(p.fraction for p in phase_info_list)
+				for p in phase_info_list:
+					p.fraction = p.fraction / total_frac
+					p.absolute_moles = p.fraction
+
+				# 添加警告信息
+				discarded_names = ', '.join(p.name for p in discarded_phases)
+				warning_msg = (f"Gibbs相律检查: 系统有{num_components}个组分，"
+				              f"最多允许{max_allowed_phases}个相。"
+				              f"已丢弃{len(discarded_phases)}个微量相: {discarded_names}")
+				print(warning_msg)
+
+			# 返回GUI期望的格式
+			return {
+				'status': gem_result.status,
+				'temperature': temperature,
+				'total_composition': composition,
+				'phases': phase_info_list,
+				'total_gibbs_energy': gem_result.total_gibbs_energy,
+				'message': gem_result.message,
+				'calculation_log': []
+			}
+
+		except Exception as e:
+			import traceback
+			error_msg = f'计算失败: {str(e)}'
+			print(f"错误: {error_msg}")
+			traceback.print_exc()
+			return {
+				'status': 'error',
+				'temperature': temperature,
+				'total_composition': composition,
+				'phases': [],
+				'total_gibbs_energy': 0.0,
+				'message': error_msg,
+				'calculation_log': [traceback.format_exc()]
+			}
+
+	def calculate_phase_equilibrium_vs_temperature(self,
+	                                               total_composition: Dict[str, float],
+	                                               T_min: float,
+	                                               T_max: float,
+	                                               n_points: int = 50,
+	                                               extrapolation_func=None,
+	                                               extrapolation_model_name: str = 'UEM1',
+	                                               activity_model: str = 'Wagner',
+	                                               progress_callback=None) -> Dict:
+		"""温度变化分析 - GUI兼容版本"""
+		import numpy as np
+
+		temperatures = np.linspace(T_min, T_max, n_points)
+		results = []
+		phase_fractions = {}
+		all_phases = set()
+
+		for i, T in enumerate(temperatures):
+			print(f"计算温度点 {i+1}/{n_points}: {T:.1f} K")
+
+			try:
+				result = self.calculate_phase_equilibrium_gui_compatible(
+					total_composition, T,
+					extrapolation_func, extrapolation_model_name, activity_model
+				)
+
+				if result['status'] == 'error':
+					print(f"  警告: 温度{T:.1f}K计算失败: {result['message']}")
+
+				results.append(result)
+
+				# 收集当前温度点的相分数
+				current_phases = {}
+				if result['status'] == 'success' and result['phases']:
+					for phase_info in result['phases']:
+						current_phases[phase_info.name] = phase_info.fraction
+						all_phases.add(phase_info.name)
+
+				# 为所有已知相添加分数
+				for phase_name in all_phases:
+					if phase_name not in phase_fractions:
+						phase_fractions[phase_name] = [0.0] * i
+					phase_fractions[phase_name].append(current_phases.get(phase_name, 0.0))
+
+				# 为之前已知但当前不存在的相添加0
+				for phase_name in phase_fractions:
+					if len(phase_fractions[phase_name]) < i + 1:
+						phase_fractions[phase_name].append(0.0)
+
+			except Exception as e:
+				print(f"温度 {T:.1f} K 计算失败: {str(e)}")
+				results.append({
+					'status': 'error',
+					'message': str(e),
+					'phases': []
+				})
+
+				# 为所有已知相添加0
+				for phase_name in phase_fractions:
+					if len(phase_fractions[phase_name]) < i + 1:
+						phase_fractions[phase_name].append(0.0)
+
+		return {
+			'status': 'success',
+			'temperatures': temperatures.tolist(),
+			'phase_fractions': phase_fractions,
+			'results': results
+		}
+
+	def calculate_phase_equilibrium_vs_composition(self,
+	                                               base_composition: Dict[str, float],
+	                                               variable_element: str,
+	                                               x_min: float,
+	                                               x_max: float,
+	                                               temperature: float,
+	                                               n_points: int = 50,
+	                                               extrapolation_func=None,
+	                                               extrapolation_model_name: str = 'UEM1',
+	                                               activity_model: str = 'Wagner',
+	                                               progress_callback=None) -> Dict:
+		"""组分变化分析 - GUI兼容版本"""
+		import numpy as np
+
+		variable_element = variable_element.upper()
+		compositions = np.linspace(x_min, x_max, n_points)
+		results = []
+		phase_fractions = {}
+		all_phases = set()
+
+		# 归一化基础组成
+		base_total = sum(base_composition.values())
+		base_norm = {k.upper(): v/base_total for k, v in base_composition.items()
+		             if k.upper() != variable_element}
+
+		for i, x_var in enumerate(compositions):
+			print(f"计算组分点 {i+1}/{n_points}: {variable_element}={x_var:.4f}")
+
+			try:
+				# 构建当前组成
+				remaining = 1.0 - x_var
+				current_comp = {variable_element: x_var}
+
+				for elem, frac in base_norm.items():
+					current_comp[elem] = frac * remaining
+
+				# 归一化
+				total = sum(current_comp.values())
+				current_comp = {k: v/total for k, v in current_comp.items()}
+
+				result = self.calculate_phase_equilibrium_gui_compatible(
+					current_comp, temperature,
+					extrapolation_func, extrapolation_model_name, activity_model
+				)
+
+				if result['status'] == 'error':
+					print(f"  警告: 组分{x_var:.4f}计算失败: {result['message']}")
+
+				results.append(result)
+
+				# 收集当前组分点的相分数
+				current_phases = {}
+				if result['status'] == 'success' and result['phases']:
+					for phase_info in result['phases']:
+						current_phases[phase_info.name] = phase_info.fraction
+						all_phases.add(phase_info.name)
+
+				# 为所有已知相添加分数
+				for phase_name in all_phases:
+					if phase_name not in phase_fractions:
+						phase_fractions[phase_name] = [0.0] * i
+					phase_fractions[phase_name].append(current_phases.get(phase_name, 0.0))
+
+				# 为之前已知但当前不存在的相添加0
+				for phase_name in phase_fractions:
+					if len(phase_fractions[phase_name]) < i + 1:
+						phase_fractions[phase_name].append(0.0)
+
+			except Exception as e:
+				print(f"组分 {x_var:.3f} 计算失败: {str(e)}")
+				results.append({
+					'status': 'error',
+					'message': str(e),
+					'phases': []
+				})
+
+				# 为所有已知相添加0
+				for phase_name in phase_fractions:
+					if len(phase_fractions[phase_name]) < i + 1:
+						phase_fractions[phase_name].append(0.0)
+
+		return {
+			'status': 'success',
+			'compositions': compositions.tolist(),
+			'variable_element': variable_element,
+			'temperature': temperature,
+			'phase_fractions': phase_fractions,
+			'results': results
+		}
+
+
 
 # 调试接口 (仅用于直接运行此文件测试，不影响外部调用)
 if __name__ == "__main__":
