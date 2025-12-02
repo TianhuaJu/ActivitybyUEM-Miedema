@@ -1,0 +1,580 @@
+"""
+析出温度计算模块 (Precipitation Temperature Calculator)
+=======================================================
+基于UEM-Miedema模型框架计算溶质的析出温度
+
+核心热力学原理：
+-----------------
+在温度T下，当溶质i的化学势等于析出相的标准Gibbs能时，达到相平衡：
+
+    μᵢ(solution) = Gᵢ°(precipitate)
+
+其中：
+    μᵢ = Gᵢ°(solution) + RT·ln(aᵢ)
+    aᵢ = γᵢ · xᵢ  (活度 = 活度系数 × 摩尔分数)
+
+平衡条件展开为：
+    Gᵢ°(solution, T) + RT·ln(γᵢ·xᵢ) = Gᵢ°(precipitate, T)
+
+当xᵢ已知时，求解满足此方程的T即为析出温度。
+
+物理意义：
+- T < T_precipitation: 溶质过饱和，析出相热力学稳定
+- T > T_precipitation: 溶质欠饱和，溶液相热力学稳定
+- T = T_precipitation: 两相平衡共存
+
+"""
+
+import math
+import numpy as np
+from typing import Dict, List, Optional, Tuple
+from scipy.optimize import brentq, minimize_scalar
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from calculations.thermodynamic_properties import ThermodynamicProperties
+
+
+class PrecipitationTemperatureCalculator(ThermodynamicProperties):
+    """
+    析出温度计算器
+
+    基于热力学平衡条件：μ_solute(solution) = G°(precipitate)
+
+    支持的计算模式：
+    1. 单点计算：给定合金成分，计算析出温度
+    2. 成分曲线：给定基础合金，计算析出温度随溶质含量的变化
+    3. 多溶质系统：计算多种溶质各自的析出温度
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def calculate_precipitation_temperature(
+        self,
+        alloy_composition: Dict[str, float],
+        solute_element: str,
+        solution_phase: str,  # 'LIQUID' 或 'SOLID'
+        extrapolation_func,
+        extrapolation_model_name: str = 'UEM1',
+        activity_model: str = 'Wagner',
+        T_min: float = 300.0,
+        T_max: float = 3000.0,
+        tolerance: float = 1.0
+    ) -> dict:
+        """
+        计算指定成分合金中溶质的析出温度
+
+        热力学依据：
+        -----------
+        在析出温度T_p处，溶质的化学势等于析出相的Gibbs能：
+
+            μ_solute(T_p) = G°_precipitate(T_p)
+
+        定义残差函数：
+            f(T) = μ_solute(T) - G°_precipitate(T)
+
+        当 f(T) = 0 时，T 即为析出温度
+
+        参数：
+        -----
+        alloy_composition : Dict[str, float]
+            合金成分（摩尔分数），如 {'FE': 0.95, 'C': 0.02, 'SI': 0.03}
+        solute_element : str
+            溶质元素符号，如 'C'
+        solution_phase : str
+            溶液相类型：'LIQUID' 或 'SOLID'
+        extrapolation_func : callable
+            外推模型函数
+        extrapolation_model_name : str
+            外推模型名称
+        activity_model : str
+            活度模型：'Wagner', 'Darken', 'Elliott'
+        T_min, T_max : float
+            温度搜索范围 (K)
+        tolerance : float
+            温度求解精度 (K)
+
+        返回：
+        -----
+        dict : 包含以下键的结果字典
+            - status: 'success', 'always_supersaturated', 'always_undersaturated', 'error'
+            - precipitation_temperature: 析出温度 (K)，仅当 status='success' 时有效
+            - precipitation_temperature_celsius: 析出温度 (°C)
+            - solute: 溶质元素
+            - solute_content: 溶质摩尔分数
+            - precipitating_phase: 析出相名称
+            - solution_phase: 溶液相名称
+            - driving_force_at_T_min: T_min处的过饱和驱动力 (J/mol)
+            - driving_force_at_T_max: T_max处的过饱和驱动力 (J/mol)
+        """
+        # ==================== 1. 预处理 ====================
+        solute = solute_element.upper()
+
+        # 归一化成分
+        total = sum(alloy_composition.values())
+        if total <= 0:
+            return {
+                'status': 'error',
+                'message': '合金成分不能为空',
+                'precipitation_temperature': None
+            }
+
+        composition = {k.upper(): v / total for k, v in alloy_composition.items()}
+
+        # 检查溶质是否在成分中
+        if solute not in composition:
+            return {
+                'status': 'error',
+                'message': f'溶质 {solute} 不在合金成分中',
+                'precipitation_temperature': None
+            }
+
+        x_solute = composition[solute]
+        if x_solute <= 0:
+            return {
+                'status': 'error',
+                'message': f'溶质 {solute} 含量必须大于0',
+                'precipitation_temperature': None
+            }
+
+        # 确定溶剂
+        solvent = max(composition.items(), key=lambda item: item[1])[0]
+
+        # ==================== 2. 确定相名称 ====================
+        # 析出相：使用T_min温度下溶质的稳定相
+        precipitating_phase = self.tdb_parser.get_stable_phase(solute, T_min)
+        if not precipitating_phase:
+            precipitating_phase = self.tdb_parser.get_reference_phase(solute)
+
+        # 溶液相
+        if solution_phase.upper() == 'LIQUID':
+            tdb_solution_phase = 'LIQUID'
+        else:
+            ref_phase = self.tdb_parser.get_stable_phase(solvent, (T_min + T_max) / 2)
+            tdb_solution_phase = ref_phase if ref_phase else 'BCC_A2'
+
+        # ==================== 3. 定义残差函数 ====================
+        def driving_force(T: float) -> Optional[float]:
+            """
+            计算过饱和驱动力：ΔG = μ_solute - G°_precipitate
+
+            - ΔG > 0: 溶液欠饱和（稳定）
+            - ΔG < 0: 溶液过饱和（不稳定，倾向析出）
+            - ΔG = 0: 平衡状态
+            """
+            # 计算溶质在溶液中的化学势
+            mu_solute = self._get_chemical_potential_extended(
+                composition=composition,
+                component=solute,
+                temperature=T,
+                tdb_phase=tdb_solution_phase,
+                extrapolation_func=extrapolation_func,
+                extrapolation_model=extrapolation_model_name,
+                activity_model=activity_model
+            )
+
+            if mu_solute is None:
+                return None
+
+            # 获取当前温度下析出相的Gibbs能
+            current_precip_phase = self.tdb_parser.get_stable_phase(solute, T)
+            if not current_precip_phase:
+                current_precip_phase = precipitating_phase
+
+            g_precipitate = self.tdb_parser.get_gibbs_energy(solute, current_precip_phase, T)
+
+            if g_precipitate is None:
+                return None
+
+            return mu_solute - g_precipitate
+
+        # ==================== 4. 评估边界条件 ====================
+        df_min = driving_force(T_min)
+        df_max = driving_force(T_max)
+
+        if df_min is None or df_max is None:
+            return {
+                'status': 'error',
+                'message': '无法计算驱动力，请检查热力学数据',
+                'precipitation_temperature': None,
+                'solute': solute,
+                'solute_content': x_solute
+            }
+
+        # ==================== 5. 分析并求解 ====================
+        result = {
+            'solute': solute,
+            'solute_content': x_solute,
+            'solution_phase': tdb_solution_phase,
+            'precipitating_phase': precipitating_phase,
+            'driving_force_at_T_min': df_min,
+            'driving_force_at_T_max': df_max,
+            'solvent': solvent,
+            'composition': composition
+        }
+
+        # 情况1: 两边同号 - 无法找到析出温度
+        if df_min > 0 and df_max > 0:
+            # 在整个温度范围内都欠饱和（溶液稳定）
+            result['status'] = 'always_undersaturated'
+            result['precipitation_temperature'] = None
+            result['precipitation_temperature_celsius'] = None
+            result['message'] = f'在 {T_min}-{T_max}K 范围内，溶质始终欠饱和，不会析出'
+            return result
+
+        if df_min < 0 and df_max < 0:
+            # 在整个温度范围内都过饱和（析出相稳定）
+            result['status'] = 'always_supersaturated'
+            result['precipitation_temperature'] = None
+            result['precipitation_temperature_celsius'] = None
+            result['message'] = f'在 {T_min}-{T_max}K 范围内，溶质始终过饱和'
+            return result
+
+        # 情况2: 两边异号 - 存在析出温度
+        try:
+            # 定义求解函数（处理None返回值）
+            def solve_func(T):
+                df = driving_force(T)
+                return df if df is not None else 1e10
+
+            T_precip = brentq(solve_func, T_min, T_max, xtol=tolerance)
+
+            # 验证结果
+            df_check = driving_force(T_precip)
+
+            result['status'] = 'success'
+            result['precipitation_temperature'] = float(T_precip)
+            result['precipitation_temperature_celsius'] = float(T_precip - 273.15)
+            result['message'] = '析出温度计算成功'
+            result['residual'] = df_check
+
+            # 计算析出温度处的活度系数
+            ln_gamma = self.calculate_ln_activity_coefficient(
+                composition, solute, T_precip,
+                'liquid' if tdb_solution_phase == 'LIQUID' else 'solid',
+                extrapolation_func, extrapolation_model_name, activity_model
+            )
+            if ln_gamma is not None:
+                result['activity_coefficient_at_Tp'] = math.exp(ln_gamma)
+                result['activity_at_Tp'] = x_solute * math.exp(ln_gamma)
+
+            return result
+
+        except ValueError as e:
+            result['status'] = 'numerical_error'
+            result['precipitation_temperature'] = None
+            result['precipitation_temperature_celsius'] = None
+            result['message'] = f'数值求解失败: {str(e)}'
+            return result
+
+    def _get_chemical_potential_extended(
+        self,
+        composition: Dict[str, float],
+        component: str,
+        temperature: float,
+        tdb_phase: str,
+        extrapolation_func,
+        extrapolation_model: str,
+        activity_model: str
+    ) -> Optional[float]:
+        """
+        计算组分的化学势（扩展版，支持晶格稳定性估算）
+
+        μᵢ = Gᵢ°(phase) + RT·ln(γᵢ·xᵢ)
+        """
+        # 确定相态
+        if tdb_phase == 'LIQUID':
+            activity_phase = 'liquid'
+            lookup_phase = 'LIQUID'
+        else:
+            activity_phase = 'solid'
+            lookup_phase = tdb_phase
+
+        # 获取标准Gibbs能
+        mu_0 = self.tdb_parser.get_gibbs_energy(component, lookup_phase, temperature)
+
+        # 如果TDB没有数据，尝试晶格稳定性估算
+        if mu_0 is None and lookup_phase != 'LIQUID':
+            mu_0 = self._estimate_lattice_stability(component, lookup_phase, temperature)
+
+        if mu_0 is None:
+            return None
+
+        # 计算活度系数
+        ln_gamma = self.calculate_ln_activity_coefficient(
+            composition, component, temperature, activity_phase,
+            extrapolation_func, extrapolation_model, activity_model
+        )
+
+        if ln_gamma is None:
+            return None
+
+        # 计算化学势
+        x_i = max(composition.get(component, 0.0), 1e-15)
+        mu = mu_0 + self.R * temperature * (math.log(x_i) + ln_gamma)
+
+        return mu
+
+    def _estimate_lattice_stability(self, component: str, target_phase: str, T: float) -> Optional[float]:
+        """
+        估算晶格稳定性参数（针对非金属元素溶解于金属相）
+        """
+        comp_upper = component.upper()
+
+        stability_config = {
+            'C': {'stable_phase': 'GRAPHITE', 'fixed_diff': 77000.0},  # C: 77 kJ/mol
+            'N': {'stable_phase': 'GAS', 'fixed_diff': 240000.0},      # N: 240 kJ/mol
+            'SI': {'stable_phase': 'DIAMOND_A4', 'fixed_diff': 33000.0},  # Si: 33 kJ/mol
+            'GE': {'stable_phase': 'DIAMOND_A4', 'fixed_diff': 25000.0},  # Ge: 25 kJ/mol
+            'H': {'stable_phase': 'GAS', 'fixed_diff': 100000.0},      # H: 100 kJ/mol
+            'O': {'stable_phase': 'GAS', 'fixed_diff': 250000.0},      # O: 250 kJ/mol
+            'S': {'stable_phase': 'ORTHORHOMBIC_S', 'fixed_diff': 50000.0},  # S: 50 kJ/mol
+            'B': {'stable_phase': 'RHOMBO_B', 'fixed_diff': 45000.0},  # B: 45 kJ/mol
+        }
+
+        if comp_upper not in stability_config:
+            return None
+
+        config = stability_config[comp_upper]
+
+        # 获取稳定态能量
+        ref_phase = config['stable_phase']
+        g_stable = self.tdb_parser.get_gibbs_energy(comp_upper, ref_phase, T)
+
+        if g_stable is None:
+            # 尝试使用参考相
+            ref = self.tdb_parser.get_reference_phase(comp_upper)
+            if ref:
+                g_stable = self.tdb_parser.get_gibbs_energy(comp_upper, ref, T)
+
+        if g_stable is None:
+            return None
+
+        return g_stable + config['fixed_diff']
+
+    def calculate_precipitation_curve(
+        self,
+        base_alloy_composition: Dict[str, float],
+        solute_element: str,
+        x_min: float,
+        x_max: float,
+        n_points: int,
+        solution_phase: str,
+        extrapolation_func,
+        extrapolation_model_name: str = 'UEM1',
+        activity_model: str = 'Wagner',
+        progress_callback=None
+    ) -> dict:
+        """
+        计算析出温度随溶质含量变化的曲线
+
+        参数：
+        -----
+        base_alloy_composition : Dict[str, float]
+            基础合金成分（不含溶质或溶质含量为0）
+        solute_element : str
+            溶质元素
+        x_min, x_max : float
+            溶质摩尔分数范围
+        n_points : int
+            计算点数
+        其他参数同 calculate_precipitation_temperature
+
+        返回：
+        -----
+        dict : 包含曲线数据
+        """
+        solute = solute_element.upper()
+
+        # 归一化基础成分
+        total_base = sum(base_alloy_composition.values())
+        base_comp = {k.upper(): v / total_base for k, v in base_alloy_composition.items()}
+
+        # 生成溶质含量数组
+        x_values = np.linspace(x_min, x_max, n_points)
+
+        results = {
+            'x_solute': [],
+            'T_precipitation': [],
+            'T_precipitation_celsius': [],
+            'status': [],
+            'details': []
+        }
+
+        for i, x_sol in enumerate(x_values):
+            if progress_callback:
+                progress_callback(i + 1, n_points)
+
+            # 构建当前成分
+            remaining = 1.0 - x_sol
+            current_comp = {el: base_comp[el] * remaining for el in base_comp}
+            current_comp[solute] = x_sol
+
+            # 计算析出温度
+            result = self.calculate_precipitation_temperature(
+                alloy_composition=current_comp,
+                solute_element=solute,
+                solution_phase=solution_phase,
+                extrapolation_func=extrapolation_func,
+                extrapolation_model_name=extrapolation_model_name,
+                activity_model=activity_model
+            )
+
+            results['x_solute'].append(x_sol)
+            results['status'].append(result['status'])
+            results['details'].append(result)
+
+            if result['status'] == 'success':
+                results['T_precipitation'].append(result['precipitation_temperature'])
+                results['T_precipitation_celsius'].append(result['precipitation_temperature_celsius'])
+            else:
+                results['T_precipitation'].append(None)
+                results['T_precipitation_celsius'].append(None)
+
+        return results
+
+    def calculate_multi_solute_precipitation(
+        self,
+        alloy_composition: Dict[str, float],
+        solute_elements: List[str],
+        solution_phase: str,
+        extrapolation_func,
+        extrapolation_model_name: str = 'UEM1',
+        activity_model: str = 'Wagner'
+    ) -> dict:
+        """
+        计算多溶质系统中各溶质的析出温度
+
+        返回各溶质的析出温度，按析出温度从高到低排序（先析出的排前面）
+        """
+        results = {
+            'solutes': [],
+            'precipitation_temperatures': [],
+            'precipitation_sequence': [],
+            'details': {}
+        }
+
+        for solute in solute_elements:
+            solute_upper = solute.upper()
+
+            result = self.calculate_precipitation_temperature(
+                alloy_composition=alloy_composition,
+                solute_element=solute_upper,
+                solution_phase=solution_phase,
+                extrapolation_func=extrapolation_func,
+                extrapolation_model_name=extrapolation_model_name,
+                activity_model=activity_model
+            )
+
+            results['details'][solute_upper] = result
+
+            if result['status'] == 'success':
+                results['solutes'].append(solute_upper)
+                results['precipitation_temperatures'].append(result['precipitation_temperature'])
+
+        # 按析出温度排序（降序，高温先析出）
+        if results['solutes']:
+            sorted_pairs = sorted(
+                zip(results['solutes'], results['precipitation_temperatures']),
+                key=lambda x: x[1],
+                reverse=True
+            )
+            results['precipitation_sequence'] = [p[0] for p in sorted_pairs]
+            results['sorted_temperatures'] = [p[1] for p in sorted_pairs]
+
+        return results
+
+
+# 便捷接口
+def calculate_precipitation_temp(
+    composition: Dict[str, float],
+    solute: str,
+    phase: str = 'SOLID',
+    model: str = 'UEM1'
+) -> Optional[float]:
+    """
+    便捷函数：快速计算析出温度
+
+    用法：
+        T_p = calculate_precipitation_temp({'FE': 0.98, 'C': 0.02}, 'C')
+    """
+    from models.extrapolation_models import BinaryModel
+
+    bm = BinaryModel()
+    model_map = {
+        'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+        'GSM': bm.GSM, 'Muggianu': bm.Muggianu
+    }
+
+    calc = PrecipitationTemperatureCalculator()
+    result = calc.calculate_precipitation_temperature(
+        alloy_composition=composition,
+        solute_element=solute,
+        solution_phase=phase,
+        extrapolation_func=model_map.get(model, bm.UEM1),
+        extrapolation_model_name=model
+    )
+
+    if result['status'] == 'success':
+        return result['precipitation_temperature']
+    return None
+
+
+# 测试代码
+if __name__ == '__main__':
+    from models.extrapolation_models import BinaryModel
+
+    calc = PrecipitationTemperatureCalculator()
+    bm = BinaryModel()
+
+    # 测试：Fe-C合金中C的析出温度
+    print("=" * 60)
+    print("测试：Fe-2%C 合金中 C 的析出温度")
+    print("=" * 60)
+
+    result = calc.calculate_precipitation_temperature(
+        alloy_composition={'FE': 0.98, 'C': 0.02},
+        solute_element='C',
+        solution_phase='SOLID',
+        extrapolation_func=bm.UEM1,
+        extrapolation_model_name='UEM1',
+        activity_model='Wagner'
+    )
+
+    print(f"状态: {result['status']}")
+    if result['status'] == 'success':
+        print(f"析出温度: {result['precipitation_temperature']:.1f} K")
+        print(f"析出温度: {result['precipitation_temperature_celsius']:.1f} °C")
+        print(f"析出相: {result['precipitating_phase']}")
+        print(f"溶液相: {result['solution_phase']}")
+    else:
+        print(f"消息: {result.get('message', 'N/A')}")
+
+    print("\n" + "=" * 60)
+    print("测试：计算析出温度-成分曲线")
+    print("=" * 60)
+
+    curve_result = calc.calculate_precipitation_curve(
+        base_alloy_composition={'FE': 1.0},
+        solute_element='C',
+        x_min=0.001,
+        x_max=0.05,
+        n_points=10,
+        solution_phase='SOLID',
+        extrapolation_func=bm.UEM1
+    )
+
+    print(f"{'X_C':<10} {'T_precip (K)':<15} {'T_precip (°C)':<15} {'状态'}")
+    print("-" * 55)
+    for i in range(len(curve_result['x_solute'])):
+        x = curve_result['x_solute'][i]
+        T = curve_result['T_precipitation'][i]
+        T_c = curve_result['T_precipitation_celsius'][i]
+        status = curve_result['status'][i]
+
+        T_str = f"{T:.1f}" if T else "N/A"
+        T_c_str = f"{T_c:.1f}" if T_c else "N/A"
+        print(f"{x:<10.4f} {T_str:<15} {T_c_str:<15} {status}")

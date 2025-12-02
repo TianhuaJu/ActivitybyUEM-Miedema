@@ -39,6 +39,7 @@ from gui.ThermodynamicPropertiesWidget import ThermodynamicPropertiesWidget
 from gui.PhaseDiagramWidget import PhaseDiagramWidget
 from gui.SolubilityWidget import SolubilityWidget
 from gui.PhaseEquilibriumWidget import PhaseEquilibriumWidget
+from gui.PrecipitationTemperatureWidget import PrecipitationTemperatureWidget
 
 
 class MplCanvas(FigureCanvas):
@@ -219,6 +220,9 @@ class AlloyActProGUI(QMainWindow):
 		# 溶解度计算选项卡
 		self.create_solubility_tab()
 
+		# 析出温度计算选项卡
+		self.create_precipitation_temperature_tab()
+
 		# 相平衡计算选项卡
 		self.create_phase_equilibrium_tab()
 
@@ -334,32 +338,33 @@ class AlloyActProGUI(QMainWindow):
 		self.phase_equilibrium_widget = PhaseEquilibriumWidget()
 		self.tabs.addTab(self.phase_equilibrium_widget, "相平衡计算")
 
+	def create_precipitation_temperature_tab(self):
+		"""创建析出温度计算选项卡"""
+		self.precipitation_temp_widget = PrecipitationTemperatureWidget()
+		self.tabs.addTab(self.precipitation_temp_widget, "析出温度计算")
+
 	def show_about (self):
 		"""显示关于对话框"""
 		about_text = """
         <h3>AlloyAct Pro - 合金热力学计算器</h3>
-        <p>基于uem-miedema模型</p>
-        <p><b>功能特性:</b></p>
+        <p>基于UEM-Miedema模型框架的专业热力学计算软件</p>
+        <p><b>核心功能:</b></p>
         <ul>
-        <li>活度和活度系数计算</li>
-        <li>相互作用系数分析</li>
-        <li>二阶相互作用系数计算</li>
-        <li>温度变化分析</li>
-        <li>浓度变化分析</li>
-        <li>多种外推模型支持 (UEM1, UEM2, GSM, Muggianu, etc)</li>
-        <li>完整热力学性质计算 (活度、化学势、摩尔焓、吉布斯自由能)</li>
-        <li>液相线/固相线温度计算</li>
-        <li>相图绘制与分析</li>
-        <li>溶解度计算 (液相与固相)</li>
-        <li>溶解度-浓度关系曲线分析</li>
-        <li>相平衡计算 (吉布斯自由能最小化)</li>
-        <li>平衡相组成及相分数计算</li>
-        <li>相平衡随温度和组分的变化分析</li>
-        <li>基于SGTE Unary Database的纯物质热力学数据</li>
+        <li><b>溶解度计算</b> - 液相/固相溶解度、溶解度-温度/成分曲线</li>
+        <li><b>析出温度计算</b> - 单点/曲线计算、多溶质析出顺序分析</li>
+        <li><b>活度计算</b> - 活度系数、化学势、过剩Gibbs能</li>
+        <li><b>相互作用系数</b> - 一阶/二阶Wagner相互作用系数</li>
+        <li><b>相图计算</b> - 液相线/固相线温度计算</li>
+        <li><b>相平衡计算</b> - 多相平衡、相组成及相分数</li>
+        </ul>
+        <p><b>热力学模型:</b></p>
+        <ul>
+        <li>外推模型: UEM1, UEM2, UEM2-Adv, GSM, Muggianu, Toop-Kohler等</li>
+        <li>活度模型: Wagner, Darken, Elliott</li>
+        <li>热力学数据: SGTE Unary Database</li>
         </ul>
         <p><b>开发团队:</b> 合金热力学计算实验室</p>
         <p><b>技术支持:</b> <a href="mailto:jutianhua@gxu.edu.cn">jutianhua@gxu.edu.cn</a></p>
-        
         """
 		QMessageBox.about(self, "关于 AlloyAct Pro", about_text)
 		
