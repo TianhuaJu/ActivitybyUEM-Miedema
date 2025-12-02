@@ -282,6 +282,120 @@ COMPOUND_DATABASE: Dict[str, CompoundData] = {
 }
 
 
+# ============================================================================
+# SQLite数据库集成
+# ============================================================================
+
+def load_compounds_from_database(db_path: str = None) -> Dict[str, CompoundData]:
+    """
+    从SQLite数据库加载化合物数据
+
+    Parameters:
+        db_path: 数据库路径，默认为 database/data/compounds.db
+
+    Returns:
+        Dict[str, CompoundData]: 化合物数据字典
+    """
+    import sqlite3
+    from pathlib import Path
+
+    if db_path is None:
+        # 默认数据库路径
+        db_path = Path(__file__).parent.parent / "database" / "data" / "compounds.db"
+
+    if not Path(db_path).exists():
+        print(f"警告: 数据库文件不存在: {db_path}")
+        return {}
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT compound_formula, metal_element, nonmetal_element,
+                   metal_stoichiometry, nonmetal_stoichiometry,
+                   delta_gf_A, delta_gf_B, reference, notes
+            FROM compound_thermodynamics
+        ''')
+
+        compounds = {}
+        for row in cursor.fetchall():
+            formula = row['compound_formula']
+            compounds[formula] = CompoundData(
+                formula=formula,
+                metal_element=row['metal_element'].upper(),
+                nonmetal_element=row['nonmetal_element'].upper(),
+                metal_stoich=row['metal_stoichiometry'],
+                nonmetal_stoich=row['nonmetal_stoichiometry'],
+                delta_gf_A=row['delta_gf_A'],
+                delta_gf_B=row['delta_gf_B'],
+                reference=row['reference'] or '',
+                notes=row['notes'] or ''
+            )
+
+        conn.close()
+        return compounds
+
+    except Exception as e:
+        print(f"加载数据库时出错: {e}")
+        return {}
+
+
+def get_solubility_product_from_database(
+    compound_formula: str,
+    matrix_phase: str,
+    matrix_base: str = 'Fe',
+    db_path: str = None
+) -> Optional[Tuple[float, float, float]]:
+    """
+    从数据库获取溶解度积参数
+
+    Parameters:
+        compound_formula: 化合物分子式
+        matrix_phase: 基体相 (FCC, BCC, Liquid)
+        matrix_base: 基体元素
+        db_path: 数据库路径
+
+    Returns:
+        (A, B, C) 使得 log(Ksp) = A/T + B + C*ln(T)，或 None
+    """
+    import sqlite3
+    from pathlib import Path
+
+    if db_path is None:
+        db_path = Path(__file__).parent.parent / "database" / "data" / "compounds.db"
+
+    if not Path(db_path).exists():
+        return None
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT log_ksp_A, log_ksp_B, log_ksp_C
+            FROM solubility_product
+            WHERE compound_formula = ? AND matrix_phase = ? AND matrix_base = ?
+        ''', (compound_formula, matrix_phase, matrix_base))
+
+        row = cursor.fetchone()
+        conn.close()
+
+        if row:
+            A = row['log_ksp_A']
+            B = row['log_ksp_B'] or 0
+            C = row['log_ksp_C'] or 0
+            return (A, B, C)
+
+        return None
+
+    except Exception as e:
+        print(f"查询溶解度积时出错: {e}")
+        return None
+
+
 class CompoundSolubilityCalculator(ThermodynamicProperties):
     """
     化合物溶解度积计算器
@@ -293,9 +407,27 @@ class CompoundSolubilityCalculator(ThermodynamicProperties):
     4. 预测析出驱动力
     """
 
-    def __init__(self):
+    def __init__(self, use_database: bool = True, db_path: str = None):
+        """
+        初始化化合物溶解度积计算器
+
+        Parameters:
+            use_database: 是否从SQLite数据库加载数据（默认True）
+            db_path: 数据库路径，None则使用默认路径
+        """
         super().__init__()
-        self.compound_db = COMPOUND_DATABASE
+        # 首先加载内置数据库
+        self.compound_db = COMPOUND_DATABASE.copy()
+
+        # 尝试从SQLite数据库加载更多数据
+        if use_database:
+            db_compounds = load_compounds_from_database(db_path)
+            if db_compounds:
+                # 数据库中的数据可以覆盖内置数据
+                self.compound_db.update(db_compounds)
+                print(f"从数据库加载了 {len(db_compounds)} 个化合物数据")
+
+        self.db_path = db_path
 
     def get_available_compounds(self) -> List[str]:
         """获取数据库中所有可用的化合物"""
