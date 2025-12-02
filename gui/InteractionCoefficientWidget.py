@@ -9,7 +9,7 @@ from matplotlib.figure import Figure
 
 from core.element import Element
 from core.database_handler import Melt
-from models.activity_interaction_parameters import TernaryMelts
+from models.activity_interaction_parameters import multicomponentSolution
 
 
 class MplCanvas(FigureCanvas):
@@ -231,9 +231,9 @@ class InteractionCoefficientWidget(QWidget):
 			# 获取模型函数
 			model_func = self.get_model_function(model_name)
 			
-			# 创建 TernaryMelts 实例
+			# 创建 multicomponentSolution 实例
 			
-			ternary = TernaryMelts(temp, state)
+			ternary = multicomponentSolution(temp, state)
 			
 			# 计算相互作用系数
 			

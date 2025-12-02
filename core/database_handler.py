@@ -492,7 +492,7 @@ class Melt:
 	def get_or_calculate_eki (self, solv, element_i, element_k, tem):
 		"获取在基体1中组分k对组分j的以质量分数表示的一阶活度相互作用系数，有实验值采用实验值，无实验值采用计算值，默认采用UEM1计算值"
 		from .element import Element  # 延迟导入避免循环依赖
-		from models.activity_interaction_parameters import TernaryMelts  # 延迟导入
+		from models.activity_interaction_parameters import multicomponentSolution  # 延迟导入
 		
 		eki, _, eik, _ = self._get_first_order_activity_interaction_coefficient(element_i, element_k, solv)
 		
@@ -504,8 +504,8 @@ class Melt:
 			try:
 				# 延迟导入以避免循环依赖
 				from models.extrapolation_models import BinaryModel
-				ski = TernaryMelts().activity_interact_coefficient_1st(solv, element_i, element_k, tem, "Liquid",
-				                                                       BinaryModel.UEM1)
+				ski = multicomponentSolution().activity_interact_coefficient_1st(solv, element_i, element_k, tem, "Liquid",
+				                                                                 BinaryModel.UEM1)
 				eki = self._first_order_m_to_w(ski, Element(element_k), Element(solv))
 				return eki
 			except Exception as e:
