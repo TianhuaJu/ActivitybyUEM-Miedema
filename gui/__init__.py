@@ -36,7 +36,7 @@
 """
 
 # 主窗口
-from gui.Alloyact_GUI_Pro import AlloyActPro
+from gui.Alloyact_GUI_Pro import AlloyActProGUI
 
 # 活度计算组件
 from gui.ActivityCalculationWidget import ActivityCalculationWidget
@@ -63,7 +63,7 @@ from gui.data_ui import DatabaseManagerTab
 
 __all__ = [
     # 主窗口
-    'AlloyActPro',
+    'AlloyActProGUI',
 
     # 活度计算
     'ActivityCalculationWidget',
