@@ -1,4 +1,4 @@
-# AlloyAct Pro
+# AlloyThermolCal Pro (合金热力学计算专业版)
 
 基于UEM-Miedema模型的专业合金热力学计算软件。
 

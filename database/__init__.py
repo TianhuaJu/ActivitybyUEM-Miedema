@@ -17,32 +17,17 @@
 - data/DataBase.db: 元素参数数据库
 - data/compounds.db: 化合物热力学数据库
 - data/unary50.tdb: SGTE单元系热力学数据
+
+使用示例：
+---------
+>>> from database.compound_database import (
+...     init_database, get_compound_data, get_solubility_product
+... )
 """
 
-from database.compound_database import (
-    init_database,
-    get_database_path,
-    get_compound_data,
-    get_solubility_product,
-    get_lattice_stability,
-    get_wagner_interaction,
-    list_compounds_by_type,
-    calculate_delta_gf,
-    calculate_log_ksp,
-    create_and_populate_database,
-    DATABASE_PATH
-)
+# 为避免循环导入，不在此处直接导入
+# 用户应直接从子模块导入所需的类/函数
 
 __all__ = [
-    'init_database',
-    'get_database_path',
-    'get_compound_data',
-    'get_solubility_product',
-    'get_lattice_stability',
-    'get_wagner_interaction',
-    'list_compounds_by_type',
-    'calculate_delta_gf',
-    'calculate_log_ksp',
-    'create_and_populate_database',
-    'DATABASE_PATH',
+    'compound_database',
 ]

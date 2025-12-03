@@ -52,10 +52,10 @@ class MplCanvas(FigureCanvas):
 		super(MplCanvas, self).__init__(self.fig)
 
 
-class AlloyActProGUI(QMainWindow):
+class AlloyThermolCalProGUI(QMainWindow):
 	def __init__ (self):
 		super().__init__()
-		self.setWindowTitle("AlloyThermocal Pro - 合金热力学计算器")
+		self.setWindowTitle("AlloyThermolCal Pro - 合金热力学计算专业版")
 		self.resize(1400, 1000)
 		self.setMinimumSize(1000, 1200)
 		
@@ -346,7 +346,7 @@ class AlloyActProGUI(QMainWindow):
 	def show_about (self):
 		"""显示关于对话框"""
 		about_text = """
-        <h3>AlloyAct Pro - 合金热力学计算器</h3>
+        <h3>AlloyThermolCal Pro - 合金热力学计算专业版</h3>
         <p>基于UEM-Miedema模型框架的专业热力学计算软件</p>
         <p><b>核心功能:</b></p>
         <ul>
@@ -366,7 +366,7 @@ class AlloyActProGUI(QMainWindow):
         <p><b>开发团队:</b> 合金热力学计算实验室</p>
         <p><b>技术支持:</b> <a href="mailto:jutianhua@gxu.edu.cn">jutianhua@gxu.edu.cn</a></p>
         """
-		QMessageBox.about(self, "关于 AlloyAct Pro", about_text)
+		QMessageBox.about(self, "关于 AlloyThermolCal Pro", about_text)
 		
 	# 4. 添加打开独立窗口的新方法
 	def open_conversion_tool (self):
@@ -576,7 +576,7 @@ class AlloyActProGUI(QMainWindow):
 			self.tray_icon.show()
 			
 			# 设置托盘图标提示
-			self.tray_icon.setToolTip("AlloyAct Pro")
+			self.tray_icon.setToolTip("AlloyThermolCal Pro")
 	
 	def get_resource_path (self, relative_path):
 		"""获取资源文件路径"""
@@ -591,22 +591,22 @@ class AlloyActProGUI(QMainWindow):
 def main ():
 	"""主程序入口"""
 	app = QApplication(sys.argv)
-	
+
 	# 设置应用程序属性
-	app.setApplicationName("AlloyAct Pro")
+	app.setApplicationName("AlloyThermolCal Pro")
 	app.setApplicationVersion("2.0")
 	app.setOrganizationName("Material Science Lab")
-	
+
 	# 设置高DPI缩放 (Qt 5.6+). AA_EnableHighDpiScaling 是推荐的方式
 	if hasattr(Qt, 'AA_EnableHighDpiScaling'):
 		QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
 	if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
 		QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-	
+
 	# 创建并显示主窗口
-	window = AlloyActProGUI()
+	window = AlloyThermolCalProGUI()
 	window.show()
-	
+
 	return app.exec_()
 
 

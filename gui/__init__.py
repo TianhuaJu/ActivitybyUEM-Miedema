@@ -6,8 +6,7 @@
 
 主窗口：
 --------
-- Alloyact_GUI_Pro: 主应用程序窗口
-- alloyact_gui: 传统版GUI（已弃用）
+- Alloyact_GUI_Pro: 主应用程序窗口 (AlloyThermolCalProGUI类)
 
 功能组件：
 ----------
@@ -33,58 +32,29 @@
 工具：
 - UnitConversionWidget: 单位转换
 - data_ui: 数据库管理界面
+
+使用示例：
+---------
+>>> from gui.Alloyact_GUI_Pro import AlloyThermolCalProGUI
+>>> from gui.SolubilityWidget import SolubilityWidget
 """
 
-# 主窗口
-from gui.Alloyact_GUI_Pro import AlloyActProGUI
-
-# 活度计算组件
-from gui.ActivityCalculationWidget import ActivityCalculationWidget
-from gui.ActivityVaryTemperatureWidget import ActivityTemperatureVariationWidget
-from gui.ActivityVaryConcentrationWidget import CompositionVariationWidget
-from gui.ActivityVaryConcentrationWidget2 import AlloyAdditionWidget
-
-# 热力学性质组件
-from gui.ThermodynamicPropertiesWidget import ThermodynamicPropertiesWidget
-from gui.InteractionCoefficientWidget import InteractionCoefficientWidget
-from gui.SecondOrderCoefficientWidget import SecondOrderCoefficientWidget
-
-# 相图与相平衡组件
-from gui.PhaseDiagramWidget import PhaseDiagramWidget
-from gui.PhaseEquilibriumWidget import PhaseEquilibriumWidget
-
-# 溶解度与析出组件
-from gui.SolubilityWidget import SolubilityWidget
-from gui.PrecipitationTemperatureWidget import PrecipitationTemperatureWidget
-
-# 工具组件
-from gui.UnitConversionWidget import UnitConversionWidget
-from gui.data_ui import DatabaseManagerTab
+# 为避免循环导入，不在此处直接导入
+# 用户应直接从子模块导入所需的类/函数
 
 __all__ = [
-    # 主窗口
-    'AlloyActProGUI',
-
-    # 活度计算
+    'Alloyact_GUI_Pro',
     'ActivityCalculationWidget',
-    'ActivityTemperatureVariationWidget',
-    'CompositionVariationWidget',
-    'AlloyAdditionWidget',
-
-    # 热力学性质
+    'ActivityVaryTemperatureWidget',
+    'ActivityVaryConcentrationWidget',
+    'ActivityVaryConcentrationWidget2',
     'ThermodynamicPropertiesWidget',
     'InteractionCoefficientWidget',
     'SecondOrderCoefficientWidget',
-
-    # 相图与相平衡
     'PhaseDiagramWidget',
     'PhaseEquilibriumWidget',
-
-    # 溶解度与析出
     'SolubilityWidget',
     'PrecipitationTemperatureWidget',
-
-    # 工具
     'UnitConversionWidget',
-    'DatabaseManagerTab',
+    'data_ui',
 ]

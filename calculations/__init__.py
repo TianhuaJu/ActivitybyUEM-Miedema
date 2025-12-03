@@ -16,48 +16,27 @@
 - precipitation_temperature: 析出温度计算
 - parallel_solubility: 并行溶解度计算
 - global_process_pool: 全局进程池管理
-- process_pool_init: 进程池初始化
+
+使用示例：
+---------
+>>> from calculations.thermodynamic_properties import ThermodynamicProperties
+>>> from calculations.activity_calculator import ActivityCoefficient
+>>> from calculations.phase_diagram import PhaseDiagramCalculator
 """
 
-# 核心计算模块
-from calculations.thermodynamic_properties import ThermodynamicProperties
-from calculations.activity_calculator import ActivityCoefficient
-from calculations.phase_diagram import PhaseDiagramCalculator
-
-# 相平衡计算
-from calculations.phase_equilibrium_calculator import PhaseEquilibriumCalculator
-
-# 溶解度和析出计算
-from calculations.compound_solubility import (
-    CompoundSolubilityCalculator,
-    CompoundData,
-    COMPOUND_DATABASE,
-    load_compounds_from_database,
-    get_solubility_product_from_database
-)
-from calculations.precipitation_temperature import PrecipitationTemperatureCalculator
-
-# 并行计算工具
-from calculations.parallel_solubility import ParallelSolubilityCalculator
-from calculations.global_process_pool import get_process_pool, shutdown_process_pool
+# 注意：为避免循环导入问题，不在此处直接导入所有类
+# 用户应直接从子模块导入所需的类/函数
 
 __all__ = [
-    # 核心类
-    'ThermodynamicProperties',
-    'ActivityCoefficient',
-    'PhaseDiagramCalculator',
+    'thermodynamic_properties',
+    'activity_calculator',
+    'phase_diagram',
+    'phase_equilibrium_calculator',
     'PhaseEquilibriumCalculator',
-
-    # 溶解度和析出
-    'CompoundSolubilityCalculator',
-    'CompoundData',
-    'COMPOUND_DATABASE',
-    'load_compounds_from_database',
-    'get_solubility_product_from_database',
-    'PrecipitationTemperatureCalculator',
-
-    # 并行计算
-    'ParallelSolubilityCalculator',
-    'get_process_pool',
-    'shutdown_process_pool',
+    'compound_solubility',
+    'solubility_corrected',
+    'precipitation_temperature',
+    'parallel_solubility',
+    'global_process_pool',
+    'process_pool_init',
 ]
