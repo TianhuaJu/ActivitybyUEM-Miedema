@@ -9,8 +9,7 @@
 - thermodynamic_properties: 热力学性质基础计算
 - activity_calculator: 活度系数计算
 - phase_diagram: 相图计算
-- phase_equilibrium_calculator: 相平衡计算
-- PhaseEquilibriumCalculator: 化合物优先剥离版相平衡计算
+- phase_equilibrium: 相平衡计算（包含基础版和化合物优先版）
 - compound_solubility: 化合物溶解度积计算
 - solubility_corrected: 修正版溶解度计算
 - precipitation_temperature: 析出温度计算
@@ -22,6 +21,8 @@
 >>> from calculations.thermodynamic_properties import ThermodynamicProperties
 >>> from calculations.activity_calculator import ActivityCoefficient
 >>> from calculations.phase_diagram import PhaseDiagramCalculator
+>>> from calculations.phase_equilibrium import PhaseEquilibriumCalculator
+>>> from calculations.phase_equilibrium import CompoundAwarePhaseEquilibrium
 """
 
 # 注意：为避免循环导入问题，不在此处直接导入所有类
@@ -31,8 +32,7 @@ __all__ = [
     'thermodynamic_properties',
     'activity_calculator',
     'phase_diagram',
-    'phase_equilibrium_calculator',
-    'PhaseEquilibriumCalculator',
+    'phase_equilibrium',
     'compound_solubility',
     'solubility_corrected',
     'precipitation_temperature',

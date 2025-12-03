@@ -30,7 +30,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.utils import parse_composition_static
-from calculations.phase_equilibrium_calculator import PhaseEquilibriumCalculator
+from calculations.phase_equilibrium import PhaseEquilibriumCalculator
 from models.extrapolation_models import BinaryModel
 
 
