@@ -6,12 +6,16 @@
 
 模块结构：
 ---------
-- DataLogger: 数据日志记录器
-  - 记录计算结果
-  - 导出数据到文件
+- DataLogger: 数据日志记录工具
+  - log_contribution_coefficients: 记录贡献系数
+
+使用示例：
+---------
+>>> from utils.DataLogger import log_contribution_coefficients
 """
 
-from utils.DataLogger import DataLogger
+# 注意：为避免循环导入问题，不在此处直接导入
+# 用户应直接从子模块导入所需的函数
 
 __all__ = [
     'DataLogger',
