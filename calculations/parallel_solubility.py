@@ -104,6 +104,9 @@ def compute_concentration_point(params):
             sol_value = 1.0
         elif result['status'] == 'insoluble':
             sol_value = 0.0
+        elif result['status'] == 'melted':
+            # 温度超过熔点，固相不存在，设为None以区分
+            sol_value = None
         else:
             sol_value = 0.0
 
@@ -189,6 +192,9 @@ def compute_temperature_point(params):
             sol_value = 1.0
         elif result['status'] == 'insoluble':
             sol_value = 0.0
+        elif result['status'] == 'melted':
+            # 温度超过熔点，固相不存在，设为None以区分
+            sol_value = None
         else:
             sol_value = 0.0
 

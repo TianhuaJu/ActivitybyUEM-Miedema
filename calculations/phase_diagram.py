@@ -153,19 +153,43 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 	                          activity_model: str = 'Wagner',
 	                          min_solubility: float = 1e-12,
 	                          max_solubility: float = 0.999) -> dict:
-		
+
 		# ==================== 1. 预处理 ====================
 		solute = solute_element.upper()
 		precipitating_phase = self.tdb_parser.get_stable_phase(solute,temperature) #沉淀相为计算温度T下的稳定相
-		
+
 		total_base = sum(base_alloy_composition.values())
 		if total_base <= 0:
 			raise ValueError("基础合金成分不能为空")
-		
+
 		# 归一化基础合金成分
 		base_comp = {k.upper(): v / total_base for k, v in base_alloy_composition.items()}
 		solvent = max(base_comp.items(), key=lambda x: x[1])[0]
-		
+
+		# ==================== 1.5 熔点检查（新增）====================
+		# 检查溶剂元素在该温度下的稳定相
+		solvent_stable_phase = self.tdb_parser.get_stable_phase(solvent, temperature)
+
+		# 如果用户选择固相，但温度下溶剂的稳定相是液相，则合金已熔化
+		if solution_phase != 'LIQUID' and solvent_stable_phase == 'LIQUID':
+			# 计算溶剂的熔点用于提示
+			solvent_melting_point = self.calculate_pure_melting_point(solvent)
+			mp_str = f"{solvent_melting_point:.0f}K" if solvent_melting_point else "未知"
+
+			return {
+				"status": "melted",
+				"solubility_mole_fraction": None,
+				"T": temperature,
+				"solute": solute,
+				"solution_phase_name": "LIQUID",  # 实际稳定相
+				"phase_state": "液态（已超过熔点）",
+				"solvent_element": solvent,
+				"message": f"温度 {temperature:.0f}K 超过 {solvent} 熔点（约 {mp_str}），合金处于液态",
+				"error_detail": f"用户指定固相计算，但 {temperature:.0f}K 时基体已熔化为液相",
+				"warnings": [f"温度超过溶剂{solvent}的熔点，固相不存在"],
+				"melting_point": solvent_melting_point
+			}
+
 		# 确定溶液相的 TDB 相名（固相用溶剂的稳定相）
 		if solution_phase == 'LIQUID':
 			tdb_solution_phase = 'LIQUID'
@@ -174,12 +198,17 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			ref = self.tdb_parser.get_stable_phase(solvent,temperature) #选择计算温度下的稳定相结构为参考态
 			tdb_solution_phase = ref if ref else 'BCC_A2'
 			phase_desc = f"固相 ({tdb_solution_phase})"
-		
+
 		# ==================== 2. 检查基础合金稳定性 & 自动搜寻最稳定相====================
 		#检查所有相的稳定性，如果都不稳定，则报告基础合金相不稳定；
 		# 如果稳定，则找出最稳定的那个相作为tdb_solution_phase
 		all_phases = self.tdb_parser.get_element_phases(solvent)
-		candidate_phases = [p for p in all_phases if  p != 'GAS']
+
+		# 当用户选择固相时，排除LIQUID相
+		if solution_phase != 'LIQUID':
+			candidate_phases = [p for p in all_phases if p not in ('GAS', 'LIQUID')]
+		else:
+			candidate_phases = [p for p in all_phases if p != 'GAS']
 		
 		found_stable_phase = False
 		combined_issues = list()  # 收集所有尝试过的错误信息
