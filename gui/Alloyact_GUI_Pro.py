@@ -28,9 +28,9 @@ from models.extrapolation_models import BinaryModel
 from calculations.activity_calculator import ActivityCoefficient
 
 # 导入新的界面组件
-from gui.ActivityVaryTemperatureWdget import ActivityTemperatureVariationWidget
-from gui.ActivityVaryConcentrationWdget import CompositionVariationWidget
-from gui.ActivityVaryConcentrationWdget2 import AlloyAdditionWidget
+from gui.ActivityVaryTemperatureWidget import ActivityTemperatureVariationWidget
+from gui.ActivityVaryConcentrationWidget import CompositionVariationWidget
+from gui.ActivityVaryConcentrationWidget2 import AlloyAdditionWidget
 from gui.data_ui import DatabaseManagerTab
 from gui.ActivityCalculationWidget import ActivityCalculationWidget
 from gui.InteractionCoefficientWidget import InteractionCoefficientWidget
