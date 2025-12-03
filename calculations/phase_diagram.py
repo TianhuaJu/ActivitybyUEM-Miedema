@@ -23,7 +23,12 @@ from scipy.optimize import root, brentq
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from calculations.thermodynamic_properties import ThermodynamicProperties, extrap_func
-
+# 在原有导入后添加
+try:
+    from calculations.solubility_corrected import SolubilityCalculatorCorrected
+    HAS_CORRECTED_SOLUBILITY = True
+except ImportError:
+    HAS_CORRECTED_SOLUBILITY = False
 
 class PhaseDiagramCalculator(ThermodynamicProperties):
 	"""
@@ -33,6 +38,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 	
 	def __init__ (self):
 		super().__init__()
+		self._solubility_calc_corrected = None
 	
 	@staticmethod
 	def _check_bounds (x, epsilon=1e-9):
@@ -45,6 +51,15 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 	# =================== PART 1: 溶解度计算模块 ======================
 	# ================================================================
 	
+	
+	def _get_solubility_calculator (self):
+		'''新增方法'''
+		if self._solubility_calc_corrected is None and HAS_CORRECTED_SOLUBILITY:
+			self._solubility_calc_corrected = SolubilityCalculatorCorrected(
+					tdb_parser=self.tdb_parser,
+					activity_calculator=self.activity_calculator
+			)
+		return self._solubility_calc_corrected
 	def _estimate_lattice_stability (self, component: str, target_phase: str, T: float) -> Optional[float]:
 		"""
 		(修改版) 估算晶格稳定性参数。
@@ -327,8 +342,21 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			"final_composition_mole": final_comp,
 			"warnings": issues if 'issues' in locals() else []
 		}
-		
-
+	
+	def calculate_solubility_v2 (self, base_alloy_composition, solute_element,
+	                             solution_phase, temperature, extrapolation_func,
+	                             extrapolation_model_name='UEM1', activity_model='Wagner',
+	                             use_intermetallic=True):
+		"""改进版溶解度计算"""
+		if use_intermetallic:
+			calc = self._get_solubility_calculator()
+			if calc:
+				return calc.calculate_solubility_with_compound(
+						base_alloy_composition, solute_element, solution_phase,
+						temperature, extrapolation_func, extrapolation_model_name,
+						activity_model
+				)
+		return self.calculate_solubility(...)  # 回退到原方法
 	
 	
 	def calculate_ideal_solubility(self,

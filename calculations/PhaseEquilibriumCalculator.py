@@ -291,7 +291,7 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
 		for el, original_x in base_alloy.items():
 			if el == solvent_name: continue
 			try:
-				res = self.calculate_solubility(proxy_base, el, 'SOLID', temperature, extrap_func, model_name,
+				res = self.calculate_solubility_v2(proxy_base, el, 'SOLID', temperature, extrap_func, model_name,
 				                                act_model)
 				limit = res.get('solubility_mole_fraction', 1.0) or 1.0
 			except:
