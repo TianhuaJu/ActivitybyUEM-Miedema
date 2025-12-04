@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import multiprocessing
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap, QIcon
@@ -256,6 +257,13 @@ def create_default_splash ():
 
 
 if __name__ == "__main__":
+	# Windows 多进程支持（必须在 main 入口点调用）
+	multiprocessing.freeze_support()
+
+	# Windows 上使用 spawn 方法创建子进程（避免 0xC0000409 错误）
+	if sys.platform == 'win32':
+		multiprocessing.set_start_method('spawn', force=True)
+
 	# 选择启动方式
 	# run_gui()           # 简单启动画面版本
 	run_gui_with_timer()  # 带进度的启动画面版本（推荐）
