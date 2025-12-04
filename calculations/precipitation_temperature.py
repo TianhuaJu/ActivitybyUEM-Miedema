@@ -487,6 +487,284 @@ class PrecipitationTemperatureCalculator(ThermodynamicProperties):
 
         return results
 
+    # ========================================================================
+    # Turkdogan溶解度积法计算析出温度 (基于经验公式)
+    # ========================================================================
+
+    def calculate_precipitation_temperature_turkdogan(
+        self,
+        alloy_composition: Dict[str, float],
+        compound: str,
+        phase: str = 'AUSTENITE',
+        use_weight_percent: bool = False
+    ) -> dict:
+        """
+        使用Turkdogan溶解度积公式计算析出温度
+
+        基于经验公式: log[%M][%X]^n = A - B/T
+        析出温度: T = B / (A - log[%M][%X]^n)
+
+        参数：
+        -----
+        alloy_composition : Dict[str, float]
+            合金成分 (摩尔分数或质量百分数，取决于use_weight_percent)
+        compound : str
+            析出物名称: 'TiN', 'TiC', 'NbC', 'NbN', 'VC', 'VN', 'AlN', 'MnS'
+        phase : str
+            母相: 'AUSTENITE', 'FERRITE', 'LIQUID'
+        use_weight_percent : bool
+            True: 输入为质量百分数; False: 输入为摩尔分数
+
+        返回：
+        -----
+        dict : 包含析出温度和相关信息的字典
+        """
+        try:
+            from database.solubility_product_database import (
+                get_solubility_product_data,
+                calculate_precipitation_temperature_from_product,
+                mole_to_weight_percent
+            )
+        except ImportError:
+            return {
+                'status': 'error',
+                'message': '无法导入溶解度积数据库',
+                'precipitation_temperature': None
+            }
+
+        # 获取溶解度积数据
+        sp_data = get_solubility_product_data(compound, phase)
+        if sp_data is None:
+            return {
+                'status': 'error',
+                'message': f'未找到 {compound} 在 {phase} 中的溶解度积数据',
+                'precipitation_temperature': None
+            }
+
+        metal = sp_data['metal']
+        nonmetal = sp_data['nonmetal']
+
+        # 获取成分
+        comp_upper = {k.upper(): v for k, v in alloy_composition.items()}
+
+        metal_content = comp_upper.get(metal, 0)
+        nonmetal_content = comp_upper.get(nonmetal, 0)
+
+        if metal_content <= 0:
+            return {
+                'status': 'error',
+                'message': f'合金中不含 {metal} 元素',
+                'precipitation_temperature': None
+            }
+
+        if nonmetal_content <= 0:
+            return {
+                'status': 'error',
+                'message': f'合金中不含 {nonmetal} 元素',
+                'precipitation_temperature': None
+            }
+
+        # 如果是摩尔分数，转换为质量百分数
+        if not use_weight_percent:
+            metal_wt = mole_to_weight_percent(metal_content, metal)
+            nonmetal_wt = mole_to_weight_percent(nonmetal_content, nonmetal)
+        else:
+            metal_wt = metal_content
+            nonmetal_wt = nonmetal_content
+
+        # 计算析出温度
+        T_precip = calculate_precipitation_temperature_from_product(
+            compound, phase, metal_wt, nonmetal_wt
+        )
+
+        if T_precip is None:
+            return {
+                'status': 'always_undersaturated',
+                'message': f'{compound} 溶解度积过大，在常规温度范围内不会析出',
+                'precipitation_temperature': None,
+                'compound': compound,
+                'phase': phase,
+                'metal_wt_pct': metal_wt,
+                'nonmetal_wt_pct': nonmetal_wt
+            }
+
+        # 检查温度是否在有效范围内
+        T_min = sp_data.get('T_min', 773)
+        T_max = sp_data.get('T_max', 1873)
+
+        warning = None
+        if T_precip < T_min:
+            warning = f'析出温度 {T_precip:.1f}K 低于公式有效范围 ({T_min}K)'
+        elif T_precip > T_max:
+            warning = f'析出温度 {T_precip:.1f}K 高于公式有效范围 ({T_max}K)'
+
+        # 计算log Ks
+        A = sp_data['A']
+        B = sp_data['B']
+        n = sp_data.get('n', 1.0)
+        log_product = math.log10(metal_wt) + n * math.log10(nonmetal_wt)
+        log_Ks = A - B / T_precip
+
+        return {
+            'status': 'success',
+            'method': 'Turkdogan_solubility_product',
+            'compound': compound,
+            'phase': phase,
+            'precipitation_temperature': T_precip,
+            'precipitation_temperature_celsius': T_precip - 273.15,
+            'metal_element': metal,
+            'nonmetal_element': nonmetal,
+            'metal_wt_pct': metal_wt,
+            'nonmetal_wt_pct': nonmetal_wt,
+            'log_product': log_product,
+            'log_Ks_at_Tp': log_Ks,
+            'equation_A': A,
+            'equation_B': B,
+            'stoichiometry_n': n,
+            'reference': sp_data.get('reference', ''),
+            'notes': sp_data.get('notes', ''),
+            'warning': warning
+        }
+
+    def calculate_all_precipitates_turkdogan(
+        self,
+        alloy_composition: Dict[str, float],
+        phase: str = 'AUSTENITE',
+        use_weight_percent: bool = False
+    ) -> dict:
+        """
+        计算合金中所有可能析出物的析出温度，并按温度排序
+
+        参数：
+        -----
+        alloy_composition : 合金成分
+        phase : 母相
+        use_weight_percent : 是否使用质量百分数
+
+        返回：
+        -----
+        dict : 包含所有析出物及其析出温度的字典
+        """
+        try:
+            from database.solubility_product_database import SOLUBILITY_PRODUCTS
+        except ImportError:
+            return {
+                'status': 'error',
+                'message': '无法导入溶解度积数据库'
+            }
+
+        phase_upper = phase.upper()
+        phase_map = {
+            'FCC_A1': 'AUSTENITE', 'FCC': 'AUSTENITE', 'GAMMA': 'AUSTENITE',
+            'BCC_A2': 'FERRITE', 'BCC': 'FERRITE', 'ALPHA': 'FERRITE',
+        }
+        phase_key = phase_map.get(phase_upper, phase_upper)
+
+        if phase_key not in SOLUBILITY_PRODUCTS:
+            return {
+                'status': 'error',
+                'message': f'不支持的相: {phase}'
+            }
+
+        results = []
+        details = {}
+
+        for compound in SOLUBILITY_PRODUCTS[phase_key].keys():
+            result = self.calculate_precipitation_temperature_turkdogan(
+                alloy_composition=alloy_composition,
+                compound=compound,
+                phase=phase,
+                use_weight_percent=use_weight_percent
+            )
+
+            details[compound] = result
+
+            if result['status'] == 'success':
+                results.append({
+                    'compound': compound,
+                    'T_K': result['precipitation_temperature'],
+                    'T_C': result['precipitation_temperature_celsius'],
+                    'metal': result['metal_element'],
+                    'nonmetal': result['nonmetal_element']
+                })
+
+        # 按析出温度排序（高温先析出）
+        results.sort(key=lambda x: x['T_K'], reverse=True)
+
+        return {
+            'status': 'success',
+            'phase': phase_key,
+            'precipitation_sequence': results,
+            'details': details,
+            'summary': [(r['compound'], r['T_K'], r['T_C']) for r in results]
+        }
+
+    def calculate_carbonitride_precipitation(
+        self,
+        alloy_composition: Dict[str, float],
+        phase: str = 'AUSTENITE',
+        use_weight_percent: bool = False
+    ) -> dict:
+        """
+        专门计算碳氮化物（Ti, Nb, V的碳化物和氮化物）的析出温度
+
+        用于微合金钢的析出行为分析
+
+        参数：
+        -----
+        alloy_composition : 合金成分（需包含Ti/Nb/V和C/N）
+        phase : 母相
+        use_weight_percent : 是否使用质量百分数
+
+        返回：
+        -----
+        dict : 包含碳氮化物析出信息的字典
+        """
+        carbonitrides = ['TiN', 'TiC', 'NbN', 'NbC', 'VN', 'VC']
+
+        results = []
+        details = {}
+
+        for compound in carbonitrides:
+            result = self.calculate_precipitation_temperature_turkdogan(
+                alloy_composition=alloy_composition,
+                compound=compound,
+                phase=phase,
+                use_weight_percent=use_weight_percent
+            )
+
+            details[compound] = result
+
+            if result['status'] == 'success':
+                results.append({
+                    'compound': compound,
+                    'T_K': result['precipitation_temperature'],
+                    'T_C': result['precipitation_temperature_celsius'],
+                    'metal': result['metal_element'],
+                    'nonmetal': result['nonmetal_element'],
+                    'metal_wt_pct': result['metal_wt_pct'],
+                    'nonmetal_wt_pct': result['nonmetal_wt_pct']
+                })
+
+        # 按析出温度排序
+        results.sort(key=lambda x: x['T_K'], reverse=True)
+
+        # 分析析出顺序
+        analysis = []
+        if results:
+            analysis.append(f"首先析出: {results[0]['compound']} at {results[0]['T_C']:.0f}°C")
+            if len(results) > 1:
+                analysis.append(f"最后析出: {results[-1]['compound']} at {results[-1]['T_C']:.0f}°C")
+
+        return {
+            'status': 'success',
+            'phase': phase,
+            'carbonitride_sequence': results,
+            'details': details,
+            'analysis': analysis,
+            'total_precipitates': len(results)
+        }
+
 
 # 便捷接口
 def calculate_precipitation_temp(
