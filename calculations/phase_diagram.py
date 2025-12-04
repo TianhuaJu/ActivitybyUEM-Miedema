@@ -175,77 +175,107 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			tdb_solution_phase = ref if ref else 'BCC_A2'
 			phase_desc = f"固相 ({tdb_solution_phase})"
 
-		# ==================== 1.5 熔点检查：如果溶剂稳定相是LIQUID，直接使用LIQUID ====================
-		# 这避免了能量计算失败导致错误选择固相的问题
+		# ==================== 1.5 相稳定性判断：基于溶剂稳定相和合金能量比较 ====================
+		# 核心逻辑（修正版）：
+		# 1. 获取溶剂元素的稳定相（这是最重要的参考）
+		# 2. 检查溶剂元素在各候选相中的纯态能量差
+		# 3. 如果候选相对于溶剂稳定相的能量差太大（>1 kJ/mol），排除该候选相
+		# 4. 在筛选后的候选相中，选择总Gibbs能量最低的相
+		#
+		# 这样可以避免活度系数模型在不稳定相中给出不合理值的问题
+
+		# Step 1: 获取溶剂的稳定相（关键参考）
 		solvent_stable_phase = self.tdb_parser.get_stable_phase(solvent, temperature)
-		if solvent_stable_phase == 'LIQUID':
-			# 温度超过溶剂熔点，合金应为液态
-			tdb_solution_phase = 'LIQUID'
-			phase_desc = "液相"
-			found_stable_phase = True
-			best_phase_name = 'LIQUID'
-			issues = []
-			# 跳过下面的相平衡搜索，直接进入溶解度计算
-		else:
-			# ==================== 2. 检查基础合金稳定性 & 自动搜寻最稳定相====================
-			#检查所有相的稳定性，如果都不稳定，则报告基础合金相不稳定；
-			# 如果稳定，则找出最稳定的那个相作为tdb_solution_phase
-			all_phases = self.tdb_parser.get_element_phases(solvent)
-			# 排除GAS和LIQUID（因为溶剂稳定相不是LIQUID，说明温度未超过熔点）
-			candidate_phases = [p for p in all_phases if p not in ('GAS', 'LIQUID')]
+		g_solvent_stable = self.tdb_parser.get_gibbs_energy(solvent, solvent_stable_phase, temperature)
 
-			found_stable_phase = False
-			combined_issues = list()  # 收集所有尝试过的错误信息
+		# Step 2: 获取所有候选相（包括LIQUID和固相）
+		all_phases = self.tdb_parser.get_element_phases(solvent)
+		# 排除GAS相，但保留LIQUID相
+		candidate_phases = [p for p in all_phases if p != 'GAS']
+		# 确保LIQUID在候选相中
+		if 'LIQUID' not in candidate_phases:
+			candidate_phases.append('LIQUID')
 
-			# === 新增变量：用于追踪最稳定的相 ===
-			best_phase_name = None
-			min_gibbs_energy = float('inf')  # 初始化为无穷大
+		# Step 3: 基于溶剂稳定性筛选候选相
+		# 如果候选相的溶剂G°比稳定相G°高超过阈值，排除该相
+		# 注：阈值设置为200 J/mol，因为在接近熔点时能量差较小，
+		# 但活度系数模型对不稳定相可能给出不合理的负偏差值
+		PHASE_EXCLUSION_THRESHOLD = 200.0  # 0.2 kJ/mol - 严格排除不稳定相
+		filtered_phases = []
+		for phase in candidate_phases:
+			g_solvent_phase = self.tdb_parser.get_gibbs_energy(solvent, phase, temperature)
+			if g_solvent_phase is None:
+				g_solvent_phase = self._estimate_lattice_stability(solvent, phase, temperature)
 
-			for phase in candidate_phases:
-				# 1. 首先检查该相本身是否稳定 (没有析出，没有不合理的化学势)
-				s_try, i_try = self._check_alloy_full_stability(
+			if g_solvent_phase is not None and g_solvent_stable is not None:
+				energy_diff = g_solvent_phase - g_solvent_stable
+				if energy_diff <= PHASE_EXCLUSION_THRESHOLD:
+					filtered_phases.append(phase)
+				# 注：被排除的相对溶剂元素而言是热力学不稳定的
+			else:
+				# 如果无法计算能量，保守地保留该相
+				filtered_phases.append(phase)
+
+		# 确保溶剂稳定相始终在候选列表中
+		if solvent_stable_phase not in filtered_phases:
+			filtered_phases.insert(0, solvent_stable_phase)
+
+		found_stable_phase = False
+		combined_issues = list()  # 收集所有尝试过的错误信息
+
+		# === 用于追踪最稳定的相（能量最低） ===
+		best_phase_name = None
+		min_gibbs_energy = float('inf')  # 初始化为无穷大
+		issues = []
+
+		# Step 4: 在筛选后的候选相中，计算基础合金的总Gibbs能量
+		for phase in filtered_phases:
+			# 计算基础合金在该相中的总Gibbs能量 G = Σ(x_i * μ_i)
+			current_energy = 0.0
+			calculation_valid = True
+
+			for el, x_el in base_comp.items():
+				if x_el < 1e-12:
+					continue
+
+				mu = self._get_chemical_potential(
 						composition=base_comp,
+						component=el,
 						temperature=temperature,
 						tdb_phase=phase,
-						extrapolation_func=extrapolation_func,
-						extrapolation_model_name=extrapolation_model_name,
+						extrapolation_model_func=extrapolation_func,
+						extrapolation_model=extrapolation_model_name,
 						activity_model=activity_model
 				)
 
-				if s_try:
-					# === 修改点：找到稳定相后，不立即退出，而是计算能量 ===
-					current_energy = 0.0
-					calculation_valid = True
+				if mu is None:
+					calculation_valid = False
+					combined_issues.append(f"无法计算 {el} 在 {phase} 中的化学势")
+					break
+				current_energy += x_el * mu
 
-					# 计算该相在当前成分下的总吉布斯自由能 G = sum(x_i * mu_i)
-					# 注意：这里需要重新调用 _get_chemical_potential 来获取数值
-					for el, x_el in base_comp.items():
-						mu = self._get_chemical_potential(
-								composition=base_comp,
-								component=el,
-								temperature=temperature,
-								tdb_phase=phase,
-								extrapolation_model_func=extrapolation_func,
-								extrapolation_model=extrapolation_model_name,
-								activity_model=activity_model
-						)
+			# 如果能量计算成功，与当前最小值比较
+			if calculation_valid:
+				# 选择能量最低的相
+				if current_energy < min_gibbs_energy:
+					min_gibbs_energy = current_energy
+					best_phase_name = phase
+					found_stable_phase = True
+					issues = []
 
-						if mu is None:
-							calculation_valid = False
-							break
-						current_energy += x_el * mu
-
-					# 如果能量计算成功，与当前最小值比较
-					if calculation_valid:
-						if current_energy < min_gibbs_energy:
-							min_gibbs_energy = current_energy
-							best_phase_name = phase
-							found_stable_phase = True
-							issues = []
-
-				# 循环继续以寻找更低能量的相
-				else:
-					combined_issues.extend(i_try)
+		# 额外检查：确认选中的相是否热力学稳定（各组分不会析出纯态）
+		if found_stable_phase and best_phase_name:
+			stable_check, stability_issues = self._check_alloy_full_stability(
+					composition=base_comp,
+					temperature=temperature,
+					tdb_phase=best_phase_name,
+					extrapolation_func=extrapolation_func,
+					extrapolation_model_name=extrapolation_model_name,
+					activity_model=activity_model
+			)
+			if not stable_check:
+				# 如果最低能量相不稳定，记录警告但仍使用该相
+				issues.extend(stability_issues)
 		
 		# === 循环结束后，应用找到的最优相 ===
 		if found_stable_phase and best_phase_name:
