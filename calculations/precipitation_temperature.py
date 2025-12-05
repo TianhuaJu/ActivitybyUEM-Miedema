@@ -49,8 +49,379 @@ class PrecipitationTemperatureCalculator(ThermodynamicProperties):
     3. 多溶质系统：计算多种溶质各自的析出温度
     """
 
+    # 相稳定性判断阈值 (J/mol)
+    PHASE_EXCLUSION_THRESHOLD = 200.0
+
     def __init__(self):
         super().__init__()
+
+    def _determine_matrix_phase(
+        self,
+        composition: Dict[str, float],
+        temperature: float,
+        extrapolation_func,
+        extrapolation_model_name: str,
+        activity_model: str
+    ) -> Tuple[str, str, List[str]]:
+        """
+        自动判断基体相态
+
+        热力学原理：
+        -----------
+        1. 首先获取溶剂元素在给定温度下的稳定相作为参考
+        2. 基于溶剂的稳定相筛选候选相（排除能量差过大的不稳定相）
+        3. 计算合金在各候选相中的总Gibbs能量
+        4. 选择能量最低的相作为基体相
+
+        参数：
+        -----
+        composition : 合金成分（摩尔分数）
+        temperature : 温度 (K)
+        extrapolation_func : 外推模型函数
+        extrapolation_model_name : 外推模型名称
+        activity_model : 活度模型
+
+        返回：
+        -----
+        Tuple[str, str, List[str]]:
+            - 基体相名称（如 'BCC_A2', 'FCC_A1', 'LIQUID'）
+            - 相态描述（如 '固相 (BCC_A2)', '液相'）
+            - 警告信息列表
+        """
+        warnings = []
+
+        # 找出溶剂元素
+        solvent = max(composition.items(), key=lambda item: item[1])[0]
+
+        # 获取溶剂的稳定相
+        solvent_stable_phase = self.tdb_parser.get_stable_phase(solvent, temperature)
+        if not solvent_stable_phase:
+            solvent_stable_phase = self.tdb_parser.get_reference_phase(solvent)
+            warnings.append(f"无法获取 {solvent} 在 {temperature}K 的稳定相，使用参考相 {solvent_stable_phase}")
+
+        g_solvent_stable = self.tdb_parser.get_gibbs_energy(solvent, solvent_stable_phase, temperature)
+
+        # 获取所有候选相
+        all_phases = self.tdb_parser.get_element_phases(solvent)
+        if not all_phases:
+            # 使用默认相列表
+            all_phases = ['BCC_A2', 'FCC_A1', 'HCP_A3', 'LIQUID']
+            warnings.append(f"无法获取 {solvent} 的相列表，使用默认相")
+
+        # 排除GAS相，保留其他相
+        candidate_phases = [p for p in all_phases if p != 'GAS']
+        if 'LIQUID' not in candidate_phases:
+            candidate_phases.append('LIQUID')
+
+        # 基于溶剂稳定性筛选候选相
+        filtered_phases = []
+        for phase in candidate_phases:
+            g_solvent_phase = self.tdb_parser.get_gibbs_energy(solvent, phase, temperature)
+            if g_solvent_phase is None:
+                g_solvent_phase = self._estimate_lattice_stability(solvent, phase, temperature)
+
+            if g_solvent_phase is not None and g_solvent_stable is not None:
+                energy_diff = g_solvent_phase - g_solvent_stable
+                if energy_diff <= self.PHASE_EXCLUSION_THRESHOLD:
+                    filtered_phases.append(phase)
+            else:
+                # 无法计算能量时，保守地保留该相
+                filtered_phases.append(phase)
+
+        # 确保溶剂稳定相在列表中
+        if solvent_stable_phase not in filtered_phases:
+            filtered_phases.insert(0, solvent_stable_phase)
+
+        # 计算各相的总Gibbs能量，选择最低的
+        best_phase = solvent_stable_phase
+        min_energy = float('inf')
+
+        for phase in filtered_phases:
+            current_energy = 0.0
+            valid = True
+
+            for el, x_el in composition.items():
+                if x_el < 1e-12:
+                    continue
+
+                mu = self._get_chemical_potential_extended(
+                    composition=composition,
+                    component=el,
+                    temperature=temperature,
+                    tdb_phase=phase,
+                    extrapolation_func=extrapolation_func,
+                    extrapolation_model=extrapolation_model_name,
+                    activity_model=activity_model
+                )
+
+                if mu is None:
+                    valid = False
+                    break
+                current_energy += x_el * mu
+
+            if valid and current_energy < min_energy:
+                min_energy = current_energy
+                best_phase = phase
+
+        # 生成相态描述
+        if best_phase == 'LIQUID':
+            phase_desc = "液相"
+        else:
+            phase_desc = f"固相 ({best_phase})"
+
+        return best_phase, phase_desc, warnings
+
+    def calculate_precipitation_temperature_auto(
+        self,
+        alloy_composition: Dict[str, float],
+        solute_element: str,
+        extrapolation_func,
+        extrapolation_model_name: str = 'UEM1',
+        activity_model: str = 'Wagner',
+        T_min: float = 300.0,
+        T_max: float = 3000.0,
+        tolerance: float = 1.0
+    ) -> dict:
+        """
+        自动判断基体相态的析出温度计算（推荐使用）
+
+        热力学原理：
+        -----------
+        1. 在每个温度T下，自动判断基体相态（固相/液相）
+        2. 计算溶质在当前相中的化学势 μ_solute
+        3. 比较 μ_solute 与析出相的 G°
+        4. 找到 μ_solute = G°_precipitate 的温度即为析出温度
+
+        特点：
+        ------
+        - 无需人为指定基体相，自动根据温度和成分判断
+        - 严格遵循热力学平衡原理
+        - 通用性强，适用于任意合金体系
+        - 数据缺失时给出明确提示
+
+        参数：
+        -----
+        alloy_composition : Dict[str, float]
+            合金成分（摩尔分数），如 {'FE': 0.95, 'C': 0.02, 'SI': 0.03}
+        solute_element : str
+            溶质元素符号，如 'C', 'N', 'TI'
+        extrapolation_func : callable
+            外推模型函数
+        extrapolation_model_name : str
+            外推模型名称: 'UEM1', 'UEM2', 'GSM', 'Muggianu'
+        activity_model : str
+            活度模型: 'Wagner', 'Darken', 'Elliott'
+        T_min, T_max : float
+            温度搜索范围 (K)
+        tolerance : float
+            温度求解精度 (K)
+
+        返回：
+        -----
+        dict : 完整的计算结果
+        """
+        # ==================== 1. 预处理与验证 ====================
+        solute = solute_element.upper()
+        warnings = []
+        data_issues = []
+
+        # 归一化成分
+        total = sum(alloy_composition.values())
+        if total <= 0:
+            return {
+                'status': 'error',
+                'message': '合金成分不能为空',
+                'precipitation_temperature': None
+            }
+
+        composition = {k.upper(): v / total for k, v in alloy_composition.items()}
+
+        # 验证溶质
+        if solute not in composition:
+            return {
+                'status': 'error',
+                'message': f'溶质 {solute} 不在合金成分中',
+                'precipitation_temperature': None,
+                'hint': f'当前成分包含: {list(composition.keys())}'
+            }
+
+        x_solute = composition[solute]
+        if x_solute <= 0:
+            return {
+                'status': 'error',
+                'message': f'溶质 {solute} 含量必须大于0',
+                'precipitation_temperature': None
+            }
+
+        # 确定溶剂
+        solvent = max(composition.items(), key=lambda item: item[1])[0]
+
+        # ==================== 2. 检查热力学数据可用性 ====================
+        # 检查析出相数据
+        precipitating_phase = self.tdb_parser.get_stable_phase(solute, T_min)
+        if not precipitating_phase:
+            precipitating_phase = self.tdb_parser.get_reference_phase(solute)
+            if not precipitating_phase:
+                data_issues.append(f"无法获取溶质 {solute} 的稳定相信息")
+
+        # 尝试获取析出相Gibbs能量（仅当析出相已确定时）
+        if precipitating_phase is not None:
+            g_test = self.tdb_parser.get_gibbs_energy(solute, precipitating_phase, (T_min + T_max) / 2)
+            if g_test is None:
+                # 尝试晶格稳定性估算
+                g_test = self._estimate_lattice_stability(solute, precipitating_phase, (T_min + T_max) / 2)
+                if g_test is None:
+                    data_issues.append(f"无法获取 {solute} 在 {precipitating_phase} 相的Gibbs能量")
+
+        # 如果存在严重的数据问题，返回错误并给出提示
+        if data_issues:
+            return {
+                'status': 'data_missing',
+                'message': '热力学数据不完整，无法完成计算',
+                'precipitation_temperature': None,
+                'data_issues': data_issues,
+                'hint': '请检查TDB数据库是否包含所需元素和相的数据',
+                'solute': solute,
+                'solute_content': x_solute
+            }
+
+        # ==================== 3. 定义驱动力函数 ====================
+        phase_at_T = {}  # 记录每个温度下的基体相
+
+        def driving_force(T: float) -> Optional[float]:
+            """
+            计算过饱和驱动力：ΔG = μ_solute - G°_precipitate
+
+            - ΔG > 0: 溶液欠饱和（稳定）
+            - ΔG < 0: 溶液过饱和（析出倾向）
+            - ΔG = 0: 平衡状态
+            """
+            # 自动判断当前温度下的基体相
+            matrix_phase, _, _ = self._determine_matrix_phase(
+                composition, T, extrapolation_func,
+                extrapolation_model_name, activity_model
+            )
+            phase_at_T[T] = matrix_phase
+
+            # 计算溶质的化学势
+            mu_solute = self._get_chemical_potential_extended(
+                composition=composition,
+                component=solute,
+                temperature=T,
+                tdb_phase=matrix_phase,
+                extrapolation_func=extrapolation_func,
+                extrapolation_model=extrapolation_model_name,
+                activity_model=activity_model
+            )
+
+            if mu_solute is None:
+                return None
+
+            # 获取当前温度下析出相的Gibbs能量
+            current_precip_phase = self.tdb_parser.get_stable_phase(solute, T)
+            if not current_precip_phase:
+                current_precip_phase = precipitating_phase
+
+            g_precipitate = self.tdb_parser.get_gibbs_energy(solute, current_precip_phase, T)
+            if g_precipitate is None:
+                g_precipitate = self._estimate_lattice_stability(solute, current_precip_phase, T)
+
+            if g_precipitate is None:
+                return None
+
+            return mu_solute - g_precipitate
+
+        # ==================== 4. 评估边界条件 ====================
+        df_min = driving_force(T_min)
+        df_max = driving_force(T_max)
+
+        if df_min is None or df_max is None:
+            return {
+                'status': 'calculation_error',
+                'message': '无法计算驱动力，请检查热力学数据',
+                'precipitation_temperature': None,
+                'solute': solute,
+                'solute_content': x_solute,
+                'hint': '可能是活度系数计算失败或Gibbs能量数据缺失'
+            }
+
+        # ==================== 5. 分析并求解 ====================
+        result = {
+            'solute': solute,
+            'solute_content': x_solute,
+            'solvent': solvent,
+            'precipitating_phase': precipitating_phase,
+            'driving_force_at_T_min': df_min,
+            'driving_force_at_T_max': df_max,
+            'composition': composition,
+            'method': 'thermodynamic_equilibrium',
+            'phase_determination': 'automatic'
+        }
+
+        # 情况1: 两边同号 - 无析出温度
+        if df_min > 0 and df_max > 0:
+            result['status'] = 'always_undersaturated'
+            result['precipitation_temperature'] = None
+            result['precipitation_temperature_celsius'] = None
+            result['message'] = f'在 {T_min}-{T_max}K 范围内，溶质始终欠饱和，不会析出'
+            result['matrix_phase_at_T_min'] = phase_at_T.get(T_min, 'Unknown')
+            result['matrix_phase_at_T_max'] = phase_at_T.get(T_max, 'Unknown')
+            return result
+
+        if df_min < 0 and df_max < 0:
+            result['status'] = 'always_supersaturated'
+            result['precipitation_temperature'] = None
+            result['precipitation_temperature_celsius'] = None
+            result['message'] = f'在 {T_min}-{T_max}K 范围内，溶质始终过饱和'
+            result['hint'] = '析出温度可能高于搜索范围上限，请尝试增大T_max'
+            return result
+
+        # 情况2: 两边异号 - 存在析出温度
+        try:
+            def solve_func(T):
+                df = driving_force(T)
+                return df if df is not None else 1e10
+
+            T_precip = brentq(solve_func, T_min, T_max, xtol=tolerance)
+
+            # 获取析出温度处的基体相
+            matrix_phase_at_Tp, phase_desc, phase_warnings = self._determine_matrix_phase(
+                composition, T_precip, extrapolation_func,
+                extrapolation_model_name, activity_model
+            )
+            warnings.extend(phase_warnings)
+
+            # 验证结果
+            df_check = driving_force(T_precip)
+
+            result['status'] = 'success'
+            result['precipitation_temperature'] = float(T_precip)
+            result['precipitation_temperature_celsius'] = float(T_precip - 273.15)
+            result['matrix_phase'] = matrix_phase_at_Tp
+            result['matrix_phase_description'] = phase_desc
+            result['message'] = '析出温度计算成功'
+            result['residual'] = df_check
+            result['warnings'] = warnings if warnings else None
+
+            # 计算析出温度处的活度系数
+            activity_phase = 'liquid' if matrix_phase_at_Tp == 'LIQUID' else 'solid'
+            ln_gamma = self.calculate_ln_activity_coefficient(
+                composition, solute, T_precip, activity_phase,
+                extrapolation_func, extrapolation_model_name, activity_model
+            )
+            if ln_gamma is not None:
+                result['activity_coefficient_at_Tp'] = math.exp(ln_gamma)
+                result['activity_at_Tp'] = x_solute * math.exp(ln_gamma)
+
+            return result
+
+        except ValueError as e:
+            result['status'] = 'numerical_error'
+            result['precipitation_temperature'] = None
+            result['precipitation_temperature_celsius'] = None
+            result['message'] = f'数值求解失败: {str(e)}'
+            result['hint'] = '驱动力函数可能不单调，尝试缩小温度搜索范围'
+            return result
 
     def calculate_precipitation_temperature(
         self,
