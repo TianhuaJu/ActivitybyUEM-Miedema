@@ -807,6 +807,451 @@ class PrecipitationTemperatureCalculator(ThermodynamicProperties):
 
         return results
 
+    def calculate_precipitation_curve_auto(
+        self,
+        base_alloy_composition: Dict[str, float],
+        solute_element: str,
+        x_min: float,
+        x_max: float,
+        n_points: int,
+        extrapolation_func,
+        extrapolation_model_name: str = 'UEM1',
+        activity_model: str = 'Wagner',
+        progress_callback=None
+    ) -> dict:
+        """
+        计算析出温度曲线（自动相态检测版本）
+
+        基于热力学自动判断每个温度点的基体相态，无需人为指定
+
+        参数：
+        -----
+        base_alloy_composition : Dict[str, float]
+            基础合金成分（不含溶质或溶质含量为0）
+        solute_element : str
+            溶质元素
+        x_min, x_max : float
+            溶质摩尔分数范围
+        n_points : int
+            计算点数
+
+        返回：
+        -----
+        dict : 包含曲线数据和相态信息
+        """
+        solute = solute_element.upper()
+
+        # 归一化基础成分
+        total_base = sum(base_alloy_composition.values())
+        base_comp = {k.upper(): v / total_base for k, v in base_alloy_composition.items()}
+
+        # 生成溶质含量数组
+        x_values = np.linspace(x_min, x_max, n_points)
+
+        results = {
+            'x_solute': [],
+            'T_precipitation': [],
+            'T_precipitation_celsius': [],
+            'matrix_phase': [],
+            'status': [],
+            'details': []
+        }
+
+        for i, x_sol in enumerate(x_values):
+            if progress_callback:
+                progress_callback(i + 1, n_points)
+
+            # 构建当前成分
+            remaining = 1.0 - x_sol
+            current_comp = {el: base_comp[el] * remaining for el in base_comp}
+            current_comp[solute] = x_sol
+
+            # 使用自动相态检测计算析出温度
+            result = self.calculate_precipitation_temperature_auto(
+                alloy_composition=current_comp,
+                solute_element=solute,
+                extrapolation_func=extrapolation_func,
+                extrapolation_model_name=extrapolation_model_name,
+                activity_model=activity_model
+            )
+
+            results['x_solute'].append(x_sol)
+            results['status'].append(result['status'])
+            results['details'].append(result)
+
+            if result['status'] == 'success':
+                results['T_precipitation'].append(result['precipitation_temperature'])
+                results['T_precipitation_celsius'].append(result['precipitation_temperature_celsius'])
+                results['matrix_phase'].append(result.get('matrix_phase', 'Unknown'))
+            else:
+                results['T_precipitation'].append(None)
+                results['T_precipitation_celsius'].append(None)
+                results['matrix_phase'].append(None)
+
+        return results
+
+    def calculate_liquidus_temperature(
+        self,
+        alloy_composition: Dict[str, float],
+        solute_element: str,
+        extrapolation_func,
+        extrapolation_model_name: str = 'UEM1',
+        activity_model: str = 'Wagner',
+        T_min: float = 300.0,
+        T_max: float = 3000.0,
+        tolerance: float = 1.0
+    ) -> dict:
+        """
+        计算液相线温度（从液相中析出固相的温度）
+
+        热力学原理：
+        -----------
+        液相线是液体开始凝固的温度。对于二元系统：
+        - 纯溶剂的熔点为 T_m
+        - 加入溶质后，液相线温度通常降低（冰点降低/共晶效应）
+
+        平衡条件：μ_solvent(liquid) = μ_solvent(solid)
+
+        参数：
+        -----
+        alloy_composition : Dict[str, float]
+            合金成分（摩尔分数）
+        solute_element : str
+            溶质元素符号
+        extrapolation_func : callable
+            外推模型函数
+
+        返回：
+        -----
+        dict : 包含液相线温度的结果字典
+        """
+        solute = solute_element.upper()
+        warnings = []
+
+        # 归一化成分
+        total = sum(alloy_composition.values())
+        if total <= 0:
+            return {
+                'status': 'error',
+                'message': '合金成分不能为空',
+                'liquidus_temperature': None
+            }
+
+        composition = {k.upper(): v / total for k, v in alloy_composition.items()}
+
+        # 确定溶剂（含量最高的组元）
+        solvent = max(composition.items(), key=lambda item: item[1])[0]
+        x_solvent = composition[solvent]
+        x_solute = composition.get(solute, 0)
+
+        if x_solute <= 0:
+            return {
+                'status': 'error',
+                'message': f'溶质 {solute} 含量必须大于0',
+                'liquidus_temperature': None
+            }
+
+        # 获取溶剂的固相（用于液相线计算）
+        solid_phase = self.tdb_parser.get_stable_phase(solvent, T_min)
+        if not solid_phase or solid_phase == 'LIQUID':
+            solid_phase = self.tdb_parser.get_reference_phase(solvent)
+        if not solid_phase:
+            solid_phase = 'BCC_A2'  # 默认
+
+        def liquidus_driving_force(T: float) -> Optional[float]:
+            """
+            计算液相线驱动力：ΔG = μ_solvent(liquid) - μ_solvent(solid)
+
+            当 ΔG = 0 时，液相和固相平衡（液相线温度）
+            - ΔG > 0: 液相不稳定，应凝固
+            - ΔG < 0: 液相稳定
+            """
+            # 溶剂在液相中的化学势
+            mu_liquid = self._get_chemical_potential_extended(
+                composition=composition,
+                component=solvent,
+                temperature=T,
+                tdb_phase='LIQUID',
+                extrapolation_func=extrapolation_func,
+                extrapolation_model=extrapolation_model_name,
+                activity_model=activity_model
+            )
+
+            if mu_liquid is None:
+                return None
+
+            # 溶剂在固相中的化学势（假设固相为纯溶剂或接近纯溶剂）
+            # 对于液相线，固相中溶质含量很低，近似为纯溶剂
+            g_solid = self.tdb_parser.get_gibbs_energy(solvent, solid_phase, T)
+            if g_solid is None:
+                g_solid = self._estimate_lattice_stability(solvent, solid_phase, T)
+
+            if g_solid is None:
+                return None
+
+            return mu_liquid - g_solid
+
+        # 评估边界条件
+        df_min = liquidus_driving_force(T_min)
+        df_max = liquidus_driving_force(T_max)
+
+        if df_min is None or df_max is None:
+            return {
+                'status': 'calculation_error',
+                'message': '无法计算液相线驱动力，请检查热力学数据',
+                'liquidus_temperature': None
+            }
+
+        result = {
+            'solute': solute,
+            'solvent': solvent,
+            'solute_content': x_solute,
+            'solvent_content': x_solvent,
+            'solid_phase': solid_phase,
+            'driving_force_at_T_min': df_min,
+            'driving_force_at_T_max': df_max,
+            'method': 'liquidus_equilibrium'
+        }
+
+        # 检查是否存在液相线温度
+        if df_min > 0 and df_max > 0:
+            result['status'] = 'always_solid'
+            result['liquidus_temperature'] = None
+            result['message'] = f'在 {T_min}-{T_max}K 范围内，始终为固相'
+            return result
+
+        if df_min < 0 and df_max < 0:
+            result['status'] = 'always_liquid'
+            result['liquidus_temperature'] = None
+            result['message'] = f'在 {T_min}-{T_max}K 范围内，始终为液相'
+            return result
+
+        # 求解液相线温度
+        try:
+            def solve_func(T):
+                df = liquidus_driving_force(T)
+                return df if df is not None else 1e10
+
+            T_liquidus = brentq(solve_func, T_min, T_max, xtol=tolerance)
+
+            result['status'] = 'success'
+            result['liquidus_temperature'] = float(T_liquidus)
+            result['liquidus_temperature_celsius'] = float(T_liquidus - 273.15)
+            result['message'] = '液相线温度计算成功'
+
+            # 计算纯溶剂熔点以对比
+            T_melt_pure = self._get_melting_point(solvent)
+            if T_melt_pure:
+                result['pure_solvent_melting_point'] = T_melt_pure
+                result['melting_point_depression'] = T_melt_pure - T_liquidus
+
+            return result
+
+        except ValueError as e:
+            result['status'] = 'numerical_error'
+            result['liquidus_temperature'] = None
+            result['message'] = f'数值求解失败: {str(e)}'
+            return result
+
+    def _get_melting_point(self, element: str) -> Optional[float]:
+        """
+        获取元素的熔点
+
+        通过找到 G_liquid = G_solid 的温度
+        """
+        element = element.upper()
+
+        # 常见元素熔点数据 (K)
+        melting_points = {
+            'FE': 1811.0,
+            'NI': 1728.0,
+            'CO': 1768.0,
+            'CU': 1358.0,
+            'AL': 933.5,
+            'TI': 1941.0,
+            'CR': 2180.0,
+            'MN': 1519.0,
+            'V': 2183.0,
+            'MO': 2896.0,
+            'W': 3695.0,
+            'NB': 2750.0,
+            'TA': 3290.0,
+            'ZR': 2128.0,
+            'HF': 2506.0,
+            'SI': 1687.0,
+            'C': 3823.0,  # 石墨升华点
+            'B': 2349.0,
+        }
+
+        return melting_points.get(element)
+
+    def calculate_liquidus_curve(
+        self,
+        base_alloy_composition: Dict[str, float],
+        solute_element: str,
+        x_min: float,
+        x_max: float,
+        n_points: int,
+        extrapolation_func,
+        extrapolation_model_name: str = 'UEM1',
+        activity_model: str = 'Wagner',
+        progress_callback=None
+    ) -> dict:
+        """
+        计算液相线曲线（液相线温度随溶质含量的变化）
+
+        用于展示共晶效应：随着溶质含量增加，液相线温度降低
+
+        参数：
+        -----
+        base_alloy_composition : 基础合金成分
+        solute_element : 溶质元素
+        x_min, x_max : 溶质摩尔分数范围
+        n_points : 计算点数
+
+        返回：
+        -----
+        dict : 液相线曲线数据
+        """
+        solute = solute_element.upper()
+
+        # 归一化基础成分
+        total_base = sum(base_alloy_composition.values())
+        base_comp = {k.upper(): v / total_base for k, v in base_alloy_composition.items()}
+
+        # 生成溶质含量数组
+        x_values = np.linspace(x_min, x_max, n_points)
+
+        results = {
+            'x_solute': [],
+            'T_liquidus': [],
+            'T_liquidus_celsius': [],
+            'melting_point_depression': [],
+            'status': [],
+            'details': []
+        }
+
+        # 获取纯溶剂熔点
+        solvent = max(base_comp.items(), key=lambda item: item[1])[0]
+        T_melt_pure = self._get_melting_point(solvent)
+
+        for i, x_sol in enumerate(x_values):
+            if progress_callback:
+                progress_callback(i + 1, n_points)
+
+            # 构建当前成分
+            remaining = 1.0 - x_sol
+            current_comp = {el: base_comp[el] * remaining for el in base_comp}
+            current_comp[solute] = x_sol
+
+            # 计算液相线温度
+            result = self.calculate_liquidus_temperature(
+                alloy_composition=current_comp,
+                solute_element=solute,
+                extrapolation_func=extrapolation_func,
+                extrapolation_model_name=extrapolation_model_name,
+                activity_model=activity_model
+            )
+
+            results['x_solute'].append(x_sol)
+            results['status'].append(result['status'])
+            results['details'].append(result)
+
+            if result['status'] == 'success':
+                T_liq = result['liquidus_temperature']
+                results['T_liquidus'].append(T_liq)
+                results['T_liquidus_celsius'].append(T_liq - 273.15)
+                if T_melt_pure:
+                    results['melting_point_depression'].append(T_melt_pure - T_liq)
+                else:
+                    results['melting_point_depression'].append(None)
+            else:
+                results['T_liquidus'].append(None)
+                results['T_liquidus_celsius'].append(None)
+                results['melting_point_depression'].append(None)
+
+        results['solvent'] = solvent
+        results['pure_melting_point'] = T_melt_pure
+
+        return results
+
+    def calculate_phase_diagram_curves(
+        self,
+        base_alloy_composition: Dict[str, float],
+        solute_element: str,
+        x_min: float,
+        x_max: float,
+        n_points: int,
+        extrapolation_func,
+        extrapolation_model_name: str = 'UEM1',
+        activity_model: str = 'Wagner',
+        progress_callback=None
+    ) -> dict:
+        """
+        计算完整的相图曲线（液相线 + 固溶线）
+
+        同时计算：
+        1. 液相线（Liquidus）：液体开始凝固的温度，随溶质增加而降低
+        2. 固溶线（Solvus）：固溶体开始析出第二相的温度，随溶质增加而升高
+
+        这两条曲线的交点附近即为共晶点
+
+        参数：
+        -----
+        base_alloy_composition : 基础合金成分
+        solute_element : 溶质元素
+        x_min, x_max : 溶质摩尔分数范围
+        n_points : 计算点数
+
+        返回：
+        -----
+        dict : 包含液相线和固溶线数据的字典
+        """
+        # 计算液相线
+        liquidus_results = self.calculate_liquidus_curve(
+            base_alloy_composition=base_alloy_composition,
+            solute_element=solute_element,
+            x_min=x_min,
+            x_max=x_max,
+            n_points=n_points,
+            extrapolation_func=extrapolation_func,
+            extrapolation_model_name=extrapolation_model_name,
+            activity_model=activity_model,
+            progress_callback=lambda i, n: progress_callback(i, n * 2) if progress_callback else None
+        )
+
+        # 计算固溶线（使用自动相态检测）
+        solvus_results = self.calculate_precipitation_curve_auto(
+            base_alloy_composition=base_alloy_composition,
+            solute_element=solute_element,
+            x_min=x_min,
+            x_max=x_max,
+            n_points=n_points,
+            extrapolation_func=extrapolation_func,
+            extrapolation_model_name=extrapolation_model_name,
+            activity_model=activity_model,
+            progress_callback=lambda i, n: progress_callback(n + i, n * 2) if progress_callback else None
+        )
+
+        return {
+            'x_solute': liquidus_results['x_solute'],
+            'liquidus': {
+                'T_K': liquidus_results['T_liquidus'],
+                'T_C': liquidus_results['T_liquidus_celsius'],
+                'status': liquidus_results['status'],
+                'melting_point_depression': liquidus_results['melting_point_depression']
+            },
+            'solvus': {
+                'T_K': solvus_results['T_precipitation'],
+                'T_C': solvus_results['T_precipitation_celsius'],
+                'status': solvus_results['status'],
+                'matrix_phase': solvus_results['matrix_phase']
+            },
+            'solvent': liquidus_results.get('solvent'),
+            'pure_melting_point': liquidus_results.get('pure_melting_point'),
+            'solute': solute_element.upper()
+        }
+
     def calculate_multi_solute_precipitation(
         self,
         alloy_composition: Dict[str, float],
