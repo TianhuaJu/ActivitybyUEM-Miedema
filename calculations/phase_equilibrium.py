@@ -1130,19 +1130,19 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         检查化合物在当前条件下是否热力学稳定
 
         热力学原理:
-        驱动力 ΔG = Σ(xᵢ · RT·ln(aᵢ)) - ΔG_f
+        驱动力 ΔG = Σ(xᵢ · μᵢ_matrix) - G_compound_total
 
         其中:
-        - aᵢ = γᵢ·xᵢ 是元素在基体相中的活度
+        - μᵢ_matrix = G°ᵢ(matrix) + RT·ln(aᵢ)  (元素在基体中的化学势)
+        - G_compound_total = Σ(xᵢ · G°ᵢ(SER)) + ΔG_f  (化合物的总Gibbs能)
         - ΔG_f 是化合物的形成能（由 g_compound 参数传入）
-        - RT·ln(aᵢ) 表示元素从标准态到溶液态的化学势变化
 
-        这个公式直接使用活度项，避免了参考态的复杂处理。
-        参考态能量（G°ᵢ）在化学势和化合物能量中相同，会自动抵消。
+        注意：对于非金属元素（如C），G°(matrix) 与 G°(SER) 可能差异很大，
+        这个差异（晶格稳定性能量）对判断是否析出至关重要。
 
         判定:
-        - ΔG > 0: 元素在基体中活度高，倾向形成化合物 → 可析出
-        - ΔG < 0: 元素在基体中活度低，化合物不稳定 → 不析出
+        - ΔG > 0: 元素在基体中化学势高于化合物 → 可析出
+        - ΔG < 0: 元素在基体中化学势低于化合物 → 不析出
         - ΔG = 0: 平衡状态
 
         参数:
@@ -1153,13 +1153,29 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         """
         R = 8.314  # J/(mol·K)
 
-        # 计算活度项的加权和: Σ(xᵢ · RT·ln(aᵢ))
-        activity_term_sum = 0.0
+        # 确定基体相
+        matrix_phase = self._find_lowest_energy_phase(alloy_composition, temperature)
+
+        # 计算各元素在基体中的化学势加权和: Σ(xᵢ · μᵢ)
+        weighted_mu_sum = 0.0
 
         for element, x_in_compound in compound_comp.items():
             x_el = alloy_composition.get(element, 0)
             if x_el < 1e-15:
                 # 元素不存在于合金中，无法形成化合物
+                return False, float('-inf')
+
+            # 获取元素在基体相中的参考态Gibbs能
+            # 对于非金属元素（如C），需要估算其在金属晶格中的能量
+            g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, matrix_phase, temperature)
+            if g_ref_matrix is None:
+                # 尝试估算晶格稳定性（对于非金属元素如C, N, H等）
+                g_ref_matrix = self._estimate_lattice_stability(element, matrix_phase, temperature)
+            if g_ref_matrix is None:
+                # 回退到SER（但这可能导致低估驱动力）
+                g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, 'SER', temperature)
+            if g_ref_matrix is None:
+                print(f"  警告: 无法获取 {element} 在 {matrix_phase} 中的参考态能量")
                 return False, float('-inf')
 
             # 计算活度系数 ln(γ)
@@ -1174,15 +1190,30 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
             except Exception:
                 ln_gamma = 0.0
 
-            # 活度 a = γ·x, 所以 ln(a) = ln(γ) + ln(x)
+            # 化学势 μ = G°(matrix) + RT·ln(a)
+            # 其中 a = γ·x
             ln_activity = ln_gamma + math.log(x_el)
+            mu_element = g_ref_matrix + R * temperature * ln_activity
 
-            # 累加: x_in_compound * RT * ln(a)
-            activity_term_sum += x_in_compound * R * temperature * ln_activity
+            # 累加: x_in_compound * μ
+            weighted_mu_sum += x_in_compound * mu_element
 
-        # 驱动力 = 活度项 - 形成能
-        # ΔG = Σ(xᵢ · RT·ln(aᵢ)) - ΔG_f
-        driving_force = activity_term_sum - g_compound
+        # 计算化合物的总Gibbs能（使用SER参考态）
+        # G_compound_total = Σ(xᵢ · G°ᵢ(SER)) + ΔG_f
+        g_compound_total = g_compound  # 形成能
+        for element, x_in_compound in compound_comp.items():
+            # 使用SER（稳定参考态）作为化合物中元素的参考
+            g_ref_ser = self.tdb_parser.get_gibbs_energy(element, 'SER', temperature)
+            if g_ref_ser is None:
+                # 尝试获取稳定相
+                stable_phase = self.tdb_parser.get_stable_phase(element, temperature)
+                if stable_phase:
+                    g_ref_ser = self.tdb_parser.get_gibbs_energy(element, stable_phase, temperature)
+            if g_ref_ser is not None:
+                g_compound_total += x_in_compound * g_ref_ser
+
+        # 驱动力 = Σ(xᵢ·μᵢ) - G_compound_total
+        driving_force = weighted_mu_sum - g_compound_total
 
         # 如果驱动力 > 0，化合物可以析出
         is_stable = driving_force > 0
@@ -1516,8 +1547,8 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         参数:
             g_compound: 化合物的形成能 ΔG_f (J/mol)，不含参考态
 
-        驱动力 = Σ(xᵢ·RT·ln(aᵢ)) - ΔG_f
-        其中 aᵢ = γᵢ·xᵢ 是元素在基体中的活度
+        驱动力 = Σ(xᵢ·μᵢ_matrix) - G_compound_total
+        其中 μᵢ_matrix = G°ᵢ(matrix) + RT·ln(aᵢ)
         """
         R = 8.314  # J/(mol·K)
 
@@ -1536,13 +1567,25 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
             matrix_comp = {k: v / total_remaining for k, v in remaining.items()}
 
-        # 计算活度项的加权和: Σ(xᵢ · RT·ln(aᵢ))
-        activity_term_sum = 0.0
+        # 确定基体相
+        matrix_phase = self._find_lowest_energy_phase(matrix_comp, temperature)
+
+        # 计算各元素在基体中的化学势加权和: Σ(xᵢ · μᵢ)
+        weighted_mu_sum = 0.0
 
         for element, x_in_compound in compound_comp.items():
             x_el = matrix_comp.get(element, 0)
             if x_el < 1e-15:
                 return float('-inf')  # 元素耗尽，不可能继续析出
+
+            # 获取元素在基体相中的参考态Gibbs能
+            g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, matrix_phase, temperature)
+            if g_ref_matrix is None:
+                g_ref_matrix = self._estimate_lattice_stability(element, matrix_phase, temperature)
+            if g_ref_matrix is None:
+                g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, 'SER', temperature)
+            if g_ref_matrix is None:
+                return float('-inf')
 
             # 计算活度系数 ln(γ)
             try:
@@ -1556,14 +1599,26 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
             except Exception:
                 ln_gamma = 0.0
 
-            # 活度 a = γ·x, ln(a) = ln(γ) + ln(x)
+            # 化学势 μ = G°(matrix) + RT·ln(a)
             ln_activity = ln_gamma + math.log(x_el)
+            mu_element = g_ref_matrix + R * temperature * ln_activity
 
-            # 累加: x_in_compound * RT * ln(a)
-            activity_term_sum += x_in_compound * R * temperature * ln_activity
+            # 累加: x_in_compound * μ
+            weighted_mu_sum += x_in_compound * mu_element
 
-        # 驱动力 = 活度项 - 形成能
-        return activity_term_sum - g_compound
+        # 计算化合物的总Gibbs能（使用SER参考态）
+        g_compound_total = g_compound
+        for element, x_in_compound in compound_comp.items():
+            g_ref_ser = self.tdb_parser.get_gibbs_energy(element, 'SER', temperature)
+            if g_ref_ser is None:
+                stable_phase = self.tdb_parser.get_stable_phase(element, temperature)
+                if stable_phase:
+                    g_ref_ser = self.tdb_parser.get_gibbs_energy(element, stable_phase, temperature)
+            if g_ref_ser is not None:
+                g_compound_total += x_in_compound * g_ref_ser
+
+        # 驱动力 = Σ(xᵢ·μᵢ) - G_compound_total
+        return weighted_mu_sum - g_compound_total
 
     def _calculate_solution_fraction(self, alloy_composition, solution_comp, excess_elements):
         """计算溶体相的摩尔分数"""

@@ -78,29 +78,37 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 		# 配置：定义各元素的估算策略 (全部采用 fixed_diff)
 		# ==================================================
 		stability_config = {
-			
-			
+
+			# --- 碳 C ---
+			# 碳从石墨到金属晶格（BCC/FCC）的晶格稳定性能量约为 100-120 kJ/mol
+			# 这是间隙固溶体形成的关键参数
+			'C': {
+				'stable_phase': 'GRAPHITE',  # 稳定态 (石墨)
+				'proxy_phase': None,
+				'fixed_diff': 117000.0  # 设定值: 117 kJ/mol (参考文献典型值)
+			},
+
 			# --- 氮 N ---
 			'N': {
 				'stable_phase': 'GAS',  # 稳定态 (1/2 N2)
 				'proxy_phase': None,
 				'fixed_diff': 240000.0  # 设定值: 240 kJ/mol
 			},
-			
+
 			# --- 硅 Si ---
 			'SI': {
 				'stable_phase': 'DIAMOND_A4',  # 稳定态
 				'proxy_phase': None,
 				'fixed_diff': 33000.0  # 设定值: 33 kJ/mol
 			},
-			
+
 			# --- 锗 Ge ---
 			'GE': {
 				'stable_phase': 'DIAMOND_A4',  # 稳定态
 				'proxy_phase': None,
 				'fixed_diff': 25000.0  # 设定值: 25 kJ/mol
 			},
-			
+
 			# --- 氢 H ---
 			'H': {
 				'stable_phase': 'GAS',  # 稳定态 (1/2 H2)
@@ -125,9 +133,14 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			# 注意: PyCalphad 有时需要指定组分名称如 'N2' 而不是 'N'，但这取决于 parser 实现
 			# 这里假设 get_gibbs_energy 内部能处理 'N' -> '1/2 N2' 的转换或直接读取 SER
 			g_stable = self.tdb_parser.get_gibbs_energy(comp_upper, 'GAS', T)
+		elif ref_phase_name == 'GRAPHITE':
+			# 碳的稳定相是石墨，但TDB中可能命名为 GRAPHITE 或 SER
+			g_stable = self.tdb_parser.get_gibbs_energy(comp_upper, 'GRAPHITE', T)
+			if g_stable is None:
+				g_stable = self.tdb_parser.get_gibbs_energy(comp_upper, 'SER', T)
 		else:
 			g_stable = self.tdb_parser.get_gibbs_energy(comp_upper, ref_phase_name, T)
-		
+
 		if g_stable is None:
 			# 如果连稳定态都算不出来 (比如 TDB 缺 H)，则无法估算
 			return None
