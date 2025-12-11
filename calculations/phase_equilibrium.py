@@ -298,19 +298,82 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
         return max_moles, limiting_element
 
     def _find_lowest_energy_phase(self, composition, temperature):
-        """找到能量最低的相"""
+        """
+        基于严格热力学稳定性找到能量最低的相。
+
+        热力学原理：
+        对于多元合金，每个相的Gibbs能为：
+        G_phase = Σ(xᵢ × G°ᵢ(phase)) + RT×Σ(xᵢ×ln(xᵢ)) + G_excess
+
+        其中：
+        - G°ᵢ(phase): 组分i在该相中的参考态Gibbs能
+        - RT×Σ(xᵢ×ln(xᵢ)): 理想混合熵贡献
+        - G_excess: 过剩Gibbs能
+
+        选择Gibbs能最低的相作为稳定基体相。
+        """
+        R = 8.314  # J/(mol·K)
+
+        # 候选相列表
+        phases_to_check = ['LIQUID', 'BCC_A2', 'FCC_A1', 'HCP_A3']
+
+        # 确定溶剂元素（用于默认相）
         solvent = max(composition.items(), key=lambda x: x[1])[0]
-        phases = [p for p in self.tdb_parser.get_element_phases(solvent) if p != 'GAS']
-        best_phase = 'FCC_A1'
-        min_g = float('inf')
-        for phase in phases:
+        solvent_upper = solvent.upper()
+
+        best_phase = 'BCC_A2'  # 默认
+        min_g_total = float('inf')
+
+        for phase in phases_to_check:
             try:
-                g_pure = self.tdb_parser.get_gibbs_energy(solvent, phase, temperature)
-                if g_pure is not None and g_pure < min_g:
-                    min_g = g_pure
+                g_total = 0.0
+                all_elements_valid = True
+                is_liquid = (phase == 'LIQUID')
+
+                # 1. 计算参考态能量加权和：Σ(xᵢ × G°ᵢ(phase))
+                for element, x in composition.items():
+                    if x < 1e-10:
+                        continue
+
+                    element_upper = element.upper()
+
+                    # 获取该元素在此相中的Gibbs能
+                    g_ref = self.tdb_parser.get_gibbs_energy(element_upper, phase, temperature)
+
+                    if g_ref is None:
+                        if is_liquid:
+                            # 液相：直接使用SER（液相不是晶格结构）
+                            g_ref = self.tdb_parser.get_gibbs_energy(element_upper, 'SER', temperature)
+                        else:
+                            # 固相：尝试估算晶格稳定性
+                            g_ref = self._estimate_lattice_stability(element_upper, phase, temperature)
+
+                    if g_ref is None:
+                        # 该元素在此相中没有数据，此相可能不适用
+                        all_elements_valid = False
+                        break
+
+                    g_total += x * g_ref
+
+                if not all_elements_valid:
+                    continue
+
+                # 2. 计算理想混合熵贡献：RT×Σ(xᵢ×ln(xᵢ))
+                for element, x in composition.items():
+                    if x > 1e-10:
+                        g_total += R * temperature * x * math.log(x)
+
+                # 3. 过剩Gibbs能（简化处理）
+                # 实际应通过Miedema模型或外推模型计算混合焓
+                # 对于稀溶液，过剩项通常较小
+
+                if g_total < min_g_total:
+                    min_g_total = g_total
                     best_phase = phase
-            except:
+
+            except Exception:
                 continue
+
         return best_phase
 
     def _format_comp(self, comp):
@@ -1903,19 +1966,82 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         return g_total
 
     def _find_lowest_energy_phase(self, composition, temperature):
-        """找到能量最低的相"""
+        """
+        基于严格热力学稳定性找到能量最低的相。
+
+        热力学原理：
+        对于多元合金，每个相的Gibbs能为：
+        G_phase = Σ(xᵢ × G°ᵢ(phase)) + RT×Σ(xᵢ×ln(xᵢ)) + G_excess
+
+        其中：
+        - G°ᵢ(phase): 组分i在该相中的参考态Gibbs能
+        - RT×Σ(xᵢ×ln(xᵢ)): 理想混合熵贡献
+        - G_excess: 过剩Gibbs能
+
+        选择Gibbs能最低的相作为稳定基体相。
+        """
+        R = 8.314  # J/(mol·K)
+
+        # 候选相列表
+        phases_to_check = ['LIQUID', 'BCC_A2', 'FCC_A1', 'HCP_A3']
+
+        # 确定溶剂元素（用于默认相）
         solvent = max(composition.items(), key=lambda x: x[1])[0]
-        phases = [p for p in self.tdb_parser.get_element_phases(solvent) if p != 'GAS']
-        best_phase = 'FCC_A1'
-        min_g = float('inf')
-        for phase in phases:
+        solvent_upper = solvent.upper()
+
+        best_phase = 'BCC_A2'  # 默认
+        min_g_total = float('inf')
+
+        for phase in phases_to_check:
             try:
-                g_pure = self.tdb_parser.get_gibbs_energy(solvent, phase, temperature)
-                if g_pure is not None and g_pure < min_g:
-                    min_g = g_pure
+                g_total = 0.0
+                all_elements_valid = True
+                is_liquid = (phase == 'LIQUID')
+
+                # 1. 计算参考态能量加权和：Σ(xᵢ × G°ᵢ(phase))
+                for element, x in composition.items():
+                    if x < 1e-10:
+                        continue
+
+                    element_upper = element.upper()
+
+                    # 获取该元素在此相中的Gibbs能
+                    g_ref = self.tdb_parser.get_gibbs_energy(element_upper, phase, temperature)
+
+                    if g_ref is None:
+                        if is_liquid:
+                            # 液相：直接使用SER（液相不是晶格结构）
+                            g_ref = self.tdb_parser.get_gibbs_energy(element_upper, 'SER', temperature)
+                        else:
+                            # 固相：尝试估算晶格稳定性
+                            g_ref = self._estimate_lattice_stability(element_upper, phase, temperature)
+
+                    if g_ref is None:
+                        # 该元素在此相中没有数据，此相可能不适用
+                        all_elements_valid = False
+                        break
+
+                    g_total += x * g_ref
+
+                if not all_elements_valid:
+                    continue
+
+                # 2. 计算理想混合熵贡献：RT×Σ(xᵢ×ln(xᵢ))
+                for element, x in composition.items():
+                    if x > 1e-10:
+                        g_total += R * temperature * x * math.log(x)
+
+                # 3. 过剩Gibbs能（简化处理）
+                # 实际应通过Miedema模型或外推模型计算混合焓
+                # 对于稀溶液，过剩项通常较小
+
+                if g_total < min_g_total:
+                    min_g_total = g_total
                     best_phase = phase
-            except:
+
+            except Exception:
                 continue
+
         return best_phase
 
     def _get_atomic_masses(self):
