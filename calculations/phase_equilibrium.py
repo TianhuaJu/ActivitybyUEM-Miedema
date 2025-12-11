@@ -658,6 +658,606 @@ class CompoundAwarePhaseEquilibrium(PhaseDiagramCalculator):
 
 
 # =============================================================================
+# 手动指定平衡相计算器
+# =============================================================================
+
+class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
+    """
+    手动指定平衡相的相平衡计算器。
+
+    功能：
+    1. 用户指定平衡相（化合物或溶体相）
+    2. 如果是化合物，可以输入其吉布斯能
+    3. 计算平衡相的数量和成分
+
+    适用场景：
+    - 用户已知平衡相类型，想要验证计算结果
+    - 需要计算特定化合物的析出量
+    - 研究溶体相的平衡组成
+    """
+
+    def __init__(self):
+        super().__init__()
+        # 常用化合物化学计量比数据库
+        self.compound_database = {
+            # 碳化物
+            'Fe3C': {'Fe': 3, 'C': 1},
+            'Cr23C6': {'Cr': 23, 'C': 6},
+            'Cr7C3': {'Cr': 7, 'C': 3},
+            'Cr3C2': {'Cr': 3, 'C': 2},
+            'Mo2C': {'Mo': 2, 'C': 1},
+            'VC': {'V': 1, 'C': 1},
+            'TiC': {'Ti': 1, 'C': 1},
+            'WC': {'W': 1, 'C': 1},
+            'NbC': {'Nb': 1, 'C': 1},
+            'SiC': {'Si': 1, 'C': 1},
+            # 氮化物
+            'TiN': {'Ti': 1, 'N': 1},
+            'VN': {'V': 1, 'N': 1},
+            'AlN': {'Al': 1, 'N': 1},
+            'CrN': {'Cr': 1, 'N': 1},
+            'Cr2N': {'Cr': 2, 'N': 1},
+            'Si3N4': {'Si': 3, 'N': 4},
+            # 金属间化合物
+            'Fe2Al5': {'Fe': 2, 'Al': 5},
+            'Fe3Al': {'Fe': 3, 'Al': 1},
+            'FeAl': {'Fe': 1, 'Al': 1},
+            'FeAl3': {'Fe': 1, 'Al': 3},
+            'Ni3Al': {'Ni': 3, 'Al': 1},
+            'NiAl': {'Ni': 1, 'Al': 1},
+            'TiAl': {'Ti': 1, 'Al': 1},
+            'Ti3Al': {'Ti': 3, 'Al': 1},
+            'TiAl3': {'Ti': 1, 'Al': 3},
+            'Mg2Si': {'Mg': 2, 'Si': 1},
+            'MgZn2': {'Mg': 1, 'Zn': 2},
+            'Al2Cu': {'Al': 2, 'Cu': 1},
+            'Al3Ni': {'Al': 3, 'Ni': 1},
+            'FeSi': {'Fe': 1, 'Si': 1},
+            'FeSi2': {'Fe': 1, 'Si': 2},
+            'Fe3Si': {'Fe': 3, 'Si': 1},
+            'Fe5Si3': {'Fe': 5, 'Si': 3},
+            # 氧化物
+            'Al2O3': {'Al': 2, 'O': 3},
+            'SiO2': {'Si': 1, 'O': 2},
+            'FeO': {'Fe': 1, 'O': 1},
+            'Fe2O3': {'Fe': 2, 'O': 3},
+            'Fe3O4': {'Fe': 3, 'O': 4},
+            'MnO': {'Mn': 1, 'O': 1},
+            'Cr2O3': {'Cr': 2, 'O': 3},
+            # Laves相
+            'Fe2Nb': {'Fe': 2, 'Nb': 1},
+            'Fe2Mo': {'Fe': 2, 'Mo': 1},
+            'Fe2Ti': {'Fe': 2, 'Ti': 1},
+            'Fe2W': {'Fe': 2, 'W': 1},
+            # σ相
+            'FeCr': {'Fe': 1, 'Cr': 1},
+            # 硫化物
+            'MnS': {'Mn': 1, 'S': 1},
+            'FeS': {'Fe': 1, 'S': 1},
+        }
+
+        # 溶体相类型
+        self.solution_phases = ['LIQUID', 'BCC_A2', 'FCC_A1', 'HCP_A3', 'BCC_B2', 'L12_FCC']
+
+    def parse_compound_formula(self, formula: str) -> Dict[str, float]:
+        """
+        解析化合物化学式，返回摩尔分数组成。
+
+        支持格式:
+        - 数据库中的化合物: "Fe3C", "TiC", "Ni3Al"
+        - 自定义格式: "Fe3C1" (元素后跟数字)
+        - 带括号: "(Fe)3(C)1"
+
+        返回: {元素: 摩尔分数}
+        """
+        import re
+
+        formula = formula.strip()
+
+        # 首先检查数据库
+        if formula in self.compound_database:
+            stoich = self.compound_database[formula]
+            total = sum(stoich.values())
+            return {el.upper(): n / total for el, n in stoich.items()}
+
+        # 解析自定义格式
+        # 正则表达式匹配: 元素符号(1-2个字母) + 可选的数字
+        pattern = r'([A-Z][a-z]?)(\d*\.?\d*)'
+        matches = re.findall(pattern, formula)
+
+        if not matches:
+            raise ValueError(f"无法解析化合物化学式: {formula}")
+
+        stoichiometry = {}
+        for element, count_str in matches:
+            if not element:
+                continue
+            count = float(count_str) if count_str else 1.0
+            element_upper = element.upper()
+            stoichiometry[element_upper] = stoichiometry.get(element_upper, 0) + count
+
+        if not stoichiometry:
+            raise ValueError(f"无法解析化合物化学式: {formula}")
+
+        # 转换为摩尔分数
+        total = sum(stoichiometry.values())
+        return {el: n / total for el, n in stoichiometry.items()}
+
+    def is_solution_phase(self, phase_name: str) -> bool:
+        """判断是否为溶体相"""
+        phase_upper = phase_name.upper().replace(' ', '_')
+        for sol_phase in self.solution_phases:
+            if sol_phase in phase_upper or phase_upper in sol_phase:
+                return True
+        return False
+
+    def calculate_manual_equilibrium(self,
+                                     alloy_composition: Dict[str, float],
+                                     equilibrium_phase: str,
+                                     temperature: float,
+                                     compound_gibbs_energy: Optional[float] = None,
+                                     extrapolation_func=None,
+                                     extrapolation_model_name: str = 'UEM1',
+                                     activity_model: str = 'Wagner') -> Dict:
+        """
+        计算手动指定平衡相的相平衡。
+
+        参数:
+            alloy_composition: 合金总组成 {元素: 摩尔分数}
+            equilibrium_phase: 平衡相名称 (如 "Fe3C", "BCC_A2", "LIQUID")
+            temperature: 温度 (K)
+            compound_gibbs_energy: 化合物的吉布斯能 (J/mol)，仅对化合物有效
+            extrapolation_func: 外推模型函数
+            extrapolation_model_name: 外推模型名称
+            activity_model: 活度模型
+
+        返回:
+            {
+                'status': 'success' | 'error',
+                'message': str,
+                'equilibrium_phase': {
+                    'name': str,
+                    'type': 'compound' | 'solution',
+                    'composition': Dict[str, float],  # 相组成
+                    'mole_fraction': float,           # 相的摩尔分数
+                    'mass_fraction': float,           # 相的质量分数
+                    'gibbs_energy': float             # 相的吉布斯能
+                },
+                'matrix_phase': {
+                    'name': str,
+                    'composition': Dict[str, float],  # 基体相组成
+                    'mole_fraction': float
+                },
+                'calculation_details': Dict          # 计算细节
+            }
+        """
+        print(f"\n{'=' * 60}")
+        print(f"手动指定平衡相计算")
+        print(f"合金组成: {self._format_comp(alloy_composition)}")
+        print(f"平衡相: {equilibrium_phase}")
+        print(f"温度: {temperature} K")
+        if compound_gibbs_energy is not None:
+            print(f"化合物吉布斯能: {compound_gibbs_energy} J/mol")
+        print(f"{'=' * 60}\n")
+
+        # 归一化合金组成
+        total = sum(alloy_composition.values())
+        alloy_composition = {k.upper(): v / total for k, v in alloy_composition.items()}
+
+        # 判断平衡相类型
+        if self.is_solution_phase(equilibrium_phase):
+            return self._calculate_solution_phase_equilibrium(
+                alloy_composition, equilibrium_phase, temperature,
+                extrapolation_func, extrapolation_model_name, activity_model
+            )
+        else:
+            return self._calculate_compound_phase_equilibrium(
+                alloy_composition, equilibrium_phase, temperature,
+                compound_gibbs_energy, extrapolation_func,
+                extrapolation_model_name, activity_model
+            )
+
+    def _calculate_compound_phase_equilibrium(self,
+                                               alloy_composition: Dict[str, float],
+                                               compound_formula: str,
+                                               temperature: float,
+                                               compound_gibbs_energy: Optional[float],
+                                               extrapolation_func,
+                                               extrapolation_model_name: str,
+                                               activity_model: str) -> Dict:
+        """计算化合物相的平衡"""
+        print(f"[计算化合物相平衡: {compound_formula}]")
+
+        try:
+            # 解析化合物组成
+            compound_comp = self.parse_compound_formula(compound_formula)
+            print(f"  化合物组成: {self._format_comp(compound_comp)}")
+        except ValueError as e:
+            return {
+                'status': 'error',
+                'message': str(e),
+                'equilibrium_phase': None,
+                'matrix_phase': None
+            }
+
+        # 检查合金中是否含有化合物所需的所有元素
+        missing_elements = [el for el in compound_comp if el not in alloy_composition or alloy_composition[el] < 1e-10]
+        if missing_elements:
+            return {
+                'status': 'error',
+                'message': f"合金中缺少化合物所需元素: {', '.join(missing_elements)}",
+                'equilibrium_phase': None,
+                'matrix_phase': None
+            }
+
+        # 计算化合物的最大生成量（受限元素约束）
+        max_compound_fraction = float('inf')
+        limiting_element = None
+
+        for element, x_in_compound in compound_comp.items():
+            x_in_alloy = alloy_composition.get(element, 0)
+            if x_in_compound > 0:
+                possible_fraction = x_in_alloy / x_in_compound
+                if possible_fraction < max_compound_fraction:
+                    max_compound_fraction = possible_fraction
+                    limiting_element = element
+
+        print(f"  受限元素: {limiting_element}")
+        print(f"  最大化合物摩尔分数: {max_compound_fraction:.6f}")
+
+        # 计算化合物的吉布斯能
+        if compound_gibbs_energy is not None:
+            g_compound = compound_gibbs_energy
+            print(f"  使用用户输入的吉布斯能: {g_compound:.2f} J/mol")
+        else:
+            # 尝试从Miedema模型估算
+            g_compound = self._estimate_compound_gibbs_energy(
+                compound_comp, compound_formula, temperature
+            )
+            print(f"  估算的吉布斯能: {g_compound:.2f} J/mol")
+
+        # 计算基体相（剩余组成）
+        if max_compound_fraction >= 1.0:
+            # 化合物完全消耗所有组分
+            compound_fraction = 1.0
+            matrix_comp = {}
+            matrix_fraction = 0.0
+        else:
+            # 计算平衡化合物量（基于化学势平衡）
+            compound_fraction, matrix_comp = self._solve_compound_equilibrium(
+                alloy_composition, compound_comp, temperature,
+                g_compound, max_compound_fraction,
+                extrapolation_func, extrapolation_model_name, activity_model
+            )
+            matrix_fraction = 1.0 - compound_fraction
+
+        print(f"\n  平衡化合物量: {compound_fraction:.6f} ({compound_fraction*100:.2f}%)")
+        if matrix_comp:
+            print(f"  基体相组成: {self._format_comp(matrix_comp)}")
+
+        # 计算质量分数
+        atomic_masses = self._get_atomic_masses()
+        compound_mass = sum(compound_comp.get(el, 0) * atomic_masses.get(el, 50)
+                          for el in compound_comp)
+        alloy_mass = sum(alloy_composition.get(el, 0) * atomic_masses.get(el, 50)
+                        for el in alloy_composition)
+        mass_fraction = (compound_fraction * compound_mass) / alloy_mass if alloy_mass > 0 else 0
+
+        # 确定基体相类型
+        if matrix_comp:
+            solvent = max(matrix_comp.items(), key=lambda x: x[1])[0]
+            matrix_phase_name = self._find_lowest_energy_phase(matrix_comp, temperature)
+        else:
+            matrix_phase_name = "N/A"
+            solvent = None
+
+        return {
+            'status': 'success',
+            'message': f'成功计算化合物 {compound_formula} 的平衡量',
+            'equilibrium_phase': {
+                'name': compound_formula,
+                'type': 'compound',
+                'composition': compound_comp,
+                'mole_fraction': compound_fraction,
+                'mass_fraction': mass_fraction,
+                'gibbs_energy': g_compound
+            },
+            'matrix_phase': {
+                'name': matrix_phase_name,
+                'composition': matrix_comp,
+                'mole_fraction': matrix_fraction
+            },
+            'calculation_details': {
+                'limiting_element': limiting_element,
+                'max_possible_fraction': max_compound_fraction,
+                'temperature': temperature,
+                'compound_gibbs_energy_source': 'user_input' if compound_gibbs_energy is not None else 'estimated'
+            }
+        }
+
+    def _calculate_solution_phase_equilibrium(self,
+                                               alloy_composition: Dict[str, float],
+                                               solution_phase: str,
+                                               temperature: float,
+                                               extrapolation_func,
+                                               extrapolation_model_name: str,
+                                               activity_model: str) -> Dict:
+        """计算溶体相的平衡组成"""
+        print(f"[计算溶体相平衡: {solution_phase}]")
+
+        # 确定溶剂
+        solvent = max(alloy_composition.items(), key=lambda x: x[1])[0]
+        print(f"  溶剂元素: {solvent}")
+
+        # 获取标准相名称
+        phase_mapping = {
+            'LIQUID': 'LIQUID',
+            'BCC': 'BCC_A2',
+            'BCC_A2': 'BCC_A2',
+            'FCC': 'FCC_A1',
+            'FCC_A1': 'FCC_A1',
+            'HCP': 'HCP_A3',
+            'HCP_A3': 'HCP_A3',
+        }
+        tdb_phase = phase_mapping.get(solution_phase.upper(), solution_phase)
+
+        # 计算各溶质的溶解度限
+        solubility_limits = {}
+        solution_comp = {solvent: 1.0}  # 从纯溶剂开始
+
+        proxy_base = {solvent: 1.0}
+        for element, x_alloy in alloy_composition.items():
+            if element == solvent or x_alloy < 1e-10:
+                continue
+
+            try:
+                sol_type = 'LIQUID' if 'LIQUID' in tdb_phase.upper() else 'SOLID'
+                res = self.calculate_solubility(
+                    base_alloy_composition=proxy_base,
+                    solute_element=element,
+                    solution_phase=sol_type,
+                    temperature=temperature,
+                    extrapolation_func=extrapolation_func,
+                    extrapolation_model_name=extrapolation_model_name,
+                    activity_model=activity_model
+                )
+                limit = res.get('solubility_mole_fraction', 1.0)
+                if limit is None or limit > 1.0:
+                    limit = 1.0
+                solubility_limits[element] = limit
+                print(f"  {element} 溶解度限: {limit:.6f}")
+            except Exception as e:
+                print(f"  {element} 溶解度计算失败: {e}")
+                solubility_limits[element] = 1.0
+
+        # 计算平衡溶体相组成
+        # 考虑溶解度限制，计算实际溶入的量
+        equilibrium_comp = {}
+        sum_solutes = 0.0
+        excess_elements = {}  # 超出溶解度的元素
+
+        for element, x_alloy in alloy_composition.items():
+            if element == solvent:
+                continue
+
+            limit = solubility_limits.get(element, 1.0)
+            if x_alloy <= limit:
+                # 全部溶入
+                equilibrium_comp[element] = x_alloy
+                sum_solutes += x_alloy
+            else:
+                # 部分溶入，有剩余
+                equilibrium_comp[element] = limit
+                sum_solutes += limit
+                excess_elements[element] = x_alloy - limit
+
+        equilibrium_comp[solvent] = 1.0 - sum_solutes
+
+        # 归一化
+        total_eq = sum(equilibrium_comp.values())
+        equilibrium_comp = {k: v / total_eq for k, v in equilibrium_comp.items()}
+
+        # 计算溶体相的摩尔分数
+        # 如果有元素超出溶解度，则溶体相不是100%
+        if excess_elements:
+            # 计算溶体相分数
+            solution_fraction = self._calculate_solution_fraction(
+                alloy_composition, equilibrium_comp, excess_elements
+            )
+        else:
+            solution_fraction = 1.0
+
+        print(f"\n  溶体相组成: {self._format_comp(equilibrium_comp)}")
+        print(f"  溶体相摩尔分数: {solution_fraction:.6f}")
+
+        # 计算溶体相的吉布斯能
+        g_solution = self._calculate_solution_gibbs_energy(
+            equilibrium_comp, tdb_phase, temperature,
+            extrapolation_func, extrapolation_model_name, activity_model
+        )
+
+        # 计算质量分数
+        atomic_masses = self._get_atomic_masses()
+        solution_mass = sum(equilibrium_comp.get(el, 0) * atomic_masses.get(el, 50)
+                          for el in equilibrium_comp)
+        alloy_mass = sum(alloy_composition.get(el, 0) * atomic_masses.get(el, 50)
+                        for el in alloy_composition)
+        mass_fraction = (solution_fraction * solution_mass) / alloy_mass if alloy_mass > 0 else solution_fraction
+
+        return {
+            'status': 'success',
+            'message': f'成功计算溶体相 {solution_phase} 的平衡组成',
+            'equilibrium_phase': {
+                'name': tdb_phase,
+                'type': 'solution',
+                'composition': equilibrium_comp,
+                'mole_fraction': solution_fraction,
+                'mass_fraction': mass_fraction,
+                'gibbs_energy': g_solution
+            },
+            'matrix_phase': None,  # 对于溶体相，本身就是基体
+            'calculation_details': {
+                'solubility_limits': solubility_limits,
+                'excess_elements': excess_elements,
+                'temperature': temperature,
+                'solvent': solvent
+            }
+        }
+
+    def _estimate_compound_gibbs_energy(self, compound_comp: Dict[str, float],
+                                         compound_formula: str,
+                                         temperature: float) -> float:
+        """使用Miedema模型估算化合物的吉布斯能"""
+        elements = list(compound_comp.keys())
+
+        if len(elements) == 2:
+            el1, el2 = elements
+            x1 = compound_comp[el1]
+
+            try:
+                from models.miedema_model import MiedemaModel
+                miedema = MiedemaModel((el1, el2), "SOLID")
+                h_mix = miedema.getmixingEnthalpy_by_Miedema_Model(
+                    el1, x1, temperature, order_degree='IM'
+                )
+            except:
+                h_mix = -20000.0  # 默认假设形成稳定化合物
+
+            # 加上参考态能量
+            g_ref = 0.0
+            for el, x in compound_comp.items():
+                g_pure = self.tdb_parser.get_gibbs_energy(el, 'SER', temperature)
+                if g_pure is not None:
+                    g_ref += x * g_pure
+
+            return h_mix + g_ref
+        else:
+            # 多元化合物，简化处理
+            g_ref = 0.0
+            for el, x in compound_comp.items():
+                g_pure = self.tdb_parser.get_gibbs_energy(el, 'SER', temperature)
+                if g_pure is not None:
+                    g_ref += x * g_pure
+            return g_ref - 15000.0  # 假设有-15 kJ/mol的稳定化能
+
+    def _solve_compound_equilibrium(self, alloy_composition, compound_comp,
+                                     temperature, g_compound, max_fraction,
+                                     extrapolation_func, model_name, activity_model):
+        """求解化合物平衡量"""
+        # 简化处理：使用受限元素的量作为化合物量的上限
+        # 实际上应该通过化学势平衡来求解，但这里采用简化方法
+
+        # 计算化合物量使得剩余基体相稳定
+        best_fraction = 0.0
+        best_matrix_comp = alloy_composition.copy()
+
+        # 二分法搜索最优化合物量
+        low, high = 0.0, min(max_fraction, 0.999)
+
+        for _ in range(20):
+            mid = (low + high) / 2.0
+
+            # 计算剩余组成
+            remaining = {}
+            for el in alloy_composition:
+                consumed = mid * compound_comp.get(el, 0)
+                remaining[el] = max(0, alloy_composition[el] - consumed)
+
+            total_remaining = sum(remaining.values())
+            if total_remaining < 1e-10:
+                high = mid
+                continue
+
+            matrix_comp = {k: v / total_remaining for k, v in remaining.items()}
+
+            # 检查基体相稳定性
+            solvent = max(matrix_comp.items(), key=lambda x: x[1])[0]
+            matrix_phase = self._find_lowest_energy_phase(matrix_comp, temperature)
+
+            is_stable, _ = self._check_alloy_full_stability(
+                matrix_comp, temperature, matrix_phase,
+                extrapolation_func, model_name, activity_model
+            )
+
+            if is_stable:
+                best_fraction = mid
+                best_matrix_comp = matrix_comp.copy()
+                low = mid  # 可以尝试更多化合物
+            else:
+                high = mid  # 化合物太多，基体不稳定
+
+        return best_fraction, best_matrix_comp
+
+    def _calculate_solution_fraction(self, alloy_composition, solution_comp, excess_elements):
+        """计算溶体相的摩尔分数"""
+        if not excess_elements:
+            return 1.0
+
+        # 简化：假设超出的元素形成析出相
+        total_excess = sum(excess_elements.values())
+        return 1.0 - total_excess
+
+    def _calculate_solution_gibbs_energy(self, composition, phase, temperature,
+                                          extrapolation_func, model_name, activity_model):
+        """计算溶体相的吉布斯能"""
+        g_total = 0.0
+
+        # 参考态能量
+        for el, x in composition.items():
+            if x < 1e-10:
+                continue
+            g_pure = self.tdb_parser.get_gibbs_energy(el, phase, temperature)
+            if g_pure is None:
+                g_pure = self.tdb_parser.get_gibbs_energy(el, 'SER', temperature)
+            if g_pure is not None:
+                g_total += x * g_pure
+
+        # 混合熵贡献
+        R = 8.314
+        for x in composition.values():
+            if x > 1e-10:
+                g_total += R * temperature * x * math.log(x)
+
+        # 过剩吉布斯能（简化处理）
+        # 实际应该通过外推模型计算
+
+        return g_total
+
+    def _find_lowest_energy_phase(self, composition, temperature):
+        """找到能量最低的相"""
+        solvent = max(composition.items(), key=lambda x: x[1])[0]
+        phases = [p for p in self.tdb_parser.get_element_phases(solvent) if p != 'GAS']
+        best_phase = 'FCC_A1'
+        min_g = float('inf')
+        for phase in phases:
+            try:
+                g_pure = self.tdb_parser.get_gibbs_energy(solvent, phase, temperature)
+                if g_pure is not None and g_pure < min_g:
+                    min_g = g_pure
+                    best_phase = phase
+            except:
+                continue
+        return best_phase
+
+    def _get_atomic_masses(self):
+        """获取原子质量表"""
+        return {
+            'FE': 55.845, 'C': 12.011, 'SI': 28.085, 'MN': 54.938,
+            'CR': 51.996, 'NI': 58.693, 'MO': 95.94, 'CU': 63.546,
+            'AL': 26.982, 'TI': 47.867, 'V': 50.942, 'W': 183.84,
+            'CO': 58.933, 'N': 14.007, 'P': 30.974, 'S': 32.065,
+            'NB': 92.906, 'ZR': 91.224, 'B': 10.81, 'O': 15.999,
+            'MG': 24.305, 'ZN': 65.38, 'SN': 118.71, 'PB': 207.2
+        }
+
+    def _format_comp(self, comp):
+        """格式化输出组成"""
+        if not comp:
+            return "N/A"
+        return ", ".join([f"{k}:{v:.4f}" for k, v in comp.items() if v > 1e-6])
+
+
+# =============================================================================
 # 便捷函数
 # =============================================================================
 

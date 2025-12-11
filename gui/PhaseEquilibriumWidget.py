@@ -31,7 +31,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.utils import parse_composition_static
-from calculations.phase_equilibrium import PhaseEquilibriumCalculator
+from calculations.phase_equilibrium import PhaseEquilibriumCalculator, ManualPhaseEquilibriumCalculator
 from models.extrapolation_models import BinaryModel
 
 
@@ -71,6 +71,7 @@ class PhaseEquilibriumWidget(QWidget):
         super().__init__()
 
         self.calculator = PhaseEquilibriumCalculator()
+        self.manual_calculator = ManualPhaseEquilibriumCalculator()
         self.binary_model = BinaryModel()
         self.calc_thread = None
         self.current_results = None
@@ -96,6 +97,10 @@ class PhaseEquilibriumWidget(QWidget):
         # 功能3: 组分变化分析
         self.tab3 = self.create_composition_variation_tab()
         self.main_tabs.addTab(self.tab3, "组分变化分析")
+
+        # 功能4: 手动指定平衡相
+        self.tab4 = self.create_manual_phase_tab()
+        self.main_tabs.addTab(self.tab4, "手动指定平衡相")
 
     def create_single_point_tab(self):
         """创建单点平衡计算标签"""
@@ -879,3 +884,411 @@ class PhaseEquilibriumWidget(QWidget):
         self.cv_results_text.clear()
         self.cv_canvas.axes.clear()
         self.cv_canvas.draw()
+
+    # ========== 功能4: 手动指定平衡相 ==========
+
+    def create_manual_phase_tab(self):
+        """创建手动指定平衡相标签"""
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+
+        # 创建分割器
+        splitter = QSplitter(Qt.Horizontal)
+        layout.addWidget(splitter)
+
+        # 左侧输入面板
+        left_widget = self.create_manual_phase_input_panel()
+
+        # 右侧结果面板
+        right_widget = self.create_manual_phase_results_panel()
+
+        splitter.addWidget(left_widget)
+        splitter.addWidget(right_widget)
+        splitter.setSizes([400, 800])
+
+        return widget
+
+    def create_manual_phase_input_panel(self):
+        """创建手动指定平衡相输入面板"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # 输入参数分组
+        input_group = QGroupBox("输入参数")
+        input_layout = QGridLayout(input_group)
+        input_layout.setSpacing(15)
+        input_layout.setContentsMargins(20, 25, 20, 20)
+
+        row = 0
+
+        # 合金成分（自动调整大小）
+        input_layout.addWidget(QLabel("合金成分:"), row, 0, Qt.AlignRight)
+        self.mp_composition_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+        self.mp_composition_input.setText("Fe0.95C0.03Si0.02")
+        self.mp_composition_input.setPlaceholderText("例如: Fe0.95C0.03Si0.02")
+        self.mp_composition_input.setToolTip("输入格式: 元素符号+摩尔分数")
+        input_layout.addWidget(self.mp_composition_input, row, 1)
+        row += 1
+
+        # 平衡相输入
+        input_layout.addWidget(QLabel("平衡相:"), row, 0, Qt.AlignRight)
+        self.mp_phase_input = QLineEdit("Fe3C")
+        self.mp_phase_input.setPlaceholderText("例如: Fe3C, BCC_A2, LIQUID")
+        self.mp_phase_input.setToolTip(
+            "支持格式:\n"
+            "- 化合物: Fe3C, TiC, Ni3Al, Cr23C6\n"
+            "- 溶体相: LIQUID, BCC_A2, FCC_A1, HCP_A3"
+        )
+        input_layout.addWidget(self.mp_phase_input, row, 1)
+        row += 1
+
+        # 化合物吉布斯能（可选）
+        input_layout.addWidget(QLabel("化合物吉布斯能:"), row, 0, Qt.AlignRight)
+        gibbs_layout = QHBoxLayout()
+        self.mp_gibbs_input = QLineEdit("")
+        self.mp_gibbs_input.setPlaceholderText("可选，留空则自动估算")
+        self.mp_gibbs_input.setToolTip("仅对化合物有效。如果不填，将使用Miedema模型估算。")
+        gibbs_layout.addWidget(self.mp_gibbs_input)
+        gibbs_layout.addWidget(QLabel("J/mol"))
+        input_layout.addLayout(gibbs_layout, row, 1)
+        row += 1
+
+        # 温度
+        input_layout.addWidget(QLabel("温度 (K):"), row, 0, Qt.AlignRight)
+        self.mp_temperature_input = QLineEdit("1273")
+        self.mp_temperature_input.setPlaceholderText("温度 (K)")
+        input_layout.addWidget(self.mp_temperature_input, row, 1)
+        row += 1
+
+        # 外推模型
+        input_layout.addWidget(QLabel("外推模型:"), row, 0, Qt.AlignRight)
+        self.mp_extrap_model_combo = QComboBox()
+        self.mp_extrap_model_combo.addItems([
+            "UEM1", "UEM2", "UEM2-Adv", "GSM",
+            "Muggianu", "Toop-Muggianu", "Toop-Kohler"
+        ])
+        input_layout.addWidget(self.mp_extrap_model_combo, row, 1)
+        row += 1
+
+        # 活度模型
+        input_layout.addWidget(QLabel("活度模型:"), row, 0, Qt.AlignRight)
+        self.mp_activity_model_combo = QComboBox()
+        self.mp_activity_model_combo.addItems(["Wagner", "Darken", "Elliott"])
+        input_layout.addWidget(self.mp_activity_model_combo, row, 1)
+        row += 1
+
+        layout.addWidget(input_group)
+
+        # 常用化合物提示
+        hint_group = QGroupBox("常用化合物参考")
+        hint_layout = QVBoxLayout(hint_group)
+        hint_text = QLabel(
+            "碳化物: Fe3C, Cr23C6, Cr7C3, Mo2C, VC, TiC, WC, NbC, SiC\n"
+            "氮化物: TiN, VN, AlN, CrN, Cr2N, Si3N4\n"
+            "金属间化合物: Ni3Al, NiAl, Fe3Al, FeAl, TiAl, Ti3Al\n"
+            "硅化物: FeSi, FeSi2, Fe3Si, Mg2Si\n"
+            "Laves相: Fe2Nb, Fe2Mo, Fe2Ti, Fe2W\n"
+            "溶体相: LIQUID, BCC_A2, FCC_A1, HCP_A3"
+        )
+        hint_text.setWordWrap(True)
+        hint_text.setStyleSheet("color: gray; font-size: 11px;")
+        hint_layout.addWidget(hint_text)
+        layout.addWidget(hint_group)
+
+        # 计算按钮
+        button_layout = QHBoxLayout()
+        self.mp_calculate_button = QPushButton("计算")
+        self.mp_calculate_button.setMinimumHeight(40)
+        self.mp_calculate_button.clicked.connect(self.perform_manual_phase_calculation)
+        button_layout.addWidget(self.mp_calculate_button)
+
+        self.mp_clear_button = QPushButton("清除")
+        self.mp_clear_button.setMinimumHeight(40)
+        self.mp_clear_button.clicked.connect(self.clear_manual_phase_results)
+        button_layout.addWidget(self.mp_clear_button)
+
+        layout.addLayout(button_layout)
+        layout.addStretch()
+
+        return widget
+
+    def create_manual_phase_results_panel(self):
+        """创建手动指定平衡相结果面板"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        # 进度条
+        self.mp_progress_bar = QProgressBar()
+        self.mp_progress_bar.setVisible(False)
+        self.mp_progress_bar.setRange(0, 0)
+        layout.addWidget(self.mp_progress_bar)
+
+        # 结果文本
+        results_group = QGroupBox("计算结果")
+        results_layout = QVBoxLayout(results_group)
+
+        self.mp_results_text = QTextEdit()
+        self.mp_results_text.setReadOnly(True)
+        self.mp_results_text.setMinimumHeight(250)
+        results_layout.addWidget(self.mp_results_text)
+
+        layout.addWidget(results_group)
+
+        # 结果表格
+        table_group = QGroupBox("平衡相详细信息")
+        table_layout = QVBoxLayout(table_group)
+
+        self.mp_results_table = QTableWidget()
+        self.mp_results_table.setColumnCount(5)
+        self.mp_results_table.setHorizontalHeaderLabels([
+            "相名称", "类型", "摩尔分数 (%)", "质量分数 (%)", "吉布斯能 (J/mol)"
+        ])
+        table_layout.addWidget(self.mp_results_table)
+
+        layout.addWidget(table_group)
+
+        # 相组成表格
+        comp_group = QGroupBox("相组成详细")
+        comp_layout = QVBoxLayout(comp_group)
+
+        self.mp_comp_table = QTableWidget()
+        self.mp_comp_table.setColumnCount(4)
+        self.mp_comp_table.setHorizontalHeaderLabels([
+            "相名称", "元素", "摩尔分数", "质量分数"
+        ])
+        comp_layout.addWidget(self.mp_comp_table)
+
+        layout.addWidget(comp_group)
+
+        # 饼图
+        chart_group = QGroupBox("相分数可视化")
+        chart_layout = QVBoxLayout(chart_group)
+
+        self.mp_canvas = MplCanvas(self, width=6, height=4, dpi=100)
+        chart_layout.addWidget(self.mp_canvas)
+
+        layout.addWidget(chart_group)
+
+        return widget
+
+    def perform_manual_phase_calculation(self):
+        """执行手动指定平衡相计算"""
+        try:
+            # 解析输入
+            comp_str = self.mp_composition_input.text().strip()
+            if not comp_str:
+                QMessageBox.warning(self, "输入错误", "请输入合金成分！")
+                return
+
+            phase_str = self.mp_phase_input.text().strip()
+            if not phase_str:
+                QMessageBox.warning(self, "输入错误", "请输入平衡相！")
+                return
+
+            composition = parse_composition_static(comp_str)
+            temperature = float(self.mp_temperature_input.text())
+            extrap_model_name = self.mp_extrap_model_combo.currentText()
+            activity_model = self.mp_activity_model_combo.currentText()
+
+            # 解析可选的吉布斯能
+            gibbs_str = self.mp_gibbs_input.text().strip()
+            compound_gibbs_energy = float(gibbs_str) if gibbs_str else None
+
+            # 获取外推模型函数
+            extrap_func = getattr(self.binary_model, extrap_model_name)
+
+            # 显示进度
+            self.mp_progress_bar.setVisible(True)
+            self.mp_calculate_button.setEnabled(False)
+
+            # 执行计算
+            result = self.manual_calculator.calculate_manual_equilibrium(
+                alloy_composition=composition,
+                equilibrium_phase=phase_str,
+                temperature=temperature,
+                compound_gibbs_energy=compound_gibbs_energy,
+                extrapolation_func=extrap_func,
+                extrapolation_model_name=extrap_model_name,
+                activity_model=activity_model
+            )
+
+            # 显示结果
+            self.display_manual_phase_results(result, composition, phase_str, temperature)
+
+        except ValueError as e:
+            QMessageBox.warning(self, "输入错误", f"输入参数无效:\n{str(e)}")
+        except Exception as e:
+            QMessageBox.critical(self, "计算错误", f"计算过程中发生错误:\n{str(e)}")
+        finally:
+            self.mp_progress_bar.setVisible(False)
+            self.mp_calculate_button.setEnabled(True)
+
+    def display_manual_phase_results(self, result, composition, phase_str, temperature):
+        """显示手动指定平衡相计算结果"""
+        # 显示文本结果
+        text = f"=== 手动指定平衡相计算结果 ===\n\n"
+        text += f"状态: {result.get('status', 'unknown')}\n"
+        text += f"消息: {result.get('message', '')}\n"
+        text += f"温度: {temperature:.2f} K\n"
+        text += f"指定平衡相: {phase_str}\n"
+        text += f"总合金组成: {composition}\n\n"
+
+        eq_phase = result.get('equilibrium_phase')
+        if eq_phase:
+            text += f"--- 平衡相信息 ---\n"
+            text += f"相名称: {eq_phase['name']}\n"
+            text += f"相类型: {eq_phase['type']}\n"
+            text += f"摩尔分数: {eq_phase['mole_fraction']:.6f} ({eq_phase['mole_fraction']*100:.2f}%)\n"
+            text += f"质量分数: {eq_phase['mass_fraction']:.6f} ({eq_phase['mass_fraction']*100:.2f}%)\n"
+            text += f"吉布斯能: {eq_phase['gibbs_energy']:.2f} J/mol\n"
+            text += f"相组成: {eq_phase['composition']}\n\n"
+
+        matrix_phase = result.get('matrix_phase')
+        if matrix_phase and matrix_phase.get('composition'):
+            text += f"--- 基体相信息 ---\n"
+            text += f"相名称: {matrix_phase['name']}\n"
+            text += f"摩尔分数: {matrix_phase['mole_fraction']:.6f} ({matrix_phase['mole_fraction']*100:.2f}%)\n"
+            text += f"相组成: {matrix_phase['composition']}\n\n"
+
+        details = result.get('calculation_details', {})
+        if details:
+            text += f"--- 计算细节 ---\n"
+            for key, value in details.items():
+                text += f"{key}: {value}\n"
+
+        self.mp_results_text.setPlainText(text)
+
+        # 填充结果表格
+        self.fill_manual_phase_table(result)
+
+        # 填充组成表格
+        self.fill_manual_comp_table(result)
+
+        # 绘制饼图
+        self.plot_manual_phase_chart(result)
+
+    def fill_manual_phase_table(self, result):
+        """填充手动指定平衡相结果表格"""
+        self.mp_results_table.setRowCount(0)
+
+        row = 0
+        eq_phase = result.get('equilibrium_phase')
+        if eq_phase:
+            self.mp_results_table.insertRow(row)
+            self.mp_results_table.setItem(row, 0, QTableWidgetItem(eq_phase['name']))
+            self.mp_results_table.setItem(row, 1, QTableWidgetItem(eq_phase['type']))
+            self.mp_results_table.setItem(row, 2, QTableWidgetItem(f"{eq_phase['mole_fraction']*100:.4f}"))
+            self.mp_results_table.setItem(row, 3, QTableWidgetItem(f"{eq_phase['mass_fraction']*100:.4f}"))
+            self.mp_results_table.setItem(row, 4, QTableWidgetItem(f"{eq_phase['gibbs_energy']:.2f}"))
+            row += 1
+
+        matrix_phase = result.get('matrix_phase')
+        if matrix_phase and matrix_phase.get('composition'):
+            self.mp_results_table.insertRow(row)
+            self.mp_results_table.setItem(row, 0, QTableWidgetItem(matrix_phase['name']))
+            self.mp_results_table.setItem(row, 1, QTableWidgetItem("matrix"))
+            self.mp_results_table.setItem(row, 2, QTableWidgetItem(f"{matrix_phase['mole_fraction']*100:.4f}"))
+            self.mp_results_table.setItem(row, 3, QTableWidgetItem("-"))
+            self.mp_results_table.setItem(row, 4, QTableWidgetItem("-"))
+            row += 1
+
+        self.mp_results_table.resizeColumnsToContents()
+
+    def fill_manual_comp_table(self, result):
+        """填充相组成详细表格"""
+        self.mp_comp_table.setRowCount(0)
+
+        # 原子质量
+        atomic_masses = {
+            'FE': 55.845, 'C': 12.011, 'SI': 28.085, 'MN': 54.938,
+            'CR': 51.996, 'NI': 58.693, 'MO': 95.94, 'CU': 63.546,
+            'AL': 26.982, 'TI': 47.867, 'V': 50.942, 'W': 183.84,
+            'CO': 58.933, 'N': 14.007, 'P': 30.974, 'S': 32.065,
+            'NB': 92.906, 'ZR': 91.224, 'B': 10.81, 'O': 15.999,
+            'MG': 24.305, 'ZN': 65.38
+        }
+
+        row = 0
+
+        # 平衡相组成
+        eq_phase = result.get('equilibrium_phase')
+        if eq_phase and eq_phase.get('composition'):
+            comp = eq_phase['composition']
+            total_mass = sum(comp.get(el, 0) * atomic_masses.get(el.upper(), 50)
+                           for el in comp)
+
+            for elem, mole_frac in comp.items():
+                self.mp_comp_table.insertRow(row)
+                mass = mole_frac * atomic_masses.get(elem.upper(), 50)
+                mass_frac = mass / total_mass if total_mass > 0 else 0
+
+                self.mp_comp_table.setItem(row, 0, QTableWidgetItem(eq_phase['name']))
+                self.mp_comp_table.setItem(row, 1, QTableWidgetItem(elem))
+                self.mp_comp_table.setItem(row, 2, QTableWidgetItem(f"{mole_frac:.6f}"))
+                self.mp_comp_table.setItem(row, 3, QTableWidgetItem(f"{mass_frac:.6f}"))
+                row += 1
+
+        # 基体相组成
+        matrix_phase = result.get('matrix_phase')
+        if matrix_phase and matrix_phase.get('composition'):
+            comp = matrix_phase['composition']
+            total_mass = sum(comp.get(el, 0) * atomic_masses.get(el.upper(), 50)
+                           for el in comp)
+
+            for elem, mole_frac in comp.items():
+                if mole_frac < 1e-6:
+                    continue
+                self.mp_comp_table.insertRow(row)
+                mass = mole_frac * atomic_masses.get(elem.upper(), 50)
+                mass_frac = mass / total_mass if total_mass > 0 else 0
+
+                self.mp_comp_table.setItem(row, 0, QTableWidgetItem(matrix_phase['name']))
+                self.mp_comp_table.setItem(row, 1, QTableWidgetItem(elem))
+                self.mp_comp_table.setItem(row, 2, QTableWidgetItem(f"{mole_frac:.6f}"))
+                self.mp_comp_table.setItem(row, 3, QTableWidgetItem(f"{mass_frac:.6f}"))
+                row += 1
+
+        self.mp_comp_table.resizeColumnsToContents()
+
+    def plot_manual_phase_chart(self, result):
+        """绘制手动指定平衡相饼图"""
+        self.mp_canvas.axes.clear()
+
+        labels = []
+        fractions = []
+
+        eq_phase = result.get('equilibrium_phase')
+        if eq_phase:
+            labels.append(eq_phase['name'])
+            fractions.append(eq_phase['mole_fraction'])
+
+        matrix_phase = result.get('matrix_phase')
+        if matrix_phase and matrix_phase.get('mole_fraction', 0) > 0.001:
+            labels.append(matrix_phase['name'])
+            fractions.append(matrix_phase['mole_fraction'])
+
+        if not labels or sum(fractions) < 0.001:
+            self.mp_canvas.axes.text(0.5, 0.5, '无有效相分数数据',
+                                     ha='center', va='center', fontsize=12)
+            self.mp_canvas.draw()
+            return
+
+        # 定义颜色
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8']
+
+        # 绘制饼图
+        self.mp_canvas.axes.pie(
+            fractions, labels=labels, autopct='%1.2f%%',
+            startangle=90, colors=colors[:len(labels)]
+        )
+        self.mp_canvas.axes.set_title('相分数分布', fontsize=14, fontweight='bold')
+
+        self.mp_canvas.draw()
+
+    def clear_manual_phase_results(self):
+        """清除手动指定平衡相结果"""
+        self.mp_results_text.clear()
+        self.mp_results_table.setRowCount(0)
+        self.mp_comp_table.setRowCount(0)
+        self.mp_canvas.axes.clear()
+        self.mp_canvas.draw()
