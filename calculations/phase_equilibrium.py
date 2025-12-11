@@ -795,6 +795,13 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 return True
         return False
 
+    def is_pure_element(self, phase_name: str) -> bool:
+        """判断是否为纯元素相（如 C, Si, Fe 等）"""
+        import re
+        # 纯元素：1-2个字母，可选的数字1
+        pattern = r'^([A-Z][a-z]?)1?$'
+        return bool(re.match(pattern, phase_name.strip()))
+
     def calculate_manual_equilibrium(self,
                                      alloy_composition: Dict[str, float],
                                      equilibrium_phase: str,
@@ -869,13 +876,20 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                                                extrapolation_func,
                                                extrapolation_model_name: str,
                                                activity_model: str) -> Dict:
-        """计算化合物相的平衡"""
-        print(f"[计算化合物相平衡: {compound_formula}]")
+        """计算化合物相或纯元素相的平衡"""
+        # 判断是否为纯元素
+        is_element = self.is_pure_element(compound_formula)
+        phase_type = 'element' if is_element else 'compound'
+
+        if is_element:
+            print(f"[计算纯元素相平衡: {compound_formula}]")
+        else:
+            print(f"[计算化合物相平衡: {compound_formula}]")
 
         try:
-            # 解析化合物组成
+            # 解析化合物/元素组成
             compound_comp = self.parse_compound_formula(compound_formula)
-            print(f"  化合物组成: {self._format_comp(compound_comp)}")
+            print(f"  组成: {self._format_comp(compound_comp)}")
         except ValueError as e:
             return {
                 'status': 'error',
@@ -894,32 +908,36 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 'matrix_phase': None
             }
 
-        # 计算化合物的形成能 ΔG_f（不含参考态）
+        # 计算形成能 ΔG_f（不含参考态）
+        # 对于纯元素，形成能为 0
         if compound_gibbs_energy is not None:
             g_compound = compound_gibbs_energy
             print(f"  使用用户输入的形成能 ΔG_f: {g_compound:.2f} J/mol")
         else:
-            # 尝试从Miedema模型估算形成能
             g_compound = self._estimate_compound_gibbs_energy(
                 compound_comp, compound_formula, temperature
             )
-            print(f"  估算的形成能 ΔG_f: {g_compound:.2f} J/mol")
+            if is_element:
+                print(f"  纯元素形成能 ΔG_f: {g_compound:.2f} J/mol (按定义为0)")
+            else:
+                print(f"  估算的形成能 ΔG_f: {g_compound:.2f} J/mol")
 
-        # ============ 关键：检查化合物是否热力学稳定 ============
+        # ============ 关键：检查是否热力学稳定 ============
         is_stable, driving_force = self._check_compound_stability(
             alloy_composition, compound_comp, compound_formula, temperature,
             g_compound, extrapolation_func, extrapolation_model_name, activity_model
         )
 
+        phase_desc = "纯元素" if is_element else "化合物"
         if not is_stable:
-            print(f"  ⚠ 化合物 {compound_formula} 热力学不稳定，不会析出")
+            print(f"  ⚠ {phase_desc} {compound_formula} 热力学不稳定，不会析出")
             print(f"  驱动力: {driving_force:.2f} J/mol (负值表示不析出)")
             return {
                 'status': 'unstable',
-                'message': f'化合物 {compound_formula} 在当前条件下热力学不稳定，不会析出',
+                'message': f'{phase_desc} {compound_formula} 在当前条件下热力学不稳定，不会析出',
                 'equilibrium_phase': {
                     'name': compound_formula,
-                    'type': 'compound',
+                    'type': phase_type,
                     'composition': compound_comp,
                     'mole_fraction': 0.0,
                     'mass_fraction': 0.0,
@@ -939,9 +957,9 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 }
             }
 
-        print(f"  ✓ 化合物 {compound_formula} 热力学稳定，驱动力: {driving_force:.2f} J/mol (正值表示可析出)")
+        print(f"  ✓ {phase_desc} {compound_formula} 热力学稳定，驱动力: {driving_force:.2f} J/mol (正值表示可析出)")
 
-        # 计算化合物的最大生成量（受限元素约束）
+        # 计算最大生成量（受限元素约束）
         max_compound_fraction = float('inf')
         limiting_element = None
 
@@ -954,7 +972,7 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                     limiting_element = element
 
         print(f"  受限元素: {limiting_element}")
-        print(f"  最大化合物摩尔分数: {max_compound_fraction:.6f}")
+        print(f"  最大{phase_desc}摩尔分数: {max_compound_fraction:.6f}")
 
         # 计算基体相（剩余组成）
         if max_compound_fraction >= 1.0:
@@ -971,7 +989,7 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
             )
             matrix_fraction = 1.0 - compound_fraction
 
-        print(f"\n  平衡化合物量: {compound_fraction:.6f} ({compound_fraction*100:.2f}%)")
+        print(f"\n  平衡{phase_desc}量: {compound_fraction:.6f} ({compound_fraction*100:.2f}%)")
         if matrix_comp:
             print(f"  基体相组成: {self._format_comp(matrix_comp)}")
 
@@ -993,10 +1011,10 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
         return {
             'status': 'success',
-            'message': f'成功计算化合物 {compound_formula} 的平衡量',
+            'message': f'成功计算{phase_desc} {compound_formula} 的平衡量',
             'equilibrium_phase': {
                 'name': compound_formula,
-                'type': 'compound',
+                'type': phase_type,
                 'composition': compound_comp,
                 'mole_fraction': compound_fraction,
                 'mass_fraction': mass_fraction,
@@ -1271,8 +1289,14 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
         注意：返回的是形成能，不包含参考态能量。
         参考态能量会在 _check_compound_stability 中统一添加。
+
+        对于纯元素（如 C, Si），形成能为 0（按定义）。
         """
         elements = list(compound_comp.keys())
+
+        # 纯元素的形成能为 0
+        if len(elements) == 1:
+            return 0.0
 
         if len(elements) == 2:
             el1, el2 = elements
