@@ -290,11 +290,11 @@ class PrecipitationTemperatureCalculator(ThermodynamicProperties):
 
         def driving_force(T: float) -> Optional[float]:
             """
-            计算过饱和驱动力：ΔG = μ_solute - G°_precipitate
+            计算析出驱动力：ΔG = μ_solute - G°_precipitate
 
-            - ΔG > 0: 溶液欠饱和（稳定）
-            - ΔG < 0: 溶液过饱和（析出倾向）
-            - ΔG = 0: 平衡状态
+            - ΔG > 0: 溶质在溶液中化学势高于析出相，过饱和（析出倾向）
+            - ΔG < 0: 溶质在溶液中化学势低于析出相，欠饱和（稳定）
+            - ΔG = 0: 平衡状态（析出温度）
             """
             # 自动判断当前温度下的基体相
             matrix_phase, _, _ = self._determine_matrix_phase(
@@ -359,21 +359,24 @@ class PrecipitationTemperatureCalculator(ThermodynamicProperties):
         }
 
         # 情况1: 两边同号 - 无析出温度
+        # ΔG > 0: 过饱和（析出倾向）; ΔG < 0: 欠饱和（稳定）
         if df_min > 0 and df_max > 0:
+            result['status'] = 'always_supersaturated'
+            result['precipitation_temperature'] = None
+            result['precipitation_temperature_celsius'] = None
+            result['message'] = f'在 {T_min}-{T_max}K 范围内，溶质始终过饱和'
+            result['hint'] = '析出温度可能高于搜索范围上限，请尝试增大T_max'
+            result['matrix_phase_at_T_min'] = phase_at_T.get(T_min, 'Unknown')
+            result['matrix_phase_at_T_max'] = phase_at_T.get(T_max, 'Unknown')
+            return result
+
+        if df_min < 0 and df_max < 0:
             result['status'] = 'always_undersaturated'
             result['precipitation_temperature'] = None
             result['precipitation_temperature_celsius'] = None
             result['message'] = f'在 {T_min}-{T_max}K 范围内，溶质始终欠饱和，不会析出'
             result['matrix_phase_at_T_min'] = phase_at_T.get(T_min, 'Unknown')
             result['matrix_phase_at_T_max'] = phase_at_T.get(T_max, 'Unknown')
-            return result
-
-        if df_min < 0 and df_max < 0:
-            result['status'] = 'always_supersaturated'
-            result['precipitation_temperature'] = None
-            result['precipitation_temperature_celsius'] = None
-            result['message'] = f'在 {T_min}-{T_max}K 范围内，溶质始终过饱和'
-            result['hint'] = '析出温度可能高于搜索范围上限，请尝试增大T_max'
             return result
 
         # 情况2: 两边异号 - 存在析出温度
@@ -530,11 +533,11 @@ class PrecipitationTemperatureCalculator(ThermodynamicProperties):
         # ==================== 3. 定义残差函数 ====================
         def driving_force(T: float) -> Optional[float]:
             """
-            计算过饱和驱动力：ΔG = μ_solute - G°_precipitate
+            计算析出驱动力：ΔG = μ_solute - G°_precipitate
 
-            - ΔG > 0: 溶液欠饱和（稳定）
-            - ΔG < 0: 溶液过饱和（不稳定，倾向析出）
-            - ΔG = 0: 平衡状态
+            - ΔG > 0: 溶质在溶液中化学势高于析出相，过饱和（析出倾向）
+            - ΔG < 0: 溶质在溶液中化学势低于析出相，欠饱和（稳定）
+            - ΔG = 0: 平衡状态（析出温度）
             """
             # 计算溶质在溶液中的化学势
             mu_solute = self._get_chemical_potential_extended(
@@ -588,20 +591,22 @@ class PrecipitationTemperatureCalculator(ThermodynamicProperties):
         }
 
         # 情况1: 两边同号 - 无法找到析出温度
+        # ΔG > 0: 过饱和（析出倾向）; ΔG < 0: 欠饱和（稳定）
         if df_min > 0 and df_max > 0:
-            # 在整个温度范围内都欠饱和（溶液稳定）
-            result['status'] = 'always_undersaturated'
-            result['precipitation_temperature'] = None
-            result['precipitation_temperature_celsius'] = None
-            result['message'] = f'在 {T_min}-{T_max}K 范围内，溶质始终欠饱和，不会析出'
-            return result
-
-        if df_min < 0 and df_max < 0:
             # 在整个温度范围内都过饱和（析出相稳定）
             result['status'] = 'always_supersaturated'
             result['precipitation_temperature'] = None
             result['precipitation_temperature_celsius'] = None
             result['message'] = f'在 {T_min}-{T_max}K 范围内，溶质始终过饱和'
+            result['hint'] = '析出温度可能高于搜索范围上限，请尝试增大T_max'
+            return result
+
+        if df_min < 0 and df_max < 0:
+            # 在整个温度范围内都欠饱和（溶液稳定）
+            result['status'] = 'always_undersaturated'
+            result['precipitation_temperature'] = None
+            result['precipitation_temperature_celsius'] = None
+            result['message'] = f'在 {T_min}-{T_max}K 范围内，溶质始终欠饱和，不会析出'
             return result
 
         # 情况2: 两边异号 - 存在析出温度
@@ -1846,9 +1851,9 @@ class PrecipitationTemperatureCalculator(ThermodynamicProperties):
             """
             计算析出驱动力：ΔG = Σ(xᵢ · μᵢ_matrix) - G_compound
 
-            - ΔG > 0: 基体相稳定（化合物欠饱和）
-            - ΔG < 0: 化合物稳定（化合物过饱和，倾向析出）
-            - ΔG = 0: 两相平衡
+            - ΔG > 0: 元素在基体中化学势高于化合物，过饱和（析出倾向）
+            - ΔG < 0: 元素在基体中化学势低于化合物，欠饱和（不析出）
+            - ΔG = 0: 两相平衡（析出温度）
             """
             # 计算各元素在基体中的化学势加权和
             weighted_mu_sum = 0.0
@@ -1904,19 +1909,20 @@ class PrecipitationTemperatureCalculator(ThermodynamicProperties):
         }
 
         # 分析驱动力符号
+        # ΔG > 0: 过饱和（析出倾向）; ΔG < 0: 欠饱和（稳定）
         if df_min > 0 and df_max > 0:
-            result['status'] = 'always_undersaturated'
-            result['precipitation_temperature'] = None
-            result['precipitation_temperature_celsius'] = None
-            result['message'] = f'在 {T_min}-{T_max}K 范围内，{precipitate_phase} 始终欠饱和，不会析出'
-            return result
-
-        if df_min < 0 and df_max < 0:
             result['status'] = 'always_supersaturated'
             result['precipitation_temperature'] = None
             result['precipitation_temperature_celsius'] = None
             result['message'] = f'在 {T_min}-{T_max}K 范围内，{precipitate_phase} 始终过饱和'
             result['hint'] = '析出温度可能高于搜索范围上限，请尝试增大T_max'
+            return result
+
+        if df_min < 0 and df_max < 0:
+            result['status'] = 'always_undersaturated'
+            result['precipitation_temperature'] = None
+            result['precipitation_temperature_celsius'] = None
+            result['message'] = f'在 {T_min}-{T_max}K 范围内，{precipitate_phase} 始终欠饱和，不会析出'
             return result
 
         # 存在析出温度，使用二分法求解

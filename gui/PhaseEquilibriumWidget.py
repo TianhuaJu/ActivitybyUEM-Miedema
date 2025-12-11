@@ -1393,7 +1393,8 @@ class PhaseEquilibriumWidget(QWidget):
         if messages:
             combined['message'] = '，'.join(messages)
         else:
-            combined['message'] = '无稳定平衡相'
+            combined['message'] = '基体相稳定，指定的析出相均不会析出'
+            combined['matrix_stable'] = True  # 标记基体相稳定
 
         return combined
 
@@ -1444,8 +1445,18 @@ class PhaseEquilibriumWidget(QWidget):
                     text += f"质量分数: {eq_phase['mass_fraction']:.6f} ({eq_phase['mass_fraction']*100:.2f}%)\n"
                     text += f"吉布斯能: {eq_phase['gibbs_energy']:.2f} J/mol\n\n"
 
+        # 基体相信息
         matrix_phase = result.get('matrix_phase')
-        if matrix_phase and matrix_phase.get('composition'):
+        matrix_stable = result.get('matrix_stable', False)
+
+        if matrix_stable and matrix_phase:
+            # 基体相稳定，没有析出相
+            text += f"--- 基体相信息 (稳定) ---\n"
+            text += f"✓ 基体相稳定，所有指定析出相均不会析出\n"
+            text += f"相名称: {matrix_phase.get('name', 'Matrix')}\n"
+            text += f"摩尔分数: 1.0000 (100.00%)\n"
+            text += f"组成: {composition}\n"
+        elif matrix_phase and matrix_phase.get('composition'):
             text += f"--- 基体相信息 ---\n"
             text += f"相名称: {matrix_phase['name']}\n"
             text += f"摩尔分数: {matrix_phase['mole_fraction']:.6f} ({matrix_phase['mole_fraction']*100:.2f}%)\n"
@@ -1501,8 +1512,20 @@ class PhaseEquilibriumWidget(QWidget):
                     self.mp_results_table.setItem(row, 4, QTableWidgetItem(f"{eq_phase['gibbs_energy']:.2f}"))
                 row += 1
 
+        # 基体相信息
         matrix_phase = result.get('matrix_phase')
-        if matrix_phase and matrix_phase.get('composition'):
+        matrix_stable = result.get('matrix_stable', False)
+
+        if matrix_stable and matrix_phase:
+            # 基体相稳定，100%基体
+            self.mp_results_table.insertRow(row)
+            self.mp_results_table.setItem(row, 0, QTableWidgetItem(f"{matrix_phase.get('name', 'Matrix')} (稳定)"))
+            self.mp_results_table.setItem(row, 1, QTableWidgetItem("matrix"))
+            self.mp_results_table.setItem(row, 2, QTableWidgetItem("100.0000"))
+            self.mp_results_table.setItem(row, 3, QTableWidgetItem("100.0000"))
+            self.mp_results_table.setItem(row, 4, QTableWidgetItem("-"))
+            row += 1
+        elif matrix_phase and matrix_phase.get('composition'):
             self.mp_results_table.insertRow(row)
             self.mp_results_table.setItem(row, 0, QTableWidgetItem(matrix_phase['name']))
             self.mp_results_table.setItem(row, 1, QTableWidgetItem("matrix"))
@@ -1602,8 +1625,15 @@ class PhaseEquilibriumWidget(QWidget):
                 labels.append(eq_phase['name'])
                 fractions.append(eq_phase['mole_fraction'])
 
+        # 基体相
         matrix_phase = result.get('matrix_phase')
-        if matrix_phase and matrix_phase.get('mole_fraction', 0) > 0.001:
+        matrix_stable = result.get('matrix_stable', False)
+
+        if matrix_stable and matrix_phase:
+            # 基体相稳定，100%基体
+            labels.append(f"{matrix_phase.get('name', 'Matrix')} (稳定)")
+            fractions.append(1.0)
+        elif matrix_phase and matrix_phase.get('mole_fraction', 0) > 0.001:
             labels.append(matrix_phase['name'])
             fractions.append(matrix_phase['mole_fraction'])
 

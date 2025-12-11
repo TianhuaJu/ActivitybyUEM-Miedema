@@ -786,8 +786,12 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
     def is_solution_phase(self, phase_name: str) -> bool:
         """判断是否为溶体相"""
         phase_upper = phase_name.upper().replace(' ', '_')
+        # 必须完全匹配溶体相名称，避免 "C" 被误判为 "FCC_A1" 的一部分
+        if phase_upper in self.solution_phases:
+            return True
+        # 检查是否以溶体相名称开头（如 "BCC_A2#1"）
         for sol_phase in self.solution_phases:
-            if sol_phase in phase_upper or phase_upper in sol_phase:
+            if phase_upper.startswith(sol_phase):
                 return True
         return False
 
