@@ -1320,7 +1320,7 @@ class PhaseEquilibriumWidget(QWidget):
 
         stable_count = 0
         unstable_count = 0
-        skipped_count = 0
+        # 跳过的相不计入统计，也不显示在结果中
 
         # 创建一个从phase名称到原始索引的映射
         phase_to_index = {phase: i for i, phase in enumerate(phases)}
@@ -1373,36 +1373,15 @@ class PhaseEquilibriumWidget(QWidget):
                     combined['matrix_phase'] = result.get('matrix_phase')
 
             elif status == 'skipped':
-                # 因为元素被消耗而跳过的相
-                skipped_count += 1
-                if eq_phase:
-                    eq_phase['stability_status'] = 'skipped'
-                    combined['equilibrium_phases'].append(eq_phase)
-                else:
-                    combined['equilibrium_phases'].append({
-                        'name': phase_name or f'Phase_{original_index}',
-                        'type': 'compound',
-                        'composition': {},
-                        'mole_fraction': 0,
-                        'mass_fraction': 0,
-                        'gibbs_energy': 0,
-                        'stability_status': 'skipped',
-                        'is_stable': False,
-                        'message': result.get('message', '元素已被消耗')
-                    })
+                # 因为元素被消耗而跳过的相，不在结果中显示
+                # 只打印日志，不添加到 equilibrium_phases 列表
+                print(f"  {phase_name}: 元素已被更稳定相消耗，跳过")
+                pass
 
             else:
-                # 其他错误
-                combined['equilibrium_phases'].append({
-                    'name': phase_name or f'Phase_{original_index}',
-                    'type': 'error',
-                    'composition': {},
-                    'mole_fraction': 0,
-                    'mass_fraction': 0,
-                    'gibbs_energy': 0,
-                    'stability_status': 'error',
-                    'error': result.get('message', '计算失败')
-                })
+                # 其他错误，也不显示
+                print(f"  {phase_name}: 计算出错 - {result.get('message', '未知错误')}")
+                pass
 
         # 更新消息
         messages = []
@@ -1410,8 +1389,6 @@ class PhaseEquilibriumWidget(QWidget):
             messages.append(f'成功计算 {stable_count} 个平衡相')
         if unstable_count > 0:
             messages.append(f'{unstable_count} 个相热力学不稳定')
-        if skipped_count > 0:
-            messages.append(f'{skipped_count} 个相因元素消耗而无法形成')
 
         if messages:
             combined['message'] = '，'.join(messages)
@@ -1453,11 +1430,6 @@ class PhaseEquilibriumWidget(QWidget):
                     text += f"⚠ 稳定性: 热力学不稳定，不会析出\n"
                     if current_df is not None:
                         text += f"驱动力: {current_df:.2f} J/mol (正值表示不稳定)\n"
-                    text += f"摩尔分数: 0.0000 (0.00%)\n\n"
-                elif stability_status == 'skipped':
-                    text += f"⚠ 状态: 因元素已被更稳定相消耗而无法形成\n"
-                    if original_df is not None:
-                        text += f"初始驱动力: {original_df:.2f} J/mol\n"
                     text += f"摩尔分数: 0.0000 (0.00%)\n\n"
                 elif eq_phase.get('error'):
                     text += f"错误: {eq_phase['error']}\n\n"
@@ -1520,14 +1492,6 @@ class PhaseEquilibriumWidget(QWidget):
                     self.mp_results_table.setItem(row, 3, QTableWidgetItem("0.0000"))
                     g_energy = eq_phase.get('gibbs_energy', 0)
                     self.mp_results_table.setItem(row, 4, QTableWidgetItem(f"{g_energy:.2f}" if g_energy else "-"))
-                elif stability_status == 'skipped':
-                    # 因元素被消耗而跳过的相
-                    self.mp_results_table.setItem(row, 0, QTableWidgetItem(f"{eq_phase['name']} (元素已消耗)"))
-                    self.mp_results_table.setItem(row, 1, QTableWidgetItem(eq_phase['type']))
-                    self.mp_results_table.setItem(row, 2, QTableWidgetItem("0.0000"))
-                    self.mp_results_table.setItem(row, 3, QTableWidgetItem("0.0000"))
-                    g_energy = eq_phase.get('gibbs_energy', 0)
-                    self.mp_results_table.setItem(row, 4, QTableWidgetItem(f"{g_energy:.2f}" if g_energy else "-"))
                 else:
                     # 稳定相正常显示
                     self.mp_results_table.setItem(row, 0, QTableWidgetItem(eq_phase['name']))
@@ -1572,9 +1536,9 @@ class PhaseEquilibriumWidget(QWidget):
             eq_phases = [result.get('equilibrium_phase')]
 
         for eq_phase in eq_phases:
-            # 跳过不稳定相、跳过的相和错误相（它们不会形成）
+            # 跳过不稳定相和错误相（它们不会形成，不显示组成）
             stability_status = eq_phase.get('stability_status', 'unknown') if eq_phase else 'error'
-            if stability_status in ['unstable', 'skipped', 'error'] or eq_phase.get('error'):
+            if stability_status in ['unstable', 'error'] or eq_phase.get('error'):
                 continue
 
             if eq_phase and eq_phase.get('composition'):
@@ -1629,9 +1593,9 @@ class PhaseEquilibriumWidget(QWidget):
             eq_phases = [result.get('equilibrium_phase')]
 
         for eq_phase in eq_phases:
-            # 跳过不稳定相、跳过的相和错误相（它们的mole_fraction为0）
+            # 跳过不稳定相和错误相（它们的mole_fraction为0）
             stability_status = eq_phase.get('stability_status', 'unknown') if eq_phase else 'error'
-            if stability_status in ['unstable', 'skipped', 'error'] or eq_phase.get('error'):
+            if stability_status in ['unstable', 'error'] or eq_phase.get('error'):
                 continue
 
             if eq_phase and eq_phase.get('mole_fraction', 0) > 0.001:
