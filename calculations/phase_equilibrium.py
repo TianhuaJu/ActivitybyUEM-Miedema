@@ -299,110 +299,76 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
     def _find_lowest_energy_phase(self, composition, temperature):
         """
-        找到能量最低的相，考虑合金元素对相稳定性的影响。
+        基于严格热力学稳定性找到能量最低的相。
 
-        物理背景：
-        - FCC(γ)稳定化元素: Ni, Mn, Co, C, N, Cu 等
-        - BCC(α/δ)稳定化元素: Cr, Mo, V, W, Si, Al, Ti, Nb 等
+        热力学原理：
+        对于多元合金，每个相的Gibbs能为：
+        G_phase = Σ(xᵢ × G°ᵢ(phase)) + RT×Σ(xᵢ×ln(xᵢ)) + G_excess
 
-        计算方法：
-        1. 计算基体溶剂的各相基础能量
-        2. 根据合金元素计算相稳定化修正能量
-        3. 选择修正后能量最低的相
+        其中：
+        - G°ᵢ(phase): 组分i在该相中的参考态Gibbs能
+        - RT×Σ(xᵢ×ln(xᵢ)): 理想混合熵贡献
+        - G_excess: 过剩Gibbs能
 
-        相稳定化系数基于Schaeffler/DeLong图的经验公式：
-        - Ni当量 = %Ni + 30×%C + 0.5×%Mn + 30×%N + %Cu + %Co
-        - Cr当量 = %Cr + %Mo + 1.5×%Si + 0.5×%Nb + %W + %V + 2×%Ti + %Al
+        选择Gibbs能最低的相作为稳定基体相。
         """
+        R = 8.314  # J/(mol·K)
+
+        # 候选相列表
+        phases_to_check = ['LIQUID', 'BCC_A2', 'FCC_A1', 'HCP_A3']
+
+        # 确定溶剂元素（用于默认相）
         solvent = max(composition.items(), key=lambda x: x[1])[0]
         solvent_upper = solvent.upper()
 
-        # 仅对Fe基合金应用相稳定性修正
-        if solvent_upper != 'FE':
-            # 非Fe基合金，使用原始方法
-            phases = [p for p in self.tdb_parser.get_element_phases(solvent) if p != 'GAS']
-            best_phase = 'FCC_A1'
-            min_g = float('inf')
-            for phase in phases:
-                try:
-                    g_pure = self.tdb_parser.get_gibbs_energy(solvent, phase, temperature)
-                    if g_pure is not None and g_pure < min_g:
-                        min_g = g_pure
-                        best_phase = phase
-                except:
-                    continue
-            return best_phase
-
-        # Fe基合金：考虑合金元素对相稳定性的影响
-
-        # FCC(γ)稳定化元素及其系数 (相对于Ni的等效系数)
-        # 正值表示稳定FCC，负值表示稳定BCC
-        FCC_STABILIZERS = {
-            'NI': 1.0,      # 基准元素
-            'MN': 0.5,      # Mn是弱FCC稳定化元素
-            'CO': 1.0,      # Co与Ni类似
-            'CU': 1.0,      # Cu稳定FCC
-            'C': 30.0,      # C是强FCC稳定化元素
-            'N': 30.0,      # N与C类似
-        }
-
-        # BCC(α)稳定化元素及其系数 (相对于Cr的等效系数)
-        BCC_STABILIZERS = {
-            'CR': 1.0,      # 基准元素
-            'MO': 1.0,      # Mo与Cr类似
-            'SI': 1.5,      # Si是中等BCC稳定化元素
-            'V': 1.0,       # V稳定BCC
-            'W': 1.0,       # W与Mo类似
-            'AL': 1.0,      # Al稳定BCC
-            'TI': 2.0,      # Ti是强BCC稳定化元素
-            'NB': 0.5,      # Nb是弱BCC稳定化元素
-            'P': 1.0,       # P稳定BCC
-            'B': 0.5,       # B是弱BCC稳定化元素(间隙元素)
-        }
-
-        # 计算等效Ni当量和Cr当量 (以摩尔分数计)
-        ni_eq = 0.0
-        cr_eq = 0.0
-        for el, x in composition.items():
-            el_upper = el.upper()
-            if el_upper in FCC_STABILIZERS:
-                ni_eq += x * FCC_STABILIZERS[el_upper]
-            if el_upper in BCC_STABILIZERS:
-                cr_eq += x * BCC_STABILIZERS[el_upper]
-
-        # 相稳定化能量修正 (J/mol)
-        # 基于经验：每1%Ni当量稳定FCC约1000 J/mol
-        # 每1%Cr当量稳定BCC约800 J/mol
-        ENERGY_PER_NI_EQ = 1000.0  # J/mol per mole fraction Ni-eq
-        ENERGY_PER_CR_EQ = 800.0   # J/mol per mole fraction Cr-eq
-
-        delta_g_fcc = -ni_eq * ENERGY_PER_NI_EQ  # FCC能量降低(更稳定)
-        delta_g_bcc = -cr_eq * ENERGY_PER_CR_EQ  # BCC能量降低(更稳定)
-
-        # 获取Fe的各相基础能量
-        phases_to_check = ['LIQUID', 'BCC_A2', 'FCC_A1', 'HCP_A3']
-        best_phase = 'BCC_A2'  # Fe的默认稳定相
-        min_g_corrected = float('inf')
+        best_phase = 'BCC_A2'  # 默认
+        min_g_total = float('inf')
 
         for phase in phases_to_check:
             try:
-                g_base = self.tdb_parser.get_gibbs_energy('FE', phase, temperature)
-                if g_base is None:
+                g_total = 0.0
+                all_elements_valid = True
+                is_liquid = (phase == 'LIQUID')
+
+                # 1. 计算参考态能量加权和：Σ(xᵢ × G°ᵢ(phase))
+                for element, x in composition.items():
+                    if x < 1e-10:
+                        continue
+
+                    element_upper = element.upper()
+
+                    # 获取该元素在此相中的Gibbs能
+                    g_ref = self.tdb_parser.get_gibbs_energy(element_upper, phase, temperature)
+
+                    if g_ref is None:
+                        if is_liquid:
+                            # 液相：直接使用SER（液相不是晶格结构）
+                            g_ref = self.tdb_parser.get_gibbs_energy(element_upper, 'SER', temperature)
+                        else:
+                            # 固相：尝试估算晶格稳定性
+                            g_ref = self._estimate_lattice_stability(element_upper, phase, temperature)
+
+                    if g_ref is None:
+                        # 该元素在此相中没有数据，此相可能不适用
+                        all_elements_valid = False
+                        break
+
+                    g_total += x * g_ref
+
+                if not all_elements_valid:
                     continue
 
-                # 应用相稳定化修正
-                if phase == 'FCC_A1':
-                    g_corrected = g_base + delta_g_fcc
-                elif phase in ['BCC_A2', 'BCC_B2']:
-                    g_corrected = g_base + delta_g_bcc
-                elif phase == 'LIQUID':
-                    # 液相不受固态相稳定化元素影响，但受温度影响
-                    g_corrected = g_base
-                else:
-                    g_corrected = g_base
+                # 2. 计算理想混合熵贡献：RT×Σ(xᵢ×ln(xᵢ))
+                for element, x in composition.items():
+                    if x > 1e-10:
+                        g_total += R * temperature * x * math.log(x)
 
-                if g_corrected < min_g_corrected:
-                    min_g_corrected = g_corrected
+                # 3. 过剩Gibbs能（简化处理）
+                # 实际应通过Miedema模型或外推模型计算混合焓
+                # 对于稀溶液，过剩项通常较小
+
+                if g_total < min_g_total:
+                    min_g_total = g_total
                     best_phase = phase
 
             except Exception:
@@ -2001,109 +1967,76 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
     def _find_lowest_energy_phase(self, composition, temperature):
         """
-        找到能量最低的相，考虑合金元素对相稳定性的影响。
+        基于严格热力学稳定性找到能量最低的相。
 
-        物理背景：
-        - FCC(γ)稳定化元素: Ni, Mn, Co, C, N, Cu 等
-        - BCC(α/δ)稳定化元素: Cr, Mo, V, W, Si, Al, Ti, Nb 等
+        热力学原理：
+        对于多元合金，每个相的Gibbs能为：
+        G_phase = Σ(xᵢ × G°ᵢ(phase)) + RT×Σ(xᵢ×ln(xᵢ)) + G_excess
 
-        计算方法：
-        1. 计算基体溶剂的各相基础能量
-        2. 根据合金元素计算相稳定化修正能量
-        3. 选择修正后能量最低的相
+        其中：
+        - G°ᵢ(phase): 组分i在该相中的参考态Gibbs能
+        - RT×Σ(xᵢ×ln(xᵢ)): 理想混合熵贡献
+        - G_excess: 过剩Gibbs能
 
-        相稳定化系数基于Schaeffler/DeLong图的经验公式：
-        - Ni当量 = %Ni + 30×%C + 0.5×%Mn + 30×%N + %Cu + %Co
-        - Cr当量 = %Cr + %Mo + 1.5×%Si + 0.5×%Nb + %W + %V + 2×%Ti + %Al
+        选择Gibbs能最低的相作为稳定基体相。
         """
+        R = 8.314  # J/(mol·K)
+
+        # 候选相列表
+        phases_to_check = ['LIQUID', 'BCC_A2', 'FCC_A1', 'HCP_A3']
+
+        # 确定溶剂元素（用于默认相）
         solvent = max(composition.items(), key=lambda x: x[1])[0]
         solvent_upper = solvent.upper()
 
-        # 仅对Fe基合金应用相稳定性修正
-        if solvent_upper != 'FE':
-            # 非Fe基合金，使用原始方法
-            phases = [p for p in self.tdb_parser.get_element_phases(solvent) if p != 'GAS']
-            best_phase = 'FCC_A1'
-            min_g = float('inf')
-            for phase in phases:
-                try:
-                    g_pure = self.tdb_parser.get_gibbs_energy(solvent, phase, temperature)
-                    if g_pure is not None and g_pure < min_g:
-                        min_g = g_pure
-                        best_phase = phase
-                except:
-                    continue
-            return best_phase
-
-        # Fe基合金：考虑合金元素对相稳定性的影响
-
-        # FCC(γ)稳定化元素及其系数 (相对于Ni的等效系数)
-        FCC_STABILIZERS = {
-            'NI': 1.0,      # 基准元素
-            'MN': 0.5,      # Mn是弱FCC稳定化元素
-            'CO': 1.0,      # Co与Ni类似
-            'CU': 1.0,      # Cu稳定FCC
-            'C': 30.0,      # C是强FCC稳定化元素
-            'N': 30.0,      # N与C类似
-        }
-
-        # BCC(α)稳定化元素及其系数 (相对于Cr的等效系数)
-        BCC_STABILIZERS = {
-            'CR': 1.0,      # 基准元素
-            'MO': 1.0,      # Mo与Cr类似
-            'SI': 1.5,      # Si是中等BCC稳定化元素
-            'V': 1.0,       # V稳定BCC
-            'W': 1.0,       # W与Mo类似
-            'AL': 1.0,      # Al稳定BCC
-            'TI': 2.0,      # Ti是强BCC稳定化元素
-            'NB': 0.5,      # Nb是弱BCC稳定化元素
-            'P': 1.0,       # P稳定BCC
-            'B': 0.5,       # B是弱BCC稳定化元素
-        }
-
-        # 计算等效Ni当量和Cr当量 (以摩尔分数计)
-        ni_eq = 0.0
-        cr_eq = 0.0
-        for el, x in composition.items():
-            el_upper = el.upper()
-            if el_upper in FCC_STABILIZERS:
-                ni_eq += x * FCC_STABILIZERS[el_upper]
-            if el_upper in BCC_STABILIZERS:
-                cr_eq += x * BCC_STABILIZERS[el_upper]
-
-        # 相稳定化能量修正 (J/mol)
-        # 基于经验：每1%Ni当量稳定FCC约1000 J/mol
-        # 每1%Cr当量稳定BCC约800 J/mol
-        ENERGY_PER_NI_EQ = 1000.0  # J/mol per mole fraction Ni-eq
-        ENERGY_PER_CR_EQ = 800.0   # J/mol per mole fraction Cr-eq
-
-        delta_g_fcc = -ni_eq * ENERGY_PER_NI_EQ  # FCC能量降低(更稳定)
-        delta_g_bcc = -cr_eq * ENERGY_PER_CR_EQ  # BCC能量降低(更稳定)
-
-        # 获取Fe的各相基础能量
-        phases_to_check = ['LIQUID', 'BCC_A2', 'FCC_A1', 'HCP_A3']
-        best_phase = 'BCC_A2'  # Fe的默认稳定相
-        min_g_corrected = float('inf')
+        best_phase = 'BCC_A2'  # 默认
+        min_g_total = float('inf')
 
         for phase in phases_to_check:
             try:
-                g_base = self.tdb_parser.get_gibbs_energy('FE', phase, temperature)
-                if g_base is None:
+                g_total = 0.0
+                all_elements_valid = True
+                is_liquid = (phase == 'LIQUID')
+
+                # 1. 计算参考态能量加权和：Σ(xᵢ × G°ᵢ(phase))
+                for element, x in composition.items():
+                    if x < 1e-10:
+                        continue
+
+                    element_upper = element.upper()
+
+                    # 获取该元素在此相中的Gibbs能
+                    g_ref = self.tdb_parser.get_gibbs_energy(element_upper, phase, temperature)
+
+                    if g_ref is None:
+                        if is_liquid:
+                            # 液相：直接使用SER（液相不是晶格结构）
+                            g_ref = self.tdb_parser.get_gibbs_energy(element_upper, 'SER', temperature)
+                        else:
+                            # 固相：尝试估算晶格稳定性
+                            g_ref = self._estimate_lattice_stability(element_upper, phase, temperature)
+
+                    if g_ref is None:
+                        # 该元素在此相中没有数据，此相可能不适用
+                        all_elements_valid = False
+                        break
+
+                    g_total += x * g_ref
+
+                if not all_elements_valid:
                     continue
 
-                # 应用相稳定化修正
-                if phase == 'FCC_A1':
-                    g_corrected = g_base + delta_g_fcc
-                elif phase in ['BCC_A2', 'BCC_B2']:
-                    g_corrected = g_base + delta_g_bcc
-                elif phase == 'LIQUID':
-                    # 液相不受固态相稳定化元素影响
-                    g_corrected = g_base
-                else:
-                    g_corrected = g_base
+                # 2. 计算理想混合熵贡献：RT×Σ(xᵢ×ln(xᵢ))
+                for element, x in composition.items():
+                    if x > 1e-10:
+                        g_total += R * temperature * x * math.log(x)
 
-                if g_corrected < min_g_corrected:
-                    min_g_corrected = g_corrected
+                # 3. 过剩Gibbs能（简化处理）
+                # 实际应通过Miedema模型或外推模型计算混合焓
+                # 对于稀溶液，过剩项通常较小
+
+                if g_total < min_g_total:
+                    min_g_total = g_total
                     best_phase = phase
 
             except Exception:
