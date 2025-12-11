@@ -17,8 +17,22 @@ import copy
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 from itertools import combinations
+from dataclasses import dataclass
 
 from calculations.phase_diagram import PhaseDiagramCalculator
+
+
+# =============================================================================
+# 数据类定义
+# =============================================================================
+
+@dataclass
+class PhaseInfo:
+    """相信息数据类"""
+    name: str                      # 相名称
+    fraction: float                # 相分数（摩尔分数）
+    composition: Dict[str, float]  # 相组成
+    gibbs_energy: float            # 吉布斯能 (J/mol)
 
 
 # =============================================================================
@@ -396,6 +410,78 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
             'temperatures': temperatures.tolist(),
             'phase_fractions': phase_fractions
         }
+
+    def calculate_phase_equilibrium_at_temperature(self,
+                                                    composition: Dict[str, float],
+                                                    temperature: float,
+                                                    extrapolation_func,
+                                                    extrapolation_model_name: str,
+                                                    activity_model: str,
+                                                    max_phases: int = 5) -> Dict:
+        """
+        计算指定温度下的相平衡（GUI接口方法）
+
+        参数:
+            composition: 合金组成 {元素: 摩尔分数}
+            temperature: 温度 (K)
+            extrapolation_func: 外推模型函数
+            extrapolation_model_name: 外推模型名称
+            activity_model: 活度模型
+            max_phases: 最大相数
+
+        返回:
+            Dict: {
+                'status': 状态,
+                'temperature': 温度,
+                'total_composition': 总组成,
+                'total_gibbs_energy': 总吉布斯能,
+                'message': 消息,
+                'phases': [PhaseInfo, ...]
+            }
+        """
+        try:
+            # 调用核心计算方法
+            phases_data = self.calculate_phase_equilibrium(
+                alloy_composition=composition,
+                temperature=temperature,
+                extrapolation_model_func=extrapolation_func,
+                extrapolation_model_name=extrapolation_model_name,
+                activity_model=activity_model,
+                max_iterations=max_phases
+            )
+
+            # 转换为PhaseInfo对象列表
+            phases = []
+            total_gibbs_energy = 0.0
+
+            for phase_data in phases_data:
+                phase_info = PhaseInfo(
+                    name=phase_data.get('phase_name', 'Unknown'),
+                    fraction=phase_data.get('mole_fraction', 0.0),
+                    composition=phase_data.get('composition', {}),
+                    gibbs_energy=phase_data.get('gibbs_energy', 0.0)
+                )
+                phases.append(phase_info)
+                total_gibbs_energy += phase_info.fraction * phase_info.gibbs_energy
+
+            return {
+                'status': 'success',
+                'temperature': temperature,
+                'total_composition': composition,
+                'total_gibbs_energy': total_gibbs_energy,
+                'message': f'成功计算 {len(phases)} 个平衡相',
+                'phases': phases
+            }
+
+        except Exception as e:
+            return {
+                'status': 'error',
+                'temperature': temperature,
+                'total_composition': composition,
+                'total_gibbs_energy': 0.0,
+                'message': f'计算失败: {str(e)}',
+                'phases': []
+            }
 
 
 # =============================================================================
