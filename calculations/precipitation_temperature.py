@@ -1581,6 +1581,438 @@ class PrecipitationTemperatureCalculator(ThermodynamicProperties):
             'total_precipitates': len(results)
         }
 
+    # ========================================================================
+    # 手动指定析出相的析出温度计算
+    # ========================================================================
+
+    # 常用化合物化学计量比数据库（与ManualPhaseEquilibriumCalculator共享）
+    COMPOUND_DATABASE = {
+        # 碳化物
+        'Fe3C': {'Fe': 3, 'C': 1},
+        'Cr23C6': {'Cr': 23, 'C': 6},
+        'Cr7C3': {'Cr': 7, 'C': 3},
+        'Cr3C2': {'Cr': 3, 'C': 2},
+        'Mo2C': {'Mo': 2, 'C': 1},
+        'VC': {'V': 1, 'C': 1},
+        'TiC': {'Ti': 1, 'C': 1},
+        'WC': {'W': 1, 'C': 1},
+        'NbC': {'Nb': 1, 'C': 1},
+        'SiC': {'Si': 1, 'C': 1},
+        # 氮化物
+        'TiN': {'Ti': 1, 'N': 1},
+        'VN': {'V': 1, 'N': 1},
+        'AlN': {'Al': 1, 'N': 1},
+        'CrN': {'Cr': 1, 'N': 1},
+        'Cr2N': {'Cr': 2, 'N': 1},
+        'Si3N4': {'Si': 3, 'N': 4},
+        # 金属间化合物
+        'Fe2Al5': {'Fe': 2, 'Al': 5},
+        'Fe3Al': {'Fe': 3, 'Al': 1},
+        'FeAl': {'Fe': 1, 'Al': 1},
+        'FeAl3': {'Fe': 1, 'Al': 3},
+        'Ni3Al': {'Ni': 3, 'Al': 1},
+        'NiAl': {'Ni': 1, 'Al': 1},
+        'TiAl': {'Ti': 1, 'Al': 1},
+        'Ti3Al': {'Ti': 3, 'Al': 1},
+        'TiAl3': {'Ti': 1, 'Al': 3},
+        'Mg2Si': {'Mg': 2, 'Si': 1},
+        'MgZn2': {'Mg': 1, 'Zn': 2},
+        'Al2Cu': {'Al': 2, 'Cu': 1},
+        'Al3Ni': {'Al': 3, 'Ni': 1},
+        'FeSi': {'Fe': 1, 'Si': 1},
+        'FeSi2': {'Fe': 1, 'Si': 2},
+        'Fe3Si': {'Fe': 3, 'Si': 1},
+        'Fe5Si3': {'Fe': 5, 'Si': 3},
+        # 氧化物
+        'Al2O3': {'Al': 2, 'O': 3},
+        'SiO2': {'Si': 1, 'O': 2},
+        'FeO': {'Fe': 1, 'O': 1},
+        'Fe2O3': {'Fe': 2, 'O': 3},
+        'Fe3O4': {'Fe': 3, 'O': 4},
+        'MnO': {'Mn': 1, 'O': 1},
+        'Cr2O3': {'Cr': 2, 'O': 3},
+        # Laves相
+        'Fe2Nb': {'Fe': 2, 'Nb': 1},
+        'Fe2Mo': {'Fe': 2, 'Mo': 1},
+        'Fe2Ti': {'Fe': 2, 'Ti': 1},
+        'Fe2W': {'Fe': 2, 'W': 1},
+        # σ相
+        'FeCr': {'Fe': 1, 'Cr': 1},
+        # 硫化物
+        'MnS': {'Mn': 1, 'S': 1},
+        'FeS': {'Fe': 1, 'S': 1},
+    }
+
+    def _parse_compound_formula(self, formula: str) -> Dict[str, float]:
+        """
+        解析化合物化学式，返回摩尔分数组成。
+
+        支持格式:
+        - 数据库中的化合物: "Fe3C", "TiC", "Ni3Al"
+        - 自定义格式: "Fe3C1" (元素后跟数字)
+
+        返回: {元素: 摩尔分数}
+        """
+        import re
+
+        formula = formula.strip()
+
+        # 首先检查数据库
+        if formula in self.COMPOUND_DATABASE:
+            stoich = self.COMPOUND_DATABASE[formula]
+            total = sum(stoich.values())
+            return {el.upper(): n / total for el, n in stoich.items()}
+
+        # 解析自定义格式
+        pattern = r'([A-Z][a-z]?)(\d*\.?\d*)'
+        matches = re.findall(pattern, formula)
+
+        if not matches:
+            raise ValueError(f"无法解析化合物化学式: {formula}")
+
+        stoichiometry = {}
+        for element, count_str in matches:
+            if not element:
+                continue
+            count = float(count_str) if count_str else 1.0
+            element_upper = element.upper()
+            stoichiometry[element_upper] = stoichiometry.get(element_upper, 0) + count
+
+        if not stoichiometry:
+            raise ValueError(f"无法解析化合物化学式: {formula}")
+
+        # 转换为摩尔分数
+        total = sum(stoichiometry.values())
+        return {el: n / total for el, n in stoichiometry.items()}
+
+    def _estimate_compound_formation_energy(
+        self,
+        compound_comp: Dict[str, float],
+        compound_name: str,
+        temperature: float
+    ) -> Optional[float]:
+        """
+        估算化合物的生成能（J/mol）
+
+        使用Miedema模型估算，或使用经验值
+        """
+        # 常见化合物的生成焓估算值（J/mol）
+        formation_enthalpies = {
+            'Fe3C': -25000,      # 渗碳体
+            'TiC': -185000,     # 碳化钛（非常稳定）
+            'TiN': -337000,     # 氮化钛（极其稳定）
+            'VC': -102000,      # 碳化钒
+            'VN': -217000,      # 氮化钒
+            'NbC': -140000,     # 碳化铌
+            'NbN': -234000,     # 氮化铌
+            'Cr23C6': -70000,   # 铬碳化物
+            'Cr7C3': -50000,
+            'Mo2C': -45000,
+            'WC': -40000,
+            'AlN': -318000,     # 氮化铝
+            'SiC': -73000,
+            'Si3N4': -750000,
+            'Ni3Al': -45000,
+            'NiAl': -60000,
+            'Fe3Al': -25000,
+            'FeAl': -30000,
+            'TiAl': -40000,
+            'Ti3Al': -25000,
+            'MnS': -110000,
+            'FeS': -60000,
+        }
+
+        if compound_name in formation_enthalpies:
+            H_f = formation_enthalpies[compound_name]
+            # 简化处理：G ≈ H - T*S，假设 S_f ≈ 0 for 稳定化合物
+            return H_f
+
+        # 对于未知化合物，尝试用Miedema模型
+        elements = list(compound_comp.keys())
+        if len(elements) == 2:
+            try:
+                from models.miedema_model import MiedemaModel
+                mm = MiedemaModel(tuple(elements), "SOLID")
+                x_A = compound_comp[elements[0]]
+                H_mix = mm.calc_enthalpy_formation(x_A)
+                return H_mix * 1000  # kJ/mol -> J/mol
+            except Exception:
+                pass
+
+        # 默认返回一个保守估计
+        return -50000  # 默认 -50 kJ/mol
+
+    def calculate_manual_precipitate_temperature(
+        self,
+        alloy_composition: Dict[str, float],
+        precipitate_phase: str,
+        solution_phase: str = 'SOLID',
+        compound_gibbs_energy: Optional[float] = None,
+        extrapolation_func=None,
+        extrapolation_model_name: str = 'UEM1',
+        activity_model: str = 'Wagner',
+        T_min: float = 300.0,
+        T_max: float = 3000.0,
+        tolerance: float = 1.0
+    ) -> dict:
+        """
+        计算手动指定析出相与基体相之间的平衡温度（析出温度）
+
+        热力学原理：
+        -----------
+        找到温度T，使得析出相与基体相处于平衡状态。
+        对于化合物析出相，平衡条件为：
+            Σ(xᵢ · μᵢ_matrix) = G_compound
+
+        其中：
+        - xᵢ: 化合物中各元素的摩尔分数
+        - μᵢ_matrix: 元素i在基体相中的化学势
+        - G_compound: 化合物的吉布斯能
+
+        参数：
+        -----
+        alloy_composition : Dict[str, float]
+            合金成分（摩尔分数）
+        precipitate_phase : str
+            析出相名称（化合物化学式，如 "Fe3C", "TiC"）
+        solution_phase : str
+            基体相类型：'LIQUID' 或 'SOLID'
+        compound_gibbs_energy : Optional[float]
+            化合物的吉布斯能 (J/mol)，如果为None则自动估算
+        extrapolation_func : callable
+            外推模型函数
+        extrapolation_model_name : str
+            外推模型名称
+        activity_model : str
+            活度模型
+        T_min, T_max : float
+            温度搜索范围 (K)
+        tolerance : float
+            温度求解精度 (K)
+
+        返回：
+        -----
+        dict : 包含析出温度和相关信息的结果字典
+        """
+        # 解析化合物组成
+        try:
+            compound_comp = self._parse_compound_formula(precipitate_phase)
+        except ValueError as e:
+            return {
+                'status': 'error',
+                'message': str(e),
+                'precipitation_temperature': None
+            }
+
+        # 归一化合金组成
+        total = sum(alloy_composition.values())
+        if total <= 0:
+            return {
+                'status': 'error',
+                'message': '合金成分不能为空',
+                'precipitation_temperature': None
+            }
+        composition = {k.upper(): v / total for k, v in alloy_composition.items()}
+
+        # 检查合金中是否含有化合物所需的元素
+        missing_elements = [el for el in compound_comp if el not in composition or composition[el] < 1e-10]
+        if missing_elements:
+            return {
+                'status': 'error',
+                'message': f"合金中缺少析出相所需元素: {', '.join(missing_elements)}",
+                'precipitation_temperature': None,
+                'compound_composition': compound_comp
+            }
+
+        # 确定溶剂
+        solvent = max(composition.items(), key=lambda item: item[1])[0]
+
+        # 确定基体相
+        if solution_phase.upper() == 'LIQUID':
+            tdb_solution_phase = 'LIQUID'
+        else:
+            ref_phase = self.tdb_parser.get_stable_phase(solvent, (T_min + T_max) / 2)
+            tdb_solution_phase = ref_phase if ref_phase else 'BCC_A2'
+
+        # 获取或估算化合物的生成能
+        if compound_gibbs_energy is not None:
+            g_compound_base = compound_gibbs_energy
+        else:
+            g_compound_base = self._estimate_compound_formation_energy(
+                compound_comp, precipitate_phase, (T_min + T_max) / 2
+            )
+
+        def precipitation_driving_force(T: float) -> Optional[float]:
+            """
+            计算析出驱动力：ΔG = Σ(xᵢ · μᵢ_matrix) - G_compound
+
+            - ΔG > 0: 基体相稳定（化合物欠饱和）
+            - ΔG < 0: 化合物稳定（化合物过饱和，倾向析出）
+            - ΔG = 0: 两相平衡
+            """
+            # 计算各元素在基体中的化学势加权和
+            weighted_mu_sum = 0.0
+            for element, x_in_compound in compound_comp.items():
+                mu_element = self._get_chemical_potential_extended(
+                    composition=composition,
+                    component=element,
+                    temperature=T,
+                    tdb_phase=tdb_solution_phase,
+                    extrapolation_func=extrapolation_func,
+                    extrapolation_model=extrapolation_model_name,
+                    activity_model=activity_model
+                )
+                if mu_element is None:
+                    return None
+                weighted_mu_sum += x_in_compound * mu_element
+
+            # 化合物的吉布斯能（考虑温度效应）
+            # G_compound(T) ≈ H_f + 纯元素参考态能量的加权和
+            g_compound = g_compound_base
+            for element, x_in_compound in compound_comp.items():
+                g_ref = self.tdb_parser.get_gibbs_energy(element, tdb_solution_phase, T)
+                if g_ref is None:
+                    g_ref = self._estimate_lattice_stability(element, tdb_solution_phase, T)
+                if g_ref is not None:
+                    g_compound += x_in_compound * g_ref
+
+            return weighted_mu_sum - g_compound
+
+        # 评估边界条件
+        df_min = precipitation_driving_force(T_min)
+        df_max = precipitation_driving_force(T_max)
+
+        if df_min is None or df_max is None:
+            return {
+                'status': 'calculation_error',
+                'message': '无法计算析出驱动力，请检查热力学数据',
+                'precipitation_temperature': None,
+                'precipitate_phase': precipitate_phase,
+                'compound_composition': compound_comp
+            }
+
+        result = {
+            'precipitate_phase': precipitate_phase,
+            'compound_composition': compound_comp,
+            'solution_phase': tdb_solution_phase,
+            'solvent': solvent,
+            'composition': composition,
+            'driving_force_at_T_min': df_min,
+            'driving_force_at_T_max': df_max,
+            'compound_gibbs_energy_base': g_compound_base,
+            'method': 'manual_precipitate_equilibrium'
+        }
+
+        # 分析驱动力符号
+        if df_min > 0 and df_max > 0:
+            result['status'] = 'always_undersaturated'
+            result['precipitation_temperature'] = None
+            result['precipitation_temperature_celsius'] = None
+            result['message'] = f'在 {T_min}-{T_max}K 范围内，{precipitate_phase} 始终欠饱和，不会析出'
+            return result
+
+        if df_min < 0 and df_max < 0:
+            result['status'] = 'always_supersaturated'
+            result['precipitation_temperature'] = None
+            result['precipitation_temperature_celsius'] = None
+            result['message'] = f'在 {T_min}-{T_max}K 范围内，{precipitate_phase} 始终过饱和'
+            result['hint'] = '析出温度可能高于搜索范围上限，请尝试增大T_max'
+            return result
+
+        # 存在析出温度，使用二分法求解
+        try:
+            def solve_func(T):
+                df = precipitation_driving_force(T)
+                return df if df is not None else 1e10
+
+            T_precip = brentq(solve_func, T_min, T_max, xtol=tolerance)
+
+            # 验证结果
+            df_check = precipitation_driving_force(T_precip)
+
+            result['status'] = 'success'
+            result['precipitation_temperature'] = float(T_precip)
+            result['precipitation_temperature_celsius'] = float(T_precip - 273.15)
+            result['message'] = f'{precipitate_phase} 的析出温度计算成功'
+            result['residual'] = df_check
+
+            return result
+
+        except ValueError as e:
+            result['status'] = 'numerical_error'
+            result['precipitation_temperature'] = None
+            result['precipitation_temperature_celsius'] = None
+            result['message'] = f'数值求解失败: {str(e)}'
+            return result
+
+    def calculate_multi_precipitate_temperature(
+        self,
+        alloy_composition: Dict[str, float],
+        precipitate_phases: List[str],
+        solution_phase: str = 'SOLID',
+        compound_gibbs_energies: Optional[List[Optional[float]]] = None,
+        extrapolation_func=None,
+        extrapolation_model_name: str = 'UEM1',
+        activity_model: str = 'Wagner'
+    ) -> dict:
+        """
+        计算多个手动指定析出相的析出温度，并按温度排序
+
+        参数：
+        -----
+        alloy_composition : 合金成分
+        precipitate_phases : 析出相列表（化合物化学式）
+        solution_phase : 基体相类型
+        compound_gibbs_energies : 各化合物的吉布斯能（可选）
+        extrapolation_func : 外推模型函数
+        extrapolation_model_name : 外推模型名称
+        activity_model : 活度模型
+
+        返回：
+        -----
+        dict : 包含各析出相析出温度的字典
+        """
+        if compound_gibbs_energies is None:
+            compound_gibbs_energies = [None] * len(precipitate_phases)
+
+        results = {
+            'precipitates': [],
+            'precipitation_temperatures': [],
+            'precipitation_sequence': [],
+            'details': {}
+        }
+
+        for i, phase in enumerate(precipitate_phases):
+            gibbs = compound_gibbs_energies[i] if i < len(compound_gibbs_energies) else None
+
+            result = self.calculate_manual_precipitate_temperature(
+                alloy_composition=alloy_composition,
+                precipitate_phase=phase,
+                solution_phase=solution_phase,
+                compound_gibbs_energy=gibbs,
+                extrapolation_func=extrapolation_func,
+                extrapolation_model_name=extrapolation_model_name,
+                activity_model=activity_model
+            )
+
+            results['details'][phase] = result
+
+            if result['status'] == 'success':
+                results['precipitates'].append(phase)
+                results['precipitation_temperatures'].append(result['precipitation_temperature'])
+
+        # 按析出温度排序（降序，高温先析出）
+        if results['precipitates']:
+            sorted_pairs = sorted(
+                zip(results['precipitates'], results['precipitation_temperatures']),
+                key=lambda x: x[1],
+                reverse=True
+            )
+            results['precipitation_sequence'] = [p[0] for p in sorted_pairs]
+            results['sorted_temperatures'] = [p[1] for p in sorted_pairs]
+
+        return results
+
 
 # 便捷接口
 def calculate_precipitation_temp(

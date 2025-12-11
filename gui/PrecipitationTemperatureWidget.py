@@ -56,6 +56,8 @@ class PrecipitationWorker(QThread):
                 self._run_curve_calculation()
             elif self.calc_type == 'multi_solute':
                 self._run_multi_solute_calculation()
+            elif self.calc_type == 'manual_precipitate':
+                self._run_manual_precipitate_calculation()
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -121,6 +123,24 @@ class PrecipitationWorker(QThread):
             'params': self.params
         })
 
+    def _run_manual_precipitate_calculation(self):
+        """执行手动指定析出相的析出温度计算"""
+        result = self.calculator.calculate_multi_precipitate_temperature(
+            alloy_composition=self.params['composition'],
+            precipitate_phases=self.params['precipitates'],
+            solution_phase=self.params['solution_phase'],
+            compound_gibbs_energies=self.params['gibbs_energies'],
+            extrapolation_func=self.params['extrap_func'],
+            extrapolation_model_name=self.params['extrap_model_name'],
+            activity_model=self.params['activity_model']
+        )
+
+        self.calculation_finished.emit({
+            'type': 'manual_precipitate',
+            'result': result,
+            'params': self.params
+        })
+
 
 class MplCanvas(FigureCanvas):
     """Matplotlib画布"""
@@ -174,19 +194,23 @@ class PrecipitationTemperatureWidget(QWidget):
         self.mode_single = QRadioButton("单点析出温度计算")
         self.mode_curve = QRadioButton("析出温度-成分曲线")
         self.mode_multi = QRadioButton("多溶质析出顺序")
+        self.mode_manual = QRadioButton("手动指定析出相")
 
         self.mode_button_group.addButton(self.mode_single, 1)
         self.mode_button_group.addButton(self.mode_curve, 2)
         self.mode_button_group.addButton(self.mode_multi, 3)
+        self.mode_button_group.addButton(self.mode_manual, 4)
 
         self.mode_single.setChecked(True)
         self.mode_single.toggled.connect(self.on_mode_changed)
         self.mode_curve.toggled.connect(self.on_mode_changed)
         self.mode_multi.toggled.connect(self.on_mode_changed)
+        self.mode_manual.toggled.connect(self.on_mode_changed)
 
         mode_layout.addWidget(self.mode_single)
         mode_layout.addWidget(self.mode_curve)
         mode_layout.addWidget(self.mode_multi)
+        mode_layout.addWidget(self.mode_manual)
 
         layout.addWidget(mode_group)
 
@@ -315,6 +339,28 @@ class PrecipitationTemperatureWidget(QWidget):
             self.input_layout.addWidget(self.solutes_input, row, 1)
             row += 1
 
+        elif self.mode_manual.isChecked():
+            # 手动指定析出相计算
+            self.input_layout.addWidget(QLabel("合金成分:"), row, 0, Qt.AlignRight)
+            self.alloy_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+            self.alloy_input.setText("Fe0.95C0.03Ti0.02")
+            self.alloy_input.setPlaceholderText("例如: Fe0.95C0.03Ti0.02")
+            self.input_layout.addWidget(self.alloy_input, row, 1)
+            row += 1
+
+            self.input_layout.addWidget(QLabel("析出相:"), row, 0, Qt.AlignRight)
+            self.precipitate_input = AutoResizeTextEdit(min_lines=1, max_lines=2)
+            self.precipitate_input.setText("Fe3C")
+            self.precipitate_input.setPlaceholderText("化合物，如: Fe3C, TiC（多个用逗号分隔）")
+            self.input_layout.addWidget(self.precipitate_input, row, 1)
+            row += 1
+
+            self.input_layout.addWidget(QLabel("吉布斯能(J/mol):"), row, 0, Qt.AlignRight)
+            self.gibbs_input = QLineEdit("auto")
+            self.gibbs_input.setPlaceholderText("auto表示自动估算，多个用逗号分隔")
+            self.input_layout.addWidget(self.gibbs_input, row, 1)
+            row += 1
+
         # 基体状态（所有模式通用）
         self.input_layout.addWidget(QLabel("基体状态:"), row, 0, Qt.AlignRight)
         self.phase_combo = QComboBox()
@@ -390,6 +436,8 @@ class PrecipitationTemperatureWidget(QWidget):
                 self.calculate_curve()
             elif self.mode_multi.isChecked():
                 self.calculate_multi_solute()
+            elif self.mode_manual.isChecked():
+                self.calculate_manual_precipitate()
         except Exception as e:
             QMessageBox.critical(self, "错误", f"参数错误: {str(e)}")
 
@@ -496,6 +544,66 @@ class PrecipitationTemperatureWidget(QWidget):
 
         self.on_calculation_started()
         self.results_text.append("\n正在计算多溶质析出温度...\n")
+        self.worker.start()
+
+    def calculate_manual_precipitate(self):
+        """手动指定析出相计算"""
+        import re
+
+        alloy_str = self.alloy_input.text().strip()
+        precipitate_str = self.precipitate_input.text().strip()
+        gibbs_str = self.gibbs_input.text().strip()
+
+        composition = parse_composition_static(alloy_str)
+        if not composition:
+            QMessageBox.warning(self, "错误", "无法解析合金成分")
+            return
+
+        composition = {k.upper(): v for k, v in composition.items()}
+
+        # 解析多个析出相（支持逗号或空格分隔）
+        precipitates = [p.strip() for p in re.split(r'[,\s]+', precipitate_str) if p.strip()]
+        if not precipitates:
+            QMessageBox.warning(self, "错误", "请输入析出相")
+            return
+
+        # 解析多个吉布斯能
+        gibbs_energies = []
+        if gibbs_str:
+            gibbs_parts = [g.strip() for g in gibbs_str.split(',')]
+            for g in gibbs_parts:
+                if g.lower() == 'auto' or g == '':
+                    gibbs_energies.append(None)
+                else:
+                    try:
+                        gibbs_energies.append(float(g))
+                    except ValueError:
+                        gibbs_energies.append(None)
+
+        # 补齐吉布斯能列表
+        while len(gibbs_energies) < len(precipitates):
+            gibbs_energies.append(None)
+
+        solution_phase = 'LIQUID' if self.phase_combo.currentText() == "液相" else 'SOLID'
+
+        params = {
+            'composition': composition,
+            'precipitates': precipitates,
+            'gibbs_energies': gibbs_energies,
+            'solution_phase': solution_phase,
+            'extrap_func': self.get_extrap_func(),
+            'extrap_model_name': self.extrap_model_combo.currentText(),
+            'activity_model': self.activity_model_combo.currentText(),
+            'alloy_str': alloy_str
+        }
+
+        self.worker = PrecipitationWorker('manual_precipitate', params, self.calculator)
+        self.worker.calculation_finished.connect(self.on_manual_finished)
+        self.worker.error_occurred.connect(self.on_error)
+
+        self.on_calculation_started()
+        precip_list = ', '.join(precipitates)
+        self.results_text.append(f"\n正在计算手动指定析出相 [{precip_list}] 的析出温度...\n")
         self.worker.start()
 
     def on_calculation_started(self):
@@ -737,6 +845,87 @@ class PrecipitationTemperatureWidget(QWidget):
             self.chart_canvas.axes.set_ylabel('析出温度 (K)')
             self.chart_canvas.axes.set_xlabel('溶质元素')
             self.chart_canvas.axes.set_title('各溶质析出温度对比 (按析出顺序排列)')
+            self.chart_canvas.axes.grid(True, alpha=0.3, axis='y')
+
+        self.chart_canvas.draw()
+
+    def on_manual_finished(self, data):
+        """手动指定析出相计算完成"""
+        self.on_calculation_finished()
+
+        result = data['result']
+        params = data['params']
+
+        self.calculation_count += 1
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        text = "\n" + "=" * 70 + "\n"
+        text += f"【计算批次 #{self.calculation_count}】 {timestamp}\n"
+        text += "手动指定析出相的析出温度计算\n"
+        text += "=" * 70 + "\n\n"
+
+        text += f"合金成分: {params['alloy_str']}\n"
+        text += f"析出相: {', '.join(params['precipitates'])}\n"
+        text += f"基体状态: {params['solution_phase']}\n"
+        text += f"外推模型: {params['extrap_model_name']}\n"
+        text += f"活度模型: {params['activity_model']}\n\n"
+
+        if result.get('precipitation_sequence'):
+            text += "析出顺序 (按温度从高到低):\n"
+            text += "-" * 40 + "\n"
+
+            for i, phase in enumerate(result['precipitation_sequence']):
+                T = result['sorted_temperatures'][i]
+                text += f"  {i+1}. {phase}: {T:.1f} K ({T-273.15:.1f} °C)\n"
+
+            text += "\n说明: 温度越高的析出相越先析出\n"
+        else:
+            text += "无法确定析出顺序\n"
+
+        # 各析出相详细信息
+        text += "\n详细结果:\n"
+        text += "-" * 40 + "\n"
+
+        for phase, detail in result['details'].items():
+            text += f"\n{phase}:\n"
+            text += f"  状态: {detail['status']}\n"
+            if detail['status'] == 'success':
+                text += f"  析出温度: {detail['precipitation_temperature']:.1f} K\n"
+                text += f"  析出温度: {detail['precipitation_temperature_celsius']:.1f} °C\n"
+                text += f"  基体相: {detail.get('solution_phase', 'N/A')}\n"
+                # 显示化合物组成
+                if 'compound_composition' in detail:
+                    comp_str = ", ".join([f"{k}:{v:.3f}" for k, v in detail['compound_composition'].items()])
+                    text += f"  化合物组成: {comp_str}\n"
+            else:
+                text += f"  说明: {detail.get('message', 'N/A')}\n"
+
+        text += "\n" + "=" * 70 + "\n"
+
+        self.results_text.append(text)
+
+        # 绘制柱状图
+        self.chart_canvas.axes.clear()
+
+        if result.get('precipitation_sequence'):
+            phases = result['precipitation_sequence']
+            temps = result['sorted_temperatures']
+
+            colors = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6']
+            bar_colors = [colors[i % len(colors)] for i in range(len(phases))]
+
+            bars = self.chart_canvas.axes.bar(phases, temps, color=bar_colors)
+
+            # 添加数值标签
+            for bar, temp in zip(bars, temps):
+                height = bar.get_height()
+                self.chart_canvas.axes.text(bar.get_x() + bar.get_width()/2., height,
+                                           f'{temp:.0f}K\n({temp-273.15:.0f}°C)',
+                                           ha='center', va='bottom', fontsize=9)
+
+            self.chart_canvas.axes.set_ylabel('析出温度 (K)')
+            self.chart_canvas.axes.set_xlabel('析出相')
+            self.chart_canvas.axes.set_title('各析出相析出温度对比 (按析出顺序排列)')
             self.chart_canvas.axes.grid(True, alpha=0.3, axis='y')
 
         self.chart_canvas.draw()
