@@ -1287,50 +1287,138 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
     def _solve_compound_equilibrium(self, alloy_composition, compound_comp,
                                      temperature, g_compound, max_fraction,
                                      extrapolation_func, model_name, activity_model):
-        """求解化合物平衡量"""
-        # 简化处理：使用受限元素的量作为化合物量的上限
-        # 实际上应该通过化学势平衡来求解，但这里采用简化方法
+        """
+        求解化合物平衡量
 
-        # 计算化合物量使得剩余基体相稳定
+        热力学原理：
+        - 通过二分法找到驱动力为零的平衡点
+        - 驱动力 = Σ(xᵢ·μᵢ_matrix) - G_compound
+        - 驱动力 > 0: 需要更多化合物析出
+        - 驱动力 < 0: 化合物析出过多
+        - 驱动力 = 0: 平衡状态
+        """
         best_fraction = 0.0
         best_matrix_comp = alloy_composition.copy()
 
-        # 二分法搜索最优化合物量
-        low, high = 0.0, min(max_fraction, 0.999)
+        # 二分法搜索平衡化合物量（驱动力为零的点）
+        low, high = 0.0, min(max_fraction, 0.9999)
 
-        for _ in range(20):
-            mid = (low + high) / 2.0
+        # 首先检查初始驱动力
+        initial_df = self._calculate_driving_force_for_fraction(
+            alloy_composition, compound_comp, 0.0,
+            temperature, g_compound, extrapolation_func, model_name, activity_model
+        )
 
-            # 计算剩余组成
+        # 如果初始驱动力为负，不析出
+        if initial_df <= 0:
+            return 0.0, alloy_composition.copy()
+
+        # 检查最大析出量时的驱动力
+        max_df = self._calculate_driving_force_for_fraction(
+            alloy_composition, compound_comp, high,
+            temperature, g_compound, extrapolation_func, model_name, activity_model
+        )
+
+        # 如果最大析出量时驱动力仍为正，使用最大析出量
+        if max_df >= 0:
+            # 计算最大析出量时的基体组成
             remaining = {}
             for el in alloy_composition:
-                consumed = mid * compound_comp.get(el, 0)
+                consumed = high * compound_comp.get(el, 0)
                 remaining[el] = max(0, alloy_composition[el] - consumed)
+            total_remaining = sum(remaining.values())
+            if total_remaining > 1e-10:
+                best_matrix_comp = {k: v / total_remaining for k, v in remaining.items()}
+            return high, best_matrix_comp
+
+        # 二分法搜索驱动力为零的平衡点
+        for iteration in range(30):
+            mid = (low + high) / 2.0
+
+            # 计算该析出量下的驱动力
+            df = self._calculate_driving_force_for_fraction(
+                alloy_composition, compound_comp, mid,
+                temperature, g_compound, extrapolation_func, model_name, activity_model
+            )
+
+            if abs(df) < 100:  # 驱动力足够小，认为达到平衡
+                best_fraction = mid
+                break
+
+            if df > 0:
+                # 驱动力为正，需要更多化合物析出
+                low = mid
+                best_fraction = mid
+            else:
+                # 驱动力为负，化合物析出过多
+                high = mid
+
+        # 计算最终基体组成
+        remaining = {}
+        for el in alloy_composition:
+            consumed = best_fraction * compound_comp.get(el, 0)
+            remaining[el] = max(0, alloy_composition[el] - consumed)
+
+        total_remaining = sum(remaining.values())
+        if total_remaining > 1e-10:
+            best_matrix_comp = {k: v / total_remaining for k, v in remaining.items()}
+        else:
+            best_matrix_comp = {}
+
+        return best_fraction, best_matrix_comp
+
+    def _calculate_driving_force_for_fraction(self, alloy_composition, compound_comp,
+                                               fraction, temperature, g_compound,
+                                               extrapolation_func, model_name, activity_model):
+        """计算给定析出量下的驱动力"""
+        # 计算剩余基体组成
+        if fraction <= 0:
+            matrix_comp = alloy_composition.copy()
+        else:
+            remaining = {}
+            for el in alloy_composition:
+                consumed = fraction * compound_comp.get(el, 0)
+                remaining[el] = max(1e-15, alloy_composition[el] - consumed)
 
             total_remaining = sum(remaining.values())
             if total_remaining < 1e-10:
-                high = mid
-                continue
+                return float('-inf')  # 所有元素都被消耗
 
             matrix_comp = {k: v / total_remaining for k, v in remaining.items()}
 
-            # 检查基体相稳定性
-            solvent = max(matrix_comp.items(), key=lambda x: x[1])[0]
-            matrix_phase = self._find_lowest_energy_phase(matrix_comp, temperature)
+        # 确定基体相
+        matrix_phase = self._find_lowest_energy_phase(matrix_comp, temperature)
 
-            is_stable, _ = self._check_alloy_full_stability(
-                matrix_comp, temperature, matrix_phase,
+        # 计算驱动力：Σ(xᵢ·μᵢ_matrix) - G_compound
+        weighted_mu_sum = 0.0
+        for element, x_in_compound in compound_comp.items():
+            mu_element = self._get_chemical_potential(
+                matrix_comp, element, temperature, matrix_phase,
                 extrapolation_func, model_name, activity_model
             )
-
-            if is_stable:
-                best_fraction = mid
-                best_matrix_comp = matrix_comp.copy()
-                low = mid  # 可以尝试更多化合物
+            if mu_element is not None:
+                weighted_mu_sum += x_in_compound * mu_element
             else:
-                high = mid  # 化合物太多，基体不稳定
+                # 尝试使用纯组分Gibbs能加混合贡献
+                g_pure = self.tdb_parser.get_gibbs_energy(element, matrix_phase, temperature)
+                if g_pure is None:
+                    g_pure = self.tdb_parser.get_gibbs_energy(element, 'SER', temperature)
+                if g_pure is not None:
+                    x_el = matrix_comp.get(element, 1e-10)
+                    if x_el > 1e-15:
+                        mu_element = g_pure + 8.314 * temperature * math.log(x_el)
+                        weighted_mu_sum += x_in_compound * mu_element
 
-        return best_fraction, best_matrix_comp
+        # 计算化合物的完整Gibbs能（包含参考态）
+        g_compound_total = g_compound
+        for element, x_in_compound in compound_comp.items():
+            g_ref = self.tdb_parser.get_gibbs_energy(element, matrix_phase, temperature)
+            if g_ref is None:
+                g_ref = self.tdb_parser.get_gibbs_energy(element, 'SER', temperature)
+            if g_ref is not None:
+                g_compound_total += x_in_compound * g_ref
+
+        return weighted_mu_sum - g_compound_total
 
     def _calculate_solution_fraction(self, alloy_composition, solution_comp, excess_elements):
         """计算溶体相的摩尔分数"""
