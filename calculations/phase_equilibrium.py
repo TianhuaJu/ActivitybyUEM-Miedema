@@ -909,7 +909,7 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
         if not is_stable:
             print(f"  ⚠ 化合物 {compound_formula} 热力学不稳定，不会析出")
-            print(f"  驱动力: {driving_force:.2f} J/mol (正值表示不稳定)")
+            print(f"  驱动力: {driving_force:.2f} J/mol (负值表示不析出)")
             return {
                 'status': 'unstable',
                 'message': f'化合物 {compound_formula} 在当前条件下热力学不稳定，不会析出',
@@ -935,7 +935,7 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 }
             }
 
-        print(f"  ✓ 化合物 {compound_formula} 热力学稳定，驱动力: {driving_force:.2f} J/mol")
+        print(f"  ✓ 化合物 {compound_formula} 热力学稳定，驱动力: {driving_force:.2f} J/mol (正值表示可析出)")
 
         # 计算化合物的最大生成量（受限元素约束）
         max_compound_fraction = float('inf')
@@ -1029,8 +1029,8 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
         热力学原理:
         计算驱动力 ΔG = Σ(xᵢ · μᵢ_matrix) - G_compound
-        - ΔG < 0: 化合物稳定，可以析出
-        - ΔG > 0: 化合物不稳定，不会析出
+        - ΔG > 0: 元素在基体中化学势高于化合物，元素倾向离开基体形成化合物 → 析出
+        - ΔG < 0: 元素在基体中化学势低于化合物，元素倾向留在基体 → 不析出
         - ΔG = 0: 平衡状态
 
         返回:
@@ -1074,8 +1074,8 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         # 驱动力
         driving_force = weighted_mu_sum - g_compound_total
 
-        # 如果驱动力 < 0，化合物稳定
-        is_stable = driving_force < 0
+        # 如果驱动力 > 0，化合物可以析出（元素在基体中不稳定，倾向形成化合物）
+        is_stable = driving_force > 0
 
         return is_stable, driving_force
 

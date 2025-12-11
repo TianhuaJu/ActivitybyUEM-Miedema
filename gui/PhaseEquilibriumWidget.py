@@ -1148,12 +1148,12 @@ class PhaseEquilibriumWidget(QWidget):
                     'original_index': i
                 })
 
-            # 步骤2: 按稳定性排序（驱动力越负越稳定）
-            phase_stability_info.sort(key=lambda x: x['driving_force'])
+            # 步骤2: 按稳定性排序（驱动力越正越稳定，优先析出）
+            phase_stability_info.sort(key=lambda x: x['driving_force'], reverse=True)
 
             print(f"\n=== 相稳定性排序 ===")
             for info in phase_stability_info:
-                stability = "稳定" if info['driving_force'] < 0 else "不稳定"
+                stability = "可析出" if info['driving_force'] > 0 else "不析出"
                 print(f"  {info['phase']}: 驱动力 = {info['driving_force']:.2f} J/mol ({stability})")
 
             # 步骤3: 按稳定性顺序依次析出，更新剩余组成
@@ -1259,11 +1259,11 @@ class PhaseEquilibriumWidget(QWidget):
 
     def _calculate_phase_driving_force(self, composition, phase, temperature, gibbs_energy,
                                         extrap_func, extrap_model_name, activity_model):
-        """计算相的热力学驱动力"""
+        """计算相的热力学驱动力（ΔG > 0 表示可析出）"""
         try:
-            # 如果是溶体相，返回0（始终可以存在）
+            # 如果是溶体相，返回大正值（始终可以存在）
             if self.manual_calculator.is_solution_phase(phase):
-                return -1000.0  # 溶体相始终稳定
+                return 1000.0  # 溶体相始终稳定
 
             # 获取化合物组成
             compound_comp = self.manual_calculator.parse_compound_formula(phase)
@@ -1429,7 +1429,7 @@ class PhaseEquilibriumWidget(QWidget):
                 if stability_status == 'unstable':
                     text += f"⚠ 稳定性: 热力学不稳定，不会析出\n"
                     if current_df is not None:
-                        text += f"驱动力: {current_df:.2f} J/mol (正值表示不稳定)\n"
+                        text += f"驱动力: {current_df:.2f} J/mol (负值表示不析出)\n"
                     text += f"摩尔分数: 0.0000 (0.00%)\n\n"
                 elif eq_phase.get('error'):
                     text += f"错误: {eq_phase['error']}\n\n"
@@ -1437,9 +1437,9 @@ class PhaseEquilibriumWidget(QWidget):
                     if stability_status == 'stable':
                         text += f"✓ 稳定性: 热力学稳定，可以析出\n"
                         if original_df is not None:
-                            text += f"初始驱动力: {original_df:.2f} J/mol\n"
+                            text += f"初始驱动力: {original_df:.2f} J/mol (正值表示可析出)\n"
                         elif current_df is not None:
-                            text += f"驱动力: {current_df:.2f} J/mol\n"
+                            text += f"驱动力: {current_df:.2f} J/mol (正值表示可析出)\n"
                     text += f"摩尔分数: {eq_phase['mole_fraction']:.6f} ({eq_phase['mole_fraction']*100:.2f}%)\n"
                     text += f"质量分数: {eq_phase['mass_fraction']:.6f} ({eq_phase['mass_fraction']*100:.2f}%)\n"
                     text += f"吉布斯能: {eq_phase['gibbs_energy']:.2f} J/mol\n\n"
