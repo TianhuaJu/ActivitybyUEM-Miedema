@@ -1082,7 +1082,7 @@ class PhaseEquilibriumWidget(QWidget):
         return widget
 
     def perform_manual_phase_calculation(self):
-        """执行手动指定平衡相计算（支持多个平衡相）"""
+        """执行手动指定平衡相计算（支持多个平衡相，按稳定性顺序析出）"""
         try:
             # 解析输入
             comp_str = self.mp_composition_input.text().strip()
@@ -1131,13 +1131,75 @@ class PhaseEquilibriumWidget(QWidget):
             self.mp_progress_bar.setVisible(True)
             self.mp_calculate_button.setEnabled(False)
 
-            # 对每个平衡相执行计算
-            all_results = []
-            remaining_composition = composition.copy()
-
+            # ========== 新的多相平衡计算逻辑 ==========
+            # 步骤1: 首先计算所有相的驱动力（使用原始组成）
+            phase_stability_info = []
             for i, phase in enumerate(phases):
                 gibbs_energy = gibbs_energies[i] if i < len(gibbs_energies) else None
+                # 计算该相的驱动力
+                driving_force = self._calculate_phase_driving_force(
+                    composition, phase, temperature, gibbs_energy,
+                    extrap_func, extrap_model_name, activity_model
+                )
+                phase_stability_info.append({
+                    'phase': phase,
+                    'gibbs_energy': gibbs_energy,
+                    'driving_force': driving_force,
+                    'original_index': i
+                })
 
+            # 步骤2: 按稳定性排序（驱动力越负越稳定）
+            phase_stability_info.sort(key=lambda x: x['driving_force'])
+
+            print(f"\n=== 相稳定性排序 ===")
+            for info in phase_stability_info:
+                stability = "稳定" if info['driving_force'] < 0 else "不稳定"
+                print(f"  {info['phase']}: 驱动力 = {info['driving_force']:.2f} J/mol ({stability})")
+
+            # 步骤3: 按稳定性顺序依次析出，更新剩余组成
+            all_results = []
+            remaining_composition = composition.copy()
+            processed_phases = set()
+
+            for info in phase_stability_info:
+                phase = info['phase']
+                gibbs_energy = info['gibbs_energy']
+
+                # 检查剩余组成中是否还有足够的元素
+                compound_comp = self._get_compound_composition(phase)
+                if compound_comp:
+                    has_elements = all(
+                        remaining_composition.get(el.upper(), 0) > 1e-10
+                        for el in compound_comp
+                    )
+                    if not has_elements:
+                        print(f"  {phase}: 剩余组成中缺少必要元素，跳过")
+                        all_results.append({
+                            'status': 'skipped',
+                            'message': f'剩余组成中缺少形成 {phase} 所需元素',
+                            'equilibrium_phase': {
+                                'name': phase,
+                                'type': 'compound',
+                                'composition': compound_comp,
+                                'mole_fraction': 0,
+                                'mass_fraction': 0,
+                                'gibbs_energy': gibbs_energy or 0,
+                                'driving_force': info['driving_force'],
+                                'is_stable': False
+                            },
+                            'matrix_phase': None
+                        })
+                        continue
+
+                # 重新计算当前组成下的稳定性
+                current_driving_force = self._calculate_phase_driving_force(
+                    remaining_composition, phase, temperature, gibbs_energy,
+                    extrap_func, extrap_model_name, activity_model
+                )
+
+                print(f"\n  计算 {phase} (当前驱动力: {current_driving_force:.2f} J/mol)")
+
+                # 执行平衡计算
                 result = self.manual_calculator.calculate_manual_equilibrium(
                     alloy_composition=remaining_composition,
                     equilibrium_phase=phase,
@@ -1148,14 +1210,38 @@ class PhaseEquilibriumWidget(QWidget):
                     activity_model=activity_model
                 )
 
+                # 添加原始驱动力信息（用于显示）
+                if result.get('equilibrium_phase'):
+                    result['equilibrium_phase']['original_driving_force'] = info['driving_force']
+
+                all_results.append(result)
+                processed_phases.add(phase)
+
+                # 如果析出成功，更新剩余组成
                 if result.get('status') == 'success':
-                    all_results.append(result)
-                    # 更新剩余组成（用于下一个平衡相计算）
                     matrix = result.get('matrix_phase')
                     if matrix and matrix.get('composition'):
-                        remaining_composition = matrix['composition'].copy()
-                else:
-                    all_results.append(result)
+                        # 考虑相分数来计算实际剩余组成
+                        eq_phase = result.get('equilibrium_phase')
+                        if eq_phase and eq_phase.get('mole_fraction', 0) > 0:
+                            # 计算消耗后的剩余组成
+                            phase_fraction = eq_phase['mole_fraction']
+                            phase_comp = eq_phase.get('composition', {})
+
+                            new_remaining = {}
+                            for el, x in remaining_composition.items():
+                                consumed = phase_fraction * phase_comp.get(el, 0)
+                                new_remaining[el] = max(0, x - consumed)
+
+                            # 归一化
+                            total = sum(new_remaining.values())
+                            if total > 1e-10:
+                                remaining_composition = {k: v/total for k, v in new_remaining.items()}
+                            else:
+                                remaining_composition = {}
+
+                            print(f"    析出 {phase}: {phase_fraction*100:.2f}%")
+                            print(f"    剩余组成: {self._format_comp(remaining_composition)}")
 
             # 合并结果并显示
             combined_result = self._combine_phase_results(all_results, phases)
@@ -1164,10 +1250,63 @@ class PhaseEquilibriumWidget(QWidget):
         except ValueError as e:
             QMessageBox.warning(self, "输入错误", f"输入参数无效:\n{str(e)}")
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             QMessageBox.critical(self, "计算错误", f"计算过程中发生错误:\n{str(e)}")
         finally:
             self.mp_progress_bar.setVisible(False)
             self.mp_calculate_button.setEnabled(True)
+
+    def _calculate_phase_driving_force(self, composition, phase, temperature, gibbs_energy,
+                                        extrap_func, extrap_model_name, activity_model):
+        """计算相的热力学驱动力"""
+        try:
+            # 如果是溶体相，返回0（始终可以存在）
+            if self.manual_calculator.is_solution_phase(phase):
+                return -1000.0  # 溶体相始终稳定
+
+            # 获取化合物组成
+            compound_comp = self.manual_calculator.parse_compound_formula(phase)
+
+            # 检查合金中是否含有所需元素
+            for el in compound_comp:
+                if el not in composition or composition[el] < 1e-10:
+                    return float('inf')  # 缺少元素，不可能形成
+
+            # 估算吉布斯能
+            if gibbs_energy is None:
+                g_compound = self.manual_calculator._estimate_compound_gibbs_energy(
+                    compound_comp, phase, temperature
+                )
+            else:
+                g_compound = gibbs_energy
+
+            # 调用稳定性检查方法计算驱动力
+            is_stable, driving_force = self.manual_calculator._check_compound_stability(
+                composition, compound_comp, phase, temperature,
+                g_compound, extrap_func, extrap_model_name, activity_model
+            )
+
+            return driving_force
+
+        except Exception as e:
+            print(f"计算 {phase} 驱动力时出错: {e}")
+            return float('inf')  # 出错时返回正无穷（不稳定）
+
+    def _get_compound_composition(self, phase):
+        """获取化合物的组成"""
+        try:
+            if self.manual_calculator.is_solution_phase(phase):
+                return None
+            return self.manual_calculator.parse_compound_formula(phase)
+        except:
+            return None
+
+    def _format_comp(self, comp):
+        """格式化组成字符串"""
+        if not comp:
+            return "N/A"
+        return ", ".join([f"{k}:{v:.4f}" for k, v in comp.items() if v > 1e-6])
 
     def _combine_phase_results(self, all_results, phases):
         """合并多个平衡相计算结果"""
@@ -1181,10 +1320,18 @@ class PhaseEquilibriumWidget(QWidget):
 
         stable_count = 0
         unstable_count = 0
+        skipped_count = 0
 
-        for i, result in enumerate(all_results):
+        # 创建一个从phase名称到原始索引的映射
+        phase_to_index = {phase: i for i, phase in enumerate(phases)}
+
+        for result in all_results:
             status = result.get('status')
             eq_phase = result.get('equilibrium_phase')
+
+            # 获取相名称和对应的原始索引
+            phase_name = eq_phase.get('name') if eq_phase else None
+            original_index = phase_to_index.get(phase_name, -1) if phase_name else -1
 
             if status == 'success':
                 # 相稳定且可以析出
@@ -1193,14 +1340,14 @@ class PhaseEquilibriumWidget(QWidget):
                     combined['equilibrium_phases'].append(eq_phase)
                     stable_count += 1
 
-                # 最后一个结果的基体相作为最终基体相
+                # 最后一个成功结果的基体相作为最终基体相
                 if result.get('matrix_phase'):
                     combined['matrix_phase'] = result.get('matrix_phase')
 
                 # 收集计算细节
                 details = result.get('calculation_details', {})
                 for key, value in details.items():
-                    combined['calculation_details'][f"{phases[i]}_{key}"] = value
+                    combined['calculation_details'][f"{phase_name}_{key}"] = value
 
             elif status == 'unstable':
                 # 相热力学不稳定，不会析出
@@ -1210,7 +1357,7 @@ class PhaseEquilibriumWidget(QWidget):
                     combined['equilibrium_phases'].append(eq_phase)
                 else:
                     combined['equilibrium_phases'].append({
-                        'name': phases[i],
+                        'name': phase_name or f'Phase_{original_index}',
                         'type': 'compound',
                         'composition': {},
                         'mole_fraction': 0,
@@ -1225,10 +1372,29 @@ class PhaseEquilibriumWidget(QWidget):
                 if result.get('matrix_phase'):
                     combined['matrix_phase'] = result.get('matrix_phase')
 
+            elif status == 'skipped':
+                # 因为元素被消耗而跳过的相
+                skipped_count += 1
+                if eq_phase:
+                    eq_phase['stability_status'] = 'skipped'
+                    combined['equilibrium_phases'].append(eq_phase)
+                else:
+                    combined['equilibrium_phases'].append({
+                        'name': phase_name or f'Phase_{original_index}',
+                        'type': 'compound',
+                        'composition': {},
+                        'mole_fraction': 0,
+                        'mass_fraction': 0,
+                        'gibbs_energy': 0,
+                        'stability_status': 'skipped',
+                        'is_stable': False,
+                        'message': result.get('message', '元素已被消耗')
+                    })
+
             else:
                 # 其他错误
                 combined['equilibrium_phases'].append({
-                    'name': phases[i],
+                    'name': phase_name or f'Phase_{original_index}',
                     'type': 'error',
                     'composition': {},
                     'mole_fraction': 0,
@@ -1239,12 +1405,16 @@ class PhaseEquilibriumWidget(QWidget):
                 })
 
         # 更新消息
+        messages = []
         if stable_count > 0:
-            combined['message'] = f'成功计算 {stable_count} 个平衡相'
-            if unstable_count > 0:
-                combined['message'] += f'，{unstable_count} 个相热力学不稳定'
-        elif unstable_count > 0:
-            combined['message'] = f'所有 {unstable_count} 个指定相在当前条件下热力学不稳定，不会析出'
+            messages.append(f'成功计算 {stable_count} 个平衡相')
+        if unstable_count > 0:
+            messages.append(f'{unstable_count} 个相热力学不稳定')
+        if skipped_count > 0:
+            messages.append(f'{skipped_count} 个相因元素消耗而无法形成')
+
+        if messages:
+            combined['message'] = '，'.join(messages)
         else:
             combined['message'] = '无稳定平衡相'
 
@@ -1274,18 +1444,30 @@ class PhaseEquilibriumWidget(QWidget):
 
                 # 显示稳定性状态
                 stability_status = eq_phase.get('stability_status', 'unknown')
+
+                # 显示原始驱动力（初始组成下的稳定性）
+                original_df = eq_phase.get('original_driving_force')
+                current_df = eq_phase.get('driving_force')
+
                 if stability_status == 'unstable':
                     text += f"⚠ 稳定性: 热力学不稳定，不会析出\n"
-                    if 'driving_force' in eq_phase:
-                        text += f"驱动力: {eq_phase['driving_force']:.2f} J/mol\n"
+                    if current_df is not None:
+                        text += f"驱动力: {current_df:.2f} J/mol (正值表示不稳定)\n"
+                    text += f"摩尔分数: 0.0000 (0.00%)\n\n"
+                elif stability_status == 'skipped':
+                    text += f"⚠ 状态: 因元素已被更稳定相消耗而无法形成\n"
+                    if original_df is not None:
+                        text += f"初始驱动力: {original_df:.2f} J/mol\n"
                     text += f"摩尔分数: 0.0000 (0.00%)\n\n"
                 elif eq_phase.get('error'):
                     text += f"错误: {eq_phase['error']}\n\n"
                 else:
                     if stability_status == 'stable':
-                        text += f"✓ 稳定性: 热力学稳定\n"
-                        if 'driving_force' in eq_phase:
-                            text += f"驱动力: {eq_phase['driving_force']:.2f} J/mol\n"
+                        text += f"✓ 稳定性: 热力学稳定，可以析出\n"
+                        if original_df is not None:
+                            text += f"初始驱动力: {original_df:.2f} J/mol\n"
+                        elif current_df is not None:
+                            text += f"驱动力: {current_df:.2f} J/mol\n"
                     text += f"摩尔分数: {eq_phase['mole_fraction']:.6f} ({eq_phase['mole_fraction']*100:.2f}%)\n"
                     text += f"质量分数: {eq_phase['mass_fraction']:.6f} ({eq_phase['mass_fraction']*100:.2f}%)\n"
                     text += f"吉布斯能: {eq_phase['gibbs_energy']:.2f} J/mol\n\n"
@@ -1336,7 +1518,16 @@ class PhaseEquilibriumWidget(QWidget):
                     self.mp_results_table.setItem(row, 1, QTableWidgetItem(eq_phase['type']))
                     self.mp_results_table.setItem(row, 2, QTableWidgetItem("0.0000"))
                     self.mp_results_table.setItem(row, 3, QTableWidgetItem("0.0000"))
-                    self.mp_results_table.setItem(row, 4, QTableWidgetItem(f"{eq_phase['gibbs_energy']:.2f}"))
+                    g_energy = eq_phase.get('gibbs_energy', 0)
+                    self.mp_results_table.setItem(row, 4, QTableWidgetItem(f"{g_energy:.2f}" if g_energy else "-"))
+                elif stability_status == 'skipped':
+                    # 因元素被消耗而跳过的相
+                    self.mp_results_table.setItem(row, 0, QTableWidgetItem(f"{eq_phase['name']} (元素已消耗)"))
+                    self.mp_results_table.setItem(row, 1, QTableWidgetItem(eq_phase['type']))
+                    self.mp_results_table.setItem(row, 2, QTableWidgetItem("0.0000"))
+                    self.mp_results_table.setItem(row, 3, QTableWidgetItem("0.0000"))
+                    g_energy = eq_phase.get('gibbs_energy', 0)
+                    self.mp_results_table.setItem(row, 4, QTableWidgetItem(f"{g_energy:.2f}" if g_energy else "-"))
                 else:
                     # 稳定相正常显示
                     self.mp_results_table.setItem(row, 0, QTableWidgetItem(eq_phase['name']))
@@ -1381,9 +1572,9 @@ class PhaseEquilibriumWidget(QWidget):
             eq_phases = [result.get('equilibrium_phase')]
 
         for eq_phase in eq_phases:
-            # 跳过不稳定相和错误相（不稳定相不显示组成，因为它们不会形成）
+            # 跳过不稳定相、跳过的相和错误相（它们不会形成）
             stability_status = eq_phase.get('stability_status', 'unknown') if eq_phase else 'error'
-            if stability_status in ['unstable', 'error'] or eq_phase.get('error'):
+            if stability_status in ['unstable', 'skipped', 'error'] or eq_phase.get('error'):
                 continue
 
             if eq_phase and eq_phase.get('composition'):
@@ -1438,9 +1629,9 @@ class PhaseEquilibriumWidget(QWidget):
             eq_phases = [result.get('equilibrium_phase')]
 
         for eq_phase in eq_phases:
-            # 跳过不稳定相和错误相（它们的mole_fraction为0）
+            # 跳过不稳定相、跳过的相和错误相（它们的mole_fraction为0）
             stability_status = eq_phase.get('stability_status', 'unknown') if eq_phase else 'error'
-            if stability_status in ['unstable', 'error'] or eq_phase.get('error'):
+            if stability_status in ['unstable', 'skipped', 'error'] or eq_phase.get('error'):
                 continue
 
             if eq_phase and eq_phase.get('mole_fraction', 0) > 0.001:
