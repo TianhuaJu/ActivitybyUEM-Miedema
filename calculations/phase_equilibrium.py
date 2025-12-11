@@ -894,16 +894,16 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 'matrix_phase': None
             }
 
-        # 计算化合物的吉布斯能
+        # 计算化合物的形成能 ΔG_f（不含参考态）
         if compound_gibbs_energy is not None:
             g_compound = compound_gibbs_energy
-            print(f"  使用用户输入的吉布斯能: {g_compound:.2f} J/mol")
+            print(f"  使用用户输入的形成能 ΔG_f: {g_compound:.2f} J/mol")
         else:
-            # 尝试从Miedema模型估算
+            # 尝试从Miedema模型估算形成能
             g_compound = self._estimate_compound_gibbs_energy(
                 compound_comp, compound_formula, temperature
             )
-            print(f"  估算的吉布斯能: {g_compound:.2f} J/mol")
+            print(f"  估算的形成能 ΔG_f: {g_compound:.2f} J/mol")
 
         # ============ 关键：检查化合物是否热力学稳定 ============
         is_stable, driving_force = self._check_compound_stability(
@@ -1032,10 +1032,25 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         检查化合物在当前条件下是否热力学稳定
 
         热力学原理:
-        计算驱动力 ΔG = Σ(xᵢ · μᵢ_matrix) - G_compound
-        - ΔG > 0: 元素在基体中化学势高于化合物，元素倾向离开基体形成化合物 → 析出
-        - ΔG < 0: 元素在基体中化学势低于化合物，元素倾向留在基体 → 不析出
+        计算驱动力 ΔG = Σ(xᵢ · μᵢ_matrix) - G_compound_total
+
+        其中:
+        - μᵢ_matrix = G°ᵢ + RT·ln(aᵢ)  (元素在基体中的化学势)
+        - G_compound_total = ΔG_f + Σ(xᵢ · G°ᵢ)  (化合物的总吉布斯能)
+        - ΔG_f 是化合物的形成能（由 g_compound 参数传入）
+
+        展开后:
+        ΔG = Σ(xᵢ · G°ᵢ) + Σ(xᵢ · RT·ln(aᵢ)) - ΔG_f - Σ(xᵢ · G°ᵢ)
+           = Σ(xᵢ · RT·ln(aᵢ)) - ΔG_f
+        参考态能量抵消，简化为活度项减去形成能。
+
+        判定:
+        - ΔG > 0: 元素在基体中化学势高于化合物 → 析出
+        - ΔG < 0: 元素在基体中化学势低于化合物 → 不析出
         - ΔG = 0: 平衡状态
+
+        参数:
+            g_compound: 化合物的形成能 ΔG_f (J/mol)，不含参考态
 
         返回:
             (is_stable, driving_force)
@@ -1251,7 +1266,12 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
     def _estimate_compound_gibbs_energy(self, compound_comp: Dict[str, float],
                                          compound_formula: str,
                                          temperature: float) -> float:
-        """使用Miedema模型估算化合物的吉布斯能"""
+        """
+        使用Miedema模型估算化合物的形成吉布斯能（ΔG_f）
+
+        注意：返回的是形成能，不包含参考态能量。
+        参考态能量会在 _check_compound_stability 中统一添加。
+        """
         elements = list(compound_comp.keys())
 
         if len(elements) == 2:
@@ -1267,22 +1287,11 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
             except:
                 h_mix = -20000.0  # 默认假设形成稳定化合物
 
-            # 加上参考态能量
-            g_ref = 0.0
-            for el, x in compound_comp.items():
-                g_pure = self.tdb_parser.get_gibbs_energy(el, 'SER', temperature)
-                if g_pure is not None:
-                    g_ref += x * g_pure
-
-            return h_mix + g_ref
+            # 只返回形成能（混合焓），不加参考态
+            return h_mix
         else:
             # 多元化合物，简化处理
-            g_ref = 0.0
-            for el, x in compound_comp.items():
-                g_pure = self.tdb_parser.get_gibbs_energy(el, 'SER', temperature)
-                if g_pure is not None:
-                    g_ref += x * g_pure
-            return g_ref - 15000.0  # 假设有-15 kJ/mol的稳定化能
+            return -15000.0  # 假设有-15 kJ/mol的稳定化能
 
     def _solve_compound_equilibrium(self, alloy_composition, compound_comp,
                                      temperature, g_compound, max_fraction,
@@ -1370,7 +1379,15 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
     def _calculate_driving_force_for_fraction(self, alloy_composition, compound_comp,
                                                fraction, temperature, g_compound,
                                                extrapolation_func, model_name, activity_model):
-        """计算给定析出量下的驱动力"""
+        """
+        计算给定析出量下的驱动力
+
+        参数:
+            g_compound: 化合物的形成能 ΔG_f (J/mol)，不含参考态
+
+        驱动力 = Σ(xᵢ·μᵢ_matrix) - G_compound_total
+               = Σ(xᵢ·RT·ln(aᵢ)) - ΔG_f  (参考态抵消)
+        """
         # 计算剩余基体组成
         if fraction <= 0:
             matrix_comp = alloy_composition.copy()
