@@ -411,6 +411,116 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
             'phase_fractions': phase_fractions
         }
 
+    def calculate_phase_equilibrium_vs_composition(self,
+                                                    base_composition: Dict[str, float],
+                                                    variable_element: str,
+                                                    x_min: float,
+                                                    x_max: float,
+                                                    temperature: float,
+                                                    n_points: int,
+                                                    extrapolation_func,
+                                                    extrapolation_model_name: str,
+                                                    activity_model: str,
+                                                    progress_callback=None) -> Dict:
+        """
+        计算相平衡随组分的变化
+
+        参数:
+            base_composition: 基础合金组成 {元素: 摩尔分数} (不含变化元素)
+            variable_element: 变化元素符号
+            x_min: 变化元素的最小摩尔分数
+            x_max: 变化元素的最大摩尔分数
+            temperature: 温度 (K)
+            n_points: 计算点数
+            extrapolation_func: 外推模型函数
+            extrapolation_model_name: 外推模型名称
+            activity_model: 活度模型
+            progress_callback: 进度回调函数 (current, total)
+
+        返回:
+            Dict: {
+                'variable_element': 变化元素,
+                'temperature': 温度,
+                'compositions': [组分列表],
+                'phase_fractions': {相名称: [分数列表]}
+            }
+        """
+        print(f"\n{'=' * 60}")
+        print(f"相平衡随组分变化分析")
+        print(f"基础合金组成: {self._format_comp(base_composition)}")
+        print(f"变化元素: {variable_element}")
+        print(f"组分范围: {x_min:.4f} - {x_max:.4f}")
+        print(f"温度: {temperature:.0f} K")
+        print(f"计算点数: {n_points}")
+        print(f"{'=' * 60}\n")
+
+        # 归一化基础组成
+        total_base = sum(base_composition.values())
+        base_composition = {k.upper(): v / total_base for k, v in base_composition.items()}
+        variable_element = variable_element.upper()
+
+        compositions = np.linspace(x_min, x_max, n_points)
+        phase_fractions = {}  # {phase_name: [fractions at each composition]}
+
+        for i, x_var in enumerate(compositions):
+            if progress_callback:
+                progress_callback(i + 1, n_points)
+
+            # 构建当前组成
+            # 变化元素的摩尔分数为 x_var，其余元素按比例缩放
+            current_comp = {}
+            scale_factor = 1.0 - x_var
+
+            for el, x_base in base_composition.items():
+                current_comp[el] = x_base * scale_factor
+
+            current_comp[variable_element] = x_var
+
+            # 归一化确保总和为1
+            total_current = sum(current_comp.values())
+            if total_current > 0:
+                current_comp = {k: v / total_current for k, v in current_comp.items()}
+
+            # 计算该组分点的相平衡
+            try:
+                phases = self.calculate_phase_equilibrium(
+                    current_comp, temperature,
+                    extrapolation_func, extrapolation_model_name, activity_model
+                )
+
+                # 收集各相分数
+                temp_phases = {}
+                for phase in phases:
+                    phase_name = phase.get('phase_name', 'Unknown')
+                    frac = phase.get('mole_fraction', 0.0)
+                    temp_phases[phase_name] = frac
+
+                # 更新 phase_fractions 字典
+                all_phase_names = set(phase_fractions.keys()) | set(temp_phases.keys())
+                for phase_name in all_phase_names:
+                    if phase_name not in phase_fractions:
+                        # 新发现的相，初始化为之前全为0
+                        phase_fractions[phase_name] = [0.0] * i
+                    phase_fractions[phase_name].append(temp_phases.get(phase_name, 0.0))
+
+            except Exception as e:
+                print(f"  组分 {variable_element}={x_var:.4f} 计算失败: {e}")
+                # 填充0
+                for phase_name in phase_fractions:
+                    phase_fractions[phase_name].append(0.0)
+
+        # 确保所有相的列表长度一致
+        for phase_name in phase_fractions:
+            while len(phase_fractions[phase_name]) < n_points:
+                phase_fractions[phase_name].append(0.0)
+
+        return {
+            'variable_element': variable_element,
+            'temperature': temperature,
+            'compositions': compositions.tolist(),
+            'phase_fractions': phase_fractions
+        }
+
     def calculate_phase_equilibrium_at_temperature(self,
                                                     composition: Dict[str, float],
                                                     temperature: float,
