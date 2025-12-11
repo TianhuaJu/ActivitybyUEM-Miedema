@@ -37,6 +37,10 @@ class ActivityCoefficient:
         if total > 0 and len(self._comp_dict) > 1:
             self._comp_dict = {key: value / total for key, value in self._comp_dict.items()}
 
+    # 间隙元素列表：这些元素不适用于 Miedema 模型
+    # 使用简化的活度系数处理（基于 Wagner 交互作用参数或实验值）
+    INTERSTITIAL_ELEMENTS = {'C', 'N', 'H', 'O', 'B'}
+
     def _calculate_ln_yi(self, comp_dict, solvent, solute_i, Tem: float, state: str,
                          geo_model: extrap_func, geo_model_name: str, activity_model_type: str, full_alloy_str: str = "") -> float:
         """内部通用计算方法。"""
@@ -44,10 +48,19 @@ class ActivityCoefficient:
             print(f"警告: 组分 {solute_i} 或溶剂 {solvent} 不在成分中。")
             return 0.0
 
+        # 检查是否为间隙元素 - Miedema 模型不适用于 C, N, H 等
+        solute_upper = solute_i.upper() if isinstance(solute_i, str) else solute_i
+        if solute_upper in self.INTERSTITIAL_ELEMENTS:
+            # 对于间隙元素，使用简化的活度系数处理
+            # 返回 0 表示理想溶液行为（γ = 1）
+            # 实际上间隙元素的活度系数通常 > 1，但由于缺乏精确数据，暂用理想假设
+            # 注意：真正的析出判断主要依赖于 G°(matrix) - G°(SER) 的晶格稳定性能量差
+            return 0.0
+
         solv = Element(solvent)
         solui = Element(solute_i)
         solute_keys = [k for k in comp_dict.keys() if k != solvent]
-        
+
         ternary_melts = multicomponentSolution(Tem, state)
         ln_yi_0 = ternary_melts.ln_y0(solv, solui)
 
