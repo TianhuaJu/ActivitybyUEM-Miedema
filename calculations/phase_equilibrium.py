@@ -1291,7 +1291,10 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         参考态能量会在 _check_compound_stability 中统一添加。
 
         对于纯元素（如 C, Si），形成能为 0（按定义）。
+        对于多元化合物，使用二元交互作用的加权求和近似。
         """
+        from itertools import combinations
+
         elements = list(compound_comp.keys())
 
         # 纯元素的形成能为 0
@@ -1308,14 +1311,45 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 h_mix = miedema.getmixingEnthalpy_by_Miedema_Model(
                     el1, x1, temperature, order_degree='IM'
                 )
-            except:
-                h_mix = -20000.0  # 默认假设形成稳定化合物
+                return h_mix
+            except Exception as e:
+                print(f"  警告: Miedema模型计算 {el1}-{el2} 失败: {e}")
+                raise ValueError(f"无法计算 {compound_formula} 的形成能，请手动输入")
 
-            # 只返回形成能（混合焓），不加参考态
-            return h_mix
-        else:
-            # 多元化合物，简化处理
-            return -15000.0  # 假设有-15 kJ/mol的稳定化能
+        # 多元化合物：使用二元交互作用的加权求和
+        # ΔH_f ≈ Σ(xᵢ·xⱼ/(xᵢ+xⱼ) · ΔH_ij) 对所有 i<j 对
+        total_h_mix = 0.0
+        calculated_pairs = 0
+
+        for el1, el2 in combinations(elements, 2):
+            x1 = compound_comp[el1]
+            x2 = compound_comp[el2]
+
+            if x1 < 1e-10 or x2 < 1e-10:
+                continue
+
+            try:
+                from models.miedema_model import MiedemaModel
+                # 计算二元子系统中的摩尔分数
+                x1_binary = x1 / (x1 + x2)
+                miedema = MiedemaModel((el1, el2), "SOLID")
+                h_binary = miedema.getmixingEnthalpy_by_Miedema_Model(
+                    el1, x1_binary, temperature, order_degree='IM'
+                )
+
+                # 加权因子：考虑该二元对在多元体系中的贡献
+                weight = (x1 * x2) / (x1 + x2)
+                total_h_mix += weight * h_binary * 4  # 因子4来自正规溶液模型
+                calculated_pairs += 1
+
+            except Exception as e:
+                print(f"  警告: Miedema模型计算 {el1}-{el2} 子系统失败: {e}")
+                continue
+
+        if calculated_pairs == 0:
+            raise ValueError(f"无法计算 {compound_formula} 的形成能，请手动输入")
+
+        return total_h_mix
 
     def _solve_compound_equilibrium(self, alloy_composition, compound_comp,
                                      temperature, g_compound, max_fraction,
