@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QMessageBox, QTableWidget, QTableWidgetItem,
                              QProgressBar, QTabWidget, QDoubleSpinBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from gui.widgets import AutoResizeTextEdit
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
@@ -130,9 +131,10 @@ class PhaseEquilibriumWidget(QWidget):
 
         row = 0
 
-        # 合金成分
+        # 合金成分（自动调整大小）
         input_layout.addWidget(QLabel("合金成分:"), row, 0, Qt.AlignRight)
-        self.sp_composition_input = QLineEdit("Fe0.70C0.03Si0.27")
+        self.sp_composition_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+        self.sp_composition_input.setText("Fe0.70C0.03Si0.27")
         self.sp_composition_input.setPlaceholderText("例如: Fe0.7C0.03Si0.27")
         self.sp_composition_input.setToolTip("输入格式: 元素符号+摩尔分数")
         input_layout.addWidget(self.sp_composition_input, row, 1)
@@ -269,9 +271,10 @@ class PhaseEquilibriumWidget(QWidget):
 
         row = 0
 
-        # 合金成分
+        # 合金成分（自动调整大小）
         input_layout.addWidget(QLabel("合金成分:"), row, 0, Qt.AlignRight)
-        self.tv_composition_input = QLineEdit("Fe0.70C0.03Si0.27")
+        self.tv_composition_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+        self.tv_composition_input.setText("Fe0.70C0.03Si0.27")
         self.tv_composition_input.setPlaceholderText("例如: Fe0.7C0.03Si0.27")
         input_layout.addWidget(self.tv_composition_input, row, 1)
         row += 1
@@ -396,9 +399,10 @@ class PhaseEquilibriumWidget(QWidget):
 
         row = 0
 
-        # 基础合金成分
+        # 基础合金成分（自动调整大小）
         input_layout.addWidget(QLabel("基础合金:"), row, 0, Qt.AlignRight)
-        self.cv_base_composition_input = QLineEdit("Fe0.97Si0.03")
+        self.cv_base_composition_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+        self.cv_base_composition_input.setText("Fe0.97Si0.03")
         self.cv_base_composition_input.setPlaceholderText("例如: Fe0.97Si0.03")
         self.cv_base_composition_input.setToolTip("不含变化元素的基础组成")
         input_layout.addWidget(self.cv_base_composition_input, row, 1)

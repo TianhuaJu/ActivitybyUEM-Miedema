@@ -17,6 +17,7 @@ from matplotlib.figure import Figure
 from calculations.activity_calculator import ActivityCoefficient
 from core.utils import *
 from models.extrapolation_models import BinaryModel
+from gui.widgets import AutoResizeTextEdit
 
 # Matplotlib 全局设置
 matplotlib.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'FangSong', 'SimSun', 'DejaVu Sans']
@@ -424,10 +425,11 @@ class AlloyAdditionWidget(QWidget):
 		layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 		layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
 		
-		# 基体合金输入
+		# 基体合金输入（自动调整大小）
 		comp_layout = QHBoxLayout()
 		comp_layout.setSpacing(8)
-		self.base_alloy_composition = ModernLineEdit("例如: Fe0.7Cr0.2Ni0.1")
+		self.base_alloy_composition = AutoResizeTextEdit(min_lines=1, max_lines=3)
+		self.base_alloy_composition.setPlaceholderText("例如: Fe0.7Cr0.2Ni0.1")
 		self.base_alloy_composition.setMinimumWidth(200)
 		comp_layout.addWidget(self.base_alloy_composition)
 		

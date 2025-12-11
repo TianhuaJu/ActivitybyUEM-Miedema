@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QLabel, QLineEdit, QComboBox, QPushButton,
                              QSplitter, QFrame, QGroupBox, QTextEdit, QMessageBox)
 from PyQt5.QtCore import Qt
+from gui.widgets import AutoResizeTextEdit
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from calculations.activity_calculator import ActivityCoefficient
@@ -73,8 +74,9 @@ class ActivityCalculationWidget(QWidget):
 		alloy_layout.setContentsMargins(0, 0, 0, 0)
 		alloy_layout.setSpacing(8)
 		
-		# 合金成分输入框
-		self.alloy_input = QLineEdit("Fe0.70C0.03Si0.27")
+		# 合金成分输入框（自动调整大小）
+		self.alloy_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+		self.alloy_input.setText("Fe0.70C0.03Si0.27")
 		self.alloy_input.setPlaceholderText("请输入合金组成，例如: Fe0.7C0.03Si0.27")
 		self.alloy_input.setToolTip(
 				"输入格式: 元素符号+摩尔分数，如Fe0.7C0.03Si0.27\n支持多种格式: Fe0.7C0.03Si0.27 或 Fe:0.7,C:0.03,Si:0.27")

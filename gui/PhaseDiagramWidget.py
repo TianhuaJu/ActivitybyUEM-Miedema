@@ -18,6 +18,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QSplitter, QFrame, QGroupBox, QTextEdit,
                              QMessageBox, QRadioButton, QButtonGroup, QProgressBar)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from gui.widgets import AutoResizeTextEdit
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
@@ -179,10 +180,11 @@ class PhaseDiagramWidget(QWidget):
 
         row = 0
 
-        # 单点计算模式
+        # 单点计算模式（自动调整大小）
         if self.mode_single.isChecked():
             self.input_layout.addWidget(QLabel("合金成分:"), row, 0, Qt.AlignRight)
-            self.alloy_input = QLineEdit("Fe0.97C0.03")
+            self.alloy_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+            self.alloy_input.setText("Fe0.97C0.03")
             self.alloy_input.setPlaceholderText("例如: Fe0.97C0.03")
             self.input_layout.addWidget(self.alloy_input, row, 1)
 

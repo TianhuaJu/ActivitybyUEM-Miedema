@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QSplitter, QFrame, QGroupBox, QTextEdit,
                              QMessageBox, QRadioButton, QButtonGroup, QProgressBar, QCheckBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from gui.widgets import AutoResizeTextEdit
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
@@ -520,17 +521,19 @@ class SolubilityWidget(QWidget):
         # ==========================================
         if self.mode_single.isChecked() or self.mode_temp_curve.isChecked():
             self.input_layout.addWidget(QLabel("基础合金:"), row, 0, Qt.AlignRight)
-            self.base_alloy_input = QLineEdit("Fe0.7Si0.3")
+            self.base_alloy_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+            self.base_alloy_input.setText("Fe0.7Si0.3")
             if self.mode_temp_curve.isChecked():
                 self.base_alloy_input.setPlaceholderText("例如: Fe0.7Si0.3 (保持固定)")
             else:
                 self.base_alloy_input.setPlaceholderText("例如: Fe0.7Si0.3")
             self.input_layout.addWidget(self.base_alloy_input, row, 1)
             row += 1
-        
+
         elif self.mode_curve.isChecked():
             self.input_layout.addWidget(QLabel("固定基础成分:"), row, 0, Qt.AlignRight)
-            self.fixed_base_input = QLineEdit("Fe")
+            self.fixed_base_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+            self.fixed_base_input.setText("Fe")
             self.fixed_base_input.setPlaceholderText("例如: Fe (不变化)")
             self.input_layout.addWidget(self.fixed_base_input, row, 1)
             row += 1

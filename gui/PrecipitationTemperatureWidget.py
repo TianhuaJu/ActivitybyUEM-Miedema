@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QProgressBar, QTableWidget, QTableWidgetItem,
                              QHeaderView, QCheckBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from gui.widgets import AutoResizeTextEdit
 from PyQt5.QtGui import QFont
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -256,9 +257,10 @@ class PrecipitationTemperatureWidget(QWidget):
         row = 0
 
         if self.mode_single.isChecked():
-            # 单点计算
+            # 单点计算（自动调整大小）
             self.input_layout.addWidget(QLabel("合金成分:"), row, 0, Qt.AlignRight)
-            self.alloy_input = QLineEdit("Fe0.98C0.02")
+            self.alloy_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+            self.alloy_input.setText("Fe0.98C0.02")
             self.alloy_input.setPlaceholderText("例如: Fe0.98C0.02 或 Fe0.95C0.02Si0.03")
             self.input_layout.addWidget(self.alloy_input, row, 1)
             row += 1
@@ -270,9 +272,10 @@ class PrecipitationTemperatureWidget(QWidget):
             row += 1
 
         elif self.mode_curve.isChecked():
-            # 曲线计算
+            # 曲线计算（自动调整大小）
             self.input_layout.addWidget(QLabel("基础合金:"), row, 0, Qt.AlignRight)
-            self.base_alloy_input = QLineEdit("Fe")
+            self.base_alloy_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+            self.base_alloy_input.setText("Fe")
             self.base_alloy_input.setPlaceholderText("例如: Fe 或 Fe0.97Si0.03")
             self.input_layout.addWidget(self.base_alloy_input, row, 1)
             row += 1
@@ -298,9 +301,10 @@ class PrecipitationTemperatureWidget(QWidget):
             row += 1
 
         elif self.mode_multi.isChecked():
-            # 多溶质计算
+            # 多溶质计算（自动调整大小）
             self.input_layout.addWidget(QLabel("合金成分:"), row, 0, Qt.AlignRight)
-            self.alloy_input = QLineEdit("Fe0.92C0.02Mn0.03Si0.02N0.01")
+            self.alloy_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+            self.alloy_input.setText("Fe0.92C0.02Mn0.03Si0.02N0.01")
             self.alloy_input.setPlaceholderText("多元合金成分")
             self.input_layout.addWidget(self.alloy_input, row, 1)
             row += 1
