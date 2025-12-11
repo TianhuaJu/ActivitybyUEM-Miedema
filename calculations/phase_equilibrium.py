@@ -1132,13 +1132,23 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         热力学原理:
         驱动力 ΔG = Σ(xᵢ · μᵢ_matrix) - G_compound_total
 
-        其中:
-        - μᵢ_matrix = G°ᵢ(matrix) + RT·ln(aᵢ)  (元素在基体中的化学势)
-        - G_compound_total = Σ(xᵢ · G°ᵢ(SER)) + ΔG_f  (化合物的总Gibbs能)
-        - ΔG_f 是化合物的形成能（由 g_compound 参数传入）
+        关键概念 - 参考态一致性:
+        当使用 μᵢ = G°ᵢ + RT·ln(aᵢ) 时，G°ᵢ 必须与溶液态是相同的相态结构。
+        例如：
+        - Fe 在 BCC 中：G°_Fe 是 Fe(BCC) 的参考能量
+        - C 在 BCC 中：G°_C 是 C(BCC假想态) 的参考能量，不是 C(graphite)
 
-        注意：对于非金属元素（如C），G°(matrix) 与 G°(SER) 可能差异很大，
-        这个差异（晶格稳定性能量）对判断是否析出至关重要。
+        公式展开:
+        - μᵢ_matrix = G°ᵢ(matrix_phase) + RT·ln(aᵢ)
+          其中 aᵢ 是相对于同相态标准态的活度
+        - G_compound_total = Σ(xᵢ · G°ᵢ(SER)) + ΔG_f
+          化合物能量以 SER（标准元素参考态）为基准
+
+        ΔG = Σ[xᵢ·G°ᵢ(matrix)] + Σ[xᵢ·RT·ln(aᵢ)] - Σ[xᵢ·G°ᵢ(SER)] - ΔG_f
+           = Σ[xᵢ·(G°ᵢ(matrix) - G°ᵢ(SER))] + Σ[xᵢ·RT·ln(aᵢ)] - ΔG_f
+           = Σ[xᵢ·ΔG_lattice,i] + Σ[xᵢ·RT·ln(aᵢ)] - ΔG_f
+
+        对于非金属元素（如C），ΔG_lattice 可达 100+ kJ/mol，这是判断析出的关键。
 
         判定:
         - ΔG > 0: 元素在基体中化学势高于化合物 → 可析出
@@ -1146,7 +1156,7 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         - ΔG = 0: 平衡状态
 
         参数:
-            g_compound: 化合物的形成能 ΔG_f (J/mol)，不含参考态
+            g_compound: 化合物的形成能 ΔG_f (J/mol)，以 SER 为参考态
 
         返回:
             (is_stable, driving_force)
@@ -1545,10 +1555,13 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         计算给定析出量下的驱动力
 
         参数:
-            g_compound: 化合物的形成能 ΔG_f (J/mol)，不含参考态
+            g_compound: 化合物的形成能 ΔG_f (J/mol)，以 SER 为参考态
 
         驱动力 = Σ(xᵢ·μᵢ_matrix) - G_compound_total
-        其中 μᵢ_matrix = G°ᵢ(matrix) + RT·ln(aᵢ)
+        其中:
+        - μᵢ_matrix = G°ᵢ(matrix_phase) + RT·ln(aᵢ)
+          G°ᵢ(matrix_phase) 与溶液态相同结构的参考能量
+        - G_compound_total = Σ(xᵢ·G°ᵢ(SER)) + ΔG_f
         """
         R = 8.314  # J/(mol·K)
 
