@@ -326,19 +326,22 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 				return 1e20
 			
 			# 【检查加入溶质后，所有组分（包括溶剂和原有合金元素）是否仍然稳定】
-			stable_now, issues_now = self._check_alloy_full_stability(
-					composition=current_comp,
-					temperature=temperature,
-					tdb_phase=tdb_solution_phase,
-					extrapolation_func=extrapolation_func,
-					extrapolation_model_name=extrapolation_model_name,
-					activity_model=activity_model,
-					ignore_component=solute  # 只关心基础合金组成元素不要析出，溶质本身当然可能过饱和
-			)
-			if not stable_now:
-				# 只要有任何一个基体元素化学势 > 其纯态 → 说明溶质“挤出了”基体 → 强制残差为正，解趋向于0
-				
-				return 1e20
+			# 注意：对于液相溶解度计算，跳过此检查
+			# 原因：液相中组分完全互溶是常见的（如 Fe-Ni, Fe-Co 等）
+			# 这个检查仅对固相有意义（晶格稳定性）
+			if tdb_solution_phase != 'LIQUID':
+				stable_now, issues_now = self._check_alloy_full_stability(
+						composition=current_comp,
+						temperature=temperature,
+						tdb_phase=tdb_solution_phase,
+						extrapolation_func=extrapolation_func,
+						extrapolation_model_name=extrapolation_model_name,
+						activity_model=activity_model,
+						ignore_component=solute  # 只关心基础合金组成元素不要析出，溶质本身当然可能过饱和
+				)
+				if not stable_now:
+					# 只要有任何一个基体元素化学势 > 其纯态 → 说明溶质"挤出了"基体 → 强制残差为正，解趋向于0
+					return 1e20
 			
 			return mu_solute - g_ppt
 		
@@ -527,10 +530,15 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			}
 
 	def _check_alloy_full_stability (self, composition, temperature, tdb_phase, extrapolation_func,
-	                                 extrapolation_model_name, activity_model, ignore_component=None, tolerance=10.0):
+	                                 extrapolation_model_name, activity_model, ignore_component=None, tolerance=1000.0):
 		"""
 		@tdb_phase:合金相
-		检查合金组分是否析出,只检查该合金的稳定性"""
+		检查合金组分是否析出,只检查该合金的稳定性
+
+		注意：tolerance 默认值为 1000 J/mol (1 kJ/mol)
+		之前设置为 10 J/mol 太严格，导致 Fe-Ni 等完全互溶体系被错误判定为不稳定
+		对于液相，RT 在 1800K ≈ 15 kJ/mol，10 J/mol 的容差过于严格
+		"""
 		issues = []
 		
 		# =========================================================
