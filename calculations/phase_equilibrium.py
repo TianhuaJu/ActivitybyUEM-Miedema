@@ -308,13 +308,15 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
         其中：
         - G°ᵢ(phase): 组分i在该相中的参考态Gibbs能
         - RT×Σ(xᵢ×ln(xᵢ)): 理想混合熵贡献
-        - G_excess: 过剩Gibbs能
+        - G_excess: 过剩Gibbs能（通过Miedema模型计算）
 
         选择Gibbs能最低的相作为稳定基体相。
 
         注意：间隙元素（C, N, H, O, B）在金属中以间隙方式溶解，
         其溶解能远低于晶格稳定性能量。
         """
+        from models.miedema_model import MiedemaModel
+
         R = 8.314  # J/(mol·K)
 
         # 间隙元素在各相中的溶解能 (J/mol，相对于SER)
@@ -338,19 +340,18 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
         best_phase = 'BCC_A2'  # 默认
         min_g_total = float('inf')
 
+        # 预处理：获取有效元素列表
+        valid_elements = [(el.upper(), x) for el, x in composition.items() if x > 1e-10]
+
         for phase in phases_to_check:
             try:
                 g_total = 0.0
                 all_elements_valid = True
                 is_liquid = (phase == 'LIQUID')
+                phase_state = "LIQUID" if is_liquid else "SOLID"
 
                 # 1. 计算参考态能量加权和：Σ(xᵢ × G°ᵢ(phase))
-                for element, x in composition.items():
-                    if x < 1e-10:
-                        continue
-
-                    element_upper = element.upper()
-
+                for element_upper, x in valid_elements:
                     # 检查是否为间隙元素
                     if element_upper in INTERSTITIAL_DISSOLUTION_ENERGY:
                         # 间隙元素：使用溶解能（相对于SER的能量）
@@ -383,13 +384,39 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
                     continue
 
                 # 2. 计算理想混合熵贡献：RT×Σ(xᵢ×ln(xᵢ))
-                for element, x in composition.items():
-                    if x > 1e-10:
-                        g_total += R * temperature * x * math.log(x)
+                for element_upper, x in valid_elements:
+                    g_total += R * temperature * x * math.log(x)
 
-                # 3. 过剩Gibbs能（简化处理）
-                # 实际应通过Miedema模型或外推模型计算混合焓
-                # 对于稀溶液，过剩项通常较小
+                # 3. 过剩Gibbs能（通过Miedema模型计算）
+                # 使用Muggianu规则：G_excess = Σᵢ<ⱼ (xᵢ × xⱼ × G_excess_ij / (xᵢ + xⱼ))
+                # 对于二元系，当xᵢ + xⱼ = 1时，G_excess_ij 是二元过剩Gibbs能
+                g_excess = 0.0
+                for i in range(len(valid_elements)):
+                    for j in range(i + 1, len(valid_elements)):
+                        el1, x1 = valid_elements[i]
+                        el2, x2 = valid_elements[j]
+
+                        # 跳过间隙元素的二元对（它们不遵循Miedema模型）
+                        if el1 in INTERSTITIAL_DISSOLUTION_ENERGY or el2 in INTERSTITIAL_DISSOLUTION_ENERGY:
+                            continue
+
+                        try:
+                            # 创建Miedema模型实例
+                            miedema = MiedemaModel((el1, el2), phase_state)
+                            # 计算二元过剩Gibbs能
+                            # 在二元系统中，以el1为基准，x_el1 = x1/(x1+x2)
+                            x1_binary = x1 / (x1 + x2)
+                            g_ex_binary = miedema.get_excess_Gibbs(el1, x1_binary, temperature, 'SS')
+                            # Muggianu规则：将二元过剩Gibbs能转换为多元贡献
+                            # 权重因子 = xᵢ × xⱼ × 4 / (xᵢ + xⱼ)² × (xᵢ + xⱼ)
+                            # 简化为 = 4 × xᵢ × xⱼ / (xᵢ + xⱼ)
+                            weight = 4.0 * x1 * x2 / (x1 + x2) if (x1 + x2) > 1e-10 else 0.0
+                            g_excess += weight * g_ex_binary
+                        except Exception:
+                            # 如果Miedema模型计算失败，跳过该二元对
+                            pass
+
+                g_total += g_excess
 
                 if g_total < min_g_total:
                     min_g_total = g_total
@@ -2000,13 +2027,15 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         其中：
         - G°ᵢ(phase): 组分i在该相中的参考态Gibbs能
         - RT×Σ(xᵢ×ln(xᵢ)): 理想混合熵贡献
-        - G_excess: 过剩Gibbs能
+        - G_excess: 过剩Gibbs能（通过Miedema模型计算）
 
         选择Gibbs能最低的相作为稳定基体相。
 
         注意：间隙元素（C, N, H, O, B）在金属中以间隙方式溶解，
         其溶解能远低于晶格稳定性能量。
         """
+        from models.miedema_model import MiedemaModel
+
         R = 8.314  # J/(mol·K)
 
         # 间隙元素在各相中的溶解能 (J/mol，相对于SER)
@@ -2030,19 +2059,18 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         best_phase = 'BCC_A2'  # 默认
         min_g_total = float('inf')
 
+        # 预处理：获取有效元素列表
+        valid_elements = [(el.upper(), x) for el, x in composition.items() if x > 1e-10]
+
         for phase in phases_to_check:
             try:
                 g_total = 0.0
                 all_elements_valid = True
                 is_liquid = (phase == 'LIQUID')
+                phase_state = "LIQUID" if is_liquid else "SOLID"
 
                 # 1. 计算参考态能量加权和：Σ(xᵢ × G°ᵢ(phase))
-                for element, x in composition.items():
-                    if x < 1e-10:
-                        continue
-
-                    element_upper = element.upper()
-
+                for element_upper, x in valid_elements:
                     # 检查是否为间隙元素
                     if element_upper in INTERSTITIAL_DISSOLUTION_ENERGY:
                         # 间隙元素：使用溶解能（相对于SER的能量）
@@ -2075,13 +2103,39 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                     continue
 
                 # 2. 计算理想混合熵贡献：RT×Σ(xᵢ×ln(xᵢ))
-                for element, x in composition.items():
-                    if x > 1e-10:
-                        g_total += R * temperature * x * math.log(x)
+                for element_upper, x in valid_elements:
+                    g_total += R * temperature * x * math.log(x)
 
-                # 3. 过剩Gibbs能（简化处理）
-                # 实际应通过Miedema模型或外推模型计算混合焓
-                # 对于稀溶液，过剩项通常较小
+                # 3. 过剩Gibbs能（通过Miedema模型计算）
+                # 使用Muggianu规则：G_excess = Σᵢ<ⱼ (xᵢ × xⱼ × G_excess_ij / (xᵢ + xⱼ))
+                # 对于二元系，当xᵢ + xⱼ = 1时，G_excess_ij 是二元过剩Gibbs能
+                g_excess = 0.0
+                for i in range(len(valid_elements)):
+                    for j in range(i + 1, len(valid_elements)):
+                        el1, x1 = valid_elements[i]
+                        el2, x2 = valid_elements[j]
+
+                        # 跳过间隙元素的二元对（它们不遵循Miedema模型）
+                        if el1 in INTERSTITIAL_DISSOLUTION_ENERGY or el2 in INTERSTITIAL_DISSOLUTION_ENERGY:
+                            continue
+
+                        try:
+                            # 创建Miedema模型实例
+                            miedema = MiedemaModel((el1, el2), phase_state)
+                            # 计算二元过剩Gibbs能
+                            # 在二元系统中，以el1为基准，x_el1 = x1/(x1+x2)
+                            x1_binary = x1 / (x1 + x2)
+                            g_ex_binary = miedema.get_excess_Gibbs(el1, x1_binary, temperature, 'SS')
+                            # Muggianu规则：将二元过剩Gibbs能转换为多元贡献
+                            # 权重因子 = xᵢ × xⱼ × 4 / (xᵢ + xⱼ)² × (xᵢ + xⱼ)
+                            # 简化为 = 4 × xᵢ × xⱼ / (xᵢ + xⱼ)
+                            weight = 4.0 * x1 * x2 / (x1 + x2) if (x1 + x2) > 1e-10 else 0.0
+                            g_excess += weight * g_ex_binary
+                        except Exception:
+                            # 如果Miedema模型计算失败，跳过该二元对
+                            pass
+
+                g_total += g_excess
 
                 if g_total < min_g_total:
                     min_g_total = g_total

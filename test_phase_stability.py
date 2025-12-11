@@ -93,6 +93,7 @@ def test_phase_stability():
 
 def test_detailed_gibbs_energy():
     """测试详细的Gibbs能计算，用于调试"""
+    from models.miedema_model import MiedemaModel
 
     calculator = PhaseEquilibriumCalculator()
 
@@ -113,13 +114,15 @@ def test_detailed_gibbs_energy():
 
     for T in temperatures:
         print(f"\n温度: {T}K")
-        print(f"{'相':<12} {'G_ref(Fe)':<15} {'G_ref(C)':<15} {'G_ref(Si)':<15} {'G_混合':<15} {'G_总':<15}")
-        print("-" * 90)
+        print(f"{'相':<12} {'G_ref':<15} {'G_混合':<15} {'G_excess':<15} {'G_总':<15}")
+        print("-" * 75)
 
         g_values = {}
 
         for phase in phases:
             try:
+                phase_state = "LIQUID" if phase == "LIQUID" else "SOLID"
+
                 # Fe的Gibbs能
                 g_fe = calculator.tdb_parser.get_gibbs_energy('FE', phase, T)
                 if g_fe is None:
@@ -139,17 +142,27 @@ def test_detailed_gibbs_energy():
                     else:
                         g_si = calculator._estimate_lattice_stability('SI', phase, T)
 
-                # 加权平均
+                # 加权平均参考态能量
                 g_ref = 0.95 * (g_fe or 0) + 0.03 * g_c + 0.02 * (g_si or 0)
 
                 # 混合熵
                 g_mix = R * T * (0.95 * (-0.0513) + 0.03 * (-3.507) + 0.02 * (-3.912))
-                # ln(0.95)=-0.0513, ln(0.03)=-3.507, ln(0.02)=-3.912
 
-                g_total = g_ref + g_mix
+                # 过剩Gibbs能 (Fe-Si二元，C是间隙元素跳过)
+                g_excess = 0.0
+                try:
+                    miedema = MiedemaModel(('FE', 'SI'), phase_state)
+                    x_fe = 0.95 / (0.95 + 0.02)  # 归一化
+                    g_ex_binary = miedema.get_excess_Gibbs('Fe', x_fe, T, 'SS')
+                    weight = 4.0 * 0.95 * 0.02 / (0.95 + 0.02)
+                    g_excess = weight * g_ex_binary
+                except Exception as e:
+                    pass
+
+                g_total = g_ref + g_mix + g_excess
                 g_values[phase] = g_total
 
-                print(f"{phase:<12} {g_fe or 0:<15.0f} {g_c:<15.0f} {g_si or 0:<15.0f} {g_mix:<15.0f} {g_total:<15.0f}")
+                print(f"{phase:<12} {g_ref:<15.0f} {g_mix:<15.0f} {g_excess:<15.0f} {g_total:<15.0f}")
 
             except Exception as e:
                 print(f"{phase:<12} Error: {e}")
@@ -159,7 +172,57 @@ def test_detailed_gibbs_energy():
             min_phase = min(g_values.items(), key=lambda x: x[1])
             print(f"\n最稳定相: {min_phase[0]} (G = {min_phase[1]:.0f} J/mol)")
 
+
+def test_fe_ni_alloy():
+    """测试Fe-Ni合金（无间隙元素，完全使用Miedema模型）"""
+    from models.miedema_model import MiedemaModel
+
+    calculator = PhaseEquilibriumCalculator()
+
+    compositions = [
+        {'Fe': 0.9, 'Ni': 0.1},
+        {'Fe': 0.8, 'Ni': 0.2},
+        {'Fe': 0.5, 'Ni': 0.5},
+    ]
+
+    temperatures = [1400, 1500, 1600, 1700, 1800]
+
+    print("\n" + "=" * 80)
+    print("Fe-Ni合金相稳定性测试 (使用Miedema模型计算过剩Gibbs能)")
+    print("=" * 80)
+
+    for comp in compositions:
+        x_fe = comp['Fe']
+        x_ni = comp['Ni']
+
+        print(f"\n{'─' * 60}")
+        print(f"合金组成: Fe{x_fe:.2f}Ni{x_ni:.2f}")
+        print(f"{'温度(K)':<10} {'LIQUID':<15} {'FCC_A1':<15} {'BCC_A2':<15} {'稳定相':<10}")
+        print(f"{'─' * 60}")
+
+        for T in temperatures:
+            phase = calculator._find_lowest_energy_phase(comp, T)
+
+            # 计算各相的过剩Gibbs能用于显示
+            g_excess_values = {}
+            for ph in ['LIQUID', 'FCC_A1', 'BCC_A2']:
+                try:
+                    phase_state = "LIQUID" if ph == "LIQUID" else "SOLID"
+                    miedema = MiedemaModel(('FE', 'NI'), phase_state)
+                    x_fe_binary = x_fe / (x_fe + x_ni)
+                    g_ex = miedema.get_excess_Gibbs('Fe', x_fe_binary, T, 'SS')
+                    weight = 4.0 * x_fe * x_ni / (x_fe + x_ni)
+                    g_excess_values[ph] = weight * g_ex
+                except:
+                    g_excess_values[ph] = 0.0
+
+            print(f"{T:<10} {g_excess_values.get('LIQUID', 0):<15.0f} "
+                  f"{g_excess_values.get('FCC_A1', 0):<15.0f} "
+                  f"{g_excess_values.get('BCC_A2', 0):<15.0f} {phase:<10}")
+
 if __name__ == '__main__':
     test_phase_stability()
     print("\n" * 2)
     test_detailed_gibbs_energy()
+    print("\n" * 2)
+    test_fe_ni_alloy()
