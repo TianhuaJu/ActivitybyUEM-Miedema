@@ -1377,8 +1377,9 @@ class PhaseEquilibriumWidget(QWidget):
                         'message': result.get('message', '热力学不稳定')
                     })
 
-                # 不稳定相的基体相也要更新
-                if result.get('matrix_phase'):
+                # 关键修复：不稳定相不更新基体相分数
+                # 只有当还没有任何成功的析出相时，才使用不稳定相的基体相作为初始值
+                if combined['matrix_phase'] is None and result.get('matrix_phase'):
                     combined['matrix_phase'] = result.get('matrix_phase')
 
             elif status == 'skipped':

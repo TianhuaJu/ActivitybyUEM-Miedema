@@ -1359,8 +1359,12 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         """
         R = 8.314  # J/(mol·K)
 
+        # 间隙元素列表 - 在液态中不需要晶格稳定性
+        INTERSTITIAL_ELEMENTS = {'C', 'N', 'H', 'O', 'B'}
+
         # 确定基体相
         matrix_phase = self._find_lowest_energy_phase(alloy_composition, temperature)
+        is_liquid = matrix_phase.upper() == 'LIQUID'
 
         # 计算各元素在基体中的化学势加权和: Σ(xᵢ · μᵢ)
         weighted_mu_sum = 0.0
@@ -1371,24 +1375,40 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 # 元素不存在于合金中，无法形成化合物
                 return False, float('-inf')
 
+            element_upper = element.upper()
+
             # 获取元素在基体相中的参考态Gibbs能
-            # 对于非金属元素（如C），需要估算其在金属晶格中的能量
-            g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, matrix_phase, temperature)
-            if g_ref_matrix is None:
-                # 尝试估算晶格稳定性（对于非金属元素如C, N, H等）
-                g_ref_matrix = self._estimate_lattice_stability(element, matrix_phase, temperature)
-            if g_ref_matrix is None:
-                # 回退到SER（但这可能导致低估驱动力）
+            # 关键修复：对于液态中的间隙元素，直接使用SER作为参考态
+            # 因为间隙元素在液态中可以轻松溶解，不需要克服晶格能
+            if is_liquid and element_upper in INTERSTITIAL_ELEMENTS:
+                # 液态中的间隙元素：使用SER（如C用石墨）作为参考态
+                # 活度是相对于SER的，所以 μ = G°(SER) + RT·ln(a_relative_to_SER)
                 g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, 'SER', temperature)
+                if g_ref_matrix is None:
+                    stable_phase = self.tdb_parser.get_stable_phase(element, temperature)
+                    if stable_phase:
+                        g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, stable_phase, temperature)
+            else:
+                # 固态或非间隙元素：使用相应相的能量
+                g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, matrix_phase, temperature)
+                if g_ref_matrix is None:
+                    # 尝试估算晶格稳定性（对于非金属元素如C, N, H等在固态中）
+                    g_ref_matrix = self._estimate_lattice_stability(element, matrix_phase, temperature)
+                if g_ref_matrix is None:
+                    # 回退到SER
+                    g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, 'SER', temperature)
+
             if g_ref_matrix is None:
                 print(f"  警告: 无法获取 {element} 在 {matrix_phase} 中的参考态能量")
                 return False, float('-inf')
 
             # 计算活度系数 ln(γ)
+            # 对于液态使用'liquid'，固态使用'solid'
+            phase_type = 'liquid' if is_liquid else 'solid'
             try:
                 ln_gamma = self.calculate_ln_activity_coefficient(
                     alloy_composition, element, temperature,
-                    'solid',  # 固态
+                    phase_type,
                     extrapolation_func, extrapolation_model_name, activity_model
                 )
                 if ln_gamma is None:
@@ -1761,6 +1781,9 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         """
         R = 8.314  # J/(mol·K)
 
+        # 间隙元素列表 - 在液态中不需要晶格稳定性
+        INTERSTITIAL_ELEMENTS = {'C', 'N', 'H', 'O', 'B'}
+
         # 计算剩余基体组成
         if fraction <= 0:
             matrix_comp = alloy_composition.copy()
@@ -1778,6 +1801,7 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
         # 确定基体相
         matrix_phase = self._find_lowest_energy_phase(matrix_comp, temperature)
+        is_liquid = matrix_phase.upper() == 'LIQUID'
 
         # 计算各元素在基体中的化学势加权和: Σ(xᵢ · μᵢ)
         weighted_mu_sum = 0.0
@@ -1787,20 +1811,34 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
             if x_el < 1e-15:
                 return float('-inf')  # 元素耗尽，不可能继续析出
 
+            element_upper = element.upper()
+
             # 获取元素在基体相中的参考态Gibbs能
-            g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, matrix_phase, temperature)
-            if g_ref_matrix is None:
-                g_ref_matrix = self._estimate_lattice_stability(element, matrix_phase, temperature)
-            if g_ref_matrix is None:
+            # 关键修复：对于液态中的间隙元素，直接使用SER作为参考态
+            if is_liquid and element_upper in INTERSTITIAL_ELEMENTS:
+                # 液态中的间隙元素：使用SER作为参考态
                 g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, 'SER', temperature)
+                if g_ref_matrix is None:
+                    stable_phase = self.tdb_parser.get_stable_phase(element, temperature)
+                    if stable_phase:
+                        g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, stable_phase, temperature)
+            else:
+                # 固态或非间隙元素：使用相应相的能量
+                g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, matrix_phase, temperature)
+                if g_ref_matrix is None:
+                    g_ref_matrix = self._estimate_lattice_stability(element, matrix_phase, temperature)
+                if g_ref_matrix is None:
+                    g_ref_matrix = self.tdb_parser.get_gibbs_energy(element, 'SER', temperature)
+
             if g_ref_matrix is None:
                 return float('-inf')
 
             # 计算活度系数 ln(γ)
+            phase_type = 'liquid' if is_liquid else 'solid'
             try:
                 ln_gamma = self.calculate_ln_activity_coefficient(
                     matrix_comp, element, temperature,
-                    'solid',
+                    phase_type,
                     extrapolation_func, model_name, activity_model
                 )
                 if ln_gamma is None:
