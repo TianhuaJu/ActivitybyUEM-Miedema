@@ -890,6 +890,53 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 'matrix_phase': None
             }
 
+        # 计算化合物的吉布斯能
+        if compound_gibbs_energy is not None:
+            g_compound = compound_gibbs_energy
+            print(f"  使用用户输入的吉布斯能: {g_compound:.2f} J/mol")
+        else:
+            # 尝试从Miedema模型估算
+            g_compound = self._estimate_compound_gibbs_energy(
+                compound_comp, compound_formula, temperature
+            )
+            print(f"  估算的吉布斯能: {g_compound:.2f} J/mol")
+
+        # ============ 关键：检查化合物是否热力学稳定 ============
+        is_stable, driving_force = self._check_compound_stability(
+            alloy_composition, compound_comp, compound_formula, temperature,
+            g_compound, extrapolation_func, extrapolation_model_name, activity_model
+        )
+
+        if not is_stable:
+            print(f"  ⚠ 化合物 {compound_formula} 热力学不稳定，不会析出")
+            print(f"  驱动力: {driving_force:.2f} J/mol (正值表示不稳定)")
+            return {
+                'status': 'unstable',
+                'message': f'化合物 {compound_formula} 在当前条件下热力学不稳定，不会析出',
+                'equilibrium_phase': {
+                    'name': compound_formula,
+                    'type': 'compound',
+                    'composition': compound_comp,
+                    'mole_fraction': 0.0,
+                    'mass_fraction': 0.0,
+                    'gibbs_energy': g_compound,
+                    'is_stable': False,
+                    'driving_force': driving_force
+                },
+                'matrix_phase': {
+                    'name': self._find_lowest_energy_phase(alloy_composition, temperature),
+                    'composition': alloy_composition,
+                    'mole_fraction': 1.0
+                },
+                'calculation_details': {
+                    'stability_check': 'failed',
+                    'driving_force': driving_force,
+                    'temperature': temperature
+                }
+            }
+
+        print(f"  ✓ 化合物 {compound_formula} 热力学稳定，驱动力: {driving_force:.2f} J/mol")
+
         # 计算化合物的最大生成量（受限元素约束）
         max_compound_fraction = float('inf')
         limiting_element = None
@@ -904,17 +951,6 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
         print(f"  受限元素: {limiting_element}")
         print(f"  最大化合物摩尔分数: {max_compound_fraction:.6f}")
-
-        # 计算化合物的吉布斯能
-        if compound_gibbs_energy is not None:
-            g_compound = compound_gibbs_energy
-            print(f"  使用用户输入的吉布斯能: {g_compound:.2f} J/mol")
-        else:
-            # 尝试从Miedema模型估算
-            g_compound = self._estimate_compound_gibbs_energy(
-                compound_comp, compound_formula, temperature
-            )
-            print(f"  估算的吉布斯能: {g_compound:.2f} J/mol")
 
         # 计算基体相（剩余组成）
         if max_compound_fraction >= 1.0:
@@ -960,7 +996,9 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 'composition': compound_comp,
                 'mole_fraction': compound_fraction,
                 'mass_fraction': mass_fraction,
-                'gibbs_energy': g_compound
+                'gibbs_energy': g_compound,
+                'is_stable': True,
+                'driving_force': driving_force
             },
             'matrix_phase': {
                 'name': matrix_phase_name,
@@ -971,9 +1009,111 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 'limiting_element': limiting_element,
                 'max_possible_fraction': max_compound_fraction,
                 'temperature': temperature,
-                'compound_gibbs_energy_source': 'user_input' if compound_gibbs_energy is not None else 'estimated'
+                'compound_gibbs_energy_source': 'user_input' if compound_gibbs_energy is not None else 'estimated',
+                'stability_check': 'passed',
+                'driving_force': driving_force
             }
         }
+
+    def _check_compound_stability(self,
+                                   alloy_composition: Dict[str, float],
+                                   compound_comp: Dict[str, float],
+                                   compound_formula: str,
+                                   temperature: float,
+                                   g_compound: float,
+                                   extrapolation_func,
+                                   extrapolation_model_name: str,
+                                   activity_model: str) -> Tuple[bool, float]:
+        """
+        检查化合物在当前条件下是否热力学稳定
+
+        热力学原理:
+        计算驱动力 ΔG = Σ(xᵢ · μᵢ_matrix) - G_compound
+        - ΔG < 0: 化合物稳定，可以析出
+        - ΔG > 0: 化合物不稳定，不会析出
+        - ΔG = 0: 平衡状态
+
+        返回:
+            (is_stable, driving_force)
+        """
+        # 确定溶剂和基体相
+        solvent = max(alloy_composition.items(), key=lambda item: item[1])[0]
+        matrix_phase = self._find_lowest_energy_phase(alloy_composition, temperature)
+
+        # 计算各元素在基体中的化学势加权和
+        weighted_mu_sum = 0.0
+        for element, x_in_compound in compound_comp.items():
+            # 获取元素在基体相中的化学势
+            mu_element = self._get_chemical_potential(
+                alloy_composition, element, temperature, matrix_phase,
+                extrapolation_func, extrapolation_model_name, activity_model
+            )
+            if mu_element is not None:
+                weighted_mu_sum += x_in_compound * mu_element
+            else:
+                # 如果无法计算化学势，尝试使用纯组分的Gibbs能
+                g_pure = self.tdb_parser.get_gibbs_energy(element, matrix_phase, temperature)
+                if g_pure is None:
+                    g_pure = self.tdb_parser.get_gibbs_energy(element, 'SER', temperature)
+                if g_pure is not None:
+                    # 添加混合贡献
+                    x_el = alloy_composition.get(element, 0.01)
+                    if x_el > 1e-10:
+                        mu_element = g_pure + 8.314 * temperature * math.log(x_el)
+                        weighted_mu_sum += x_in_compound * mu_element
+
+        # 计算化合物的完整Gibbs能（包含参考态）
+        g_compound_total = g_compound
+        for element, x_in_compound in compound_comp.items():
+            g_ref = self.tdb_parser.get_gibbs_energy(element, matrix_phase, temperature)
+            if g_ref is None:
+                g_ref = self.tdb_parser.get_gibbs_energy(element, 'SER', temperature)
+            if g_ref is not None:
+                g_compound_total += x_in_compound * g_ref
+
+        # 驱动力
+        driving_force = weighted_mu_sum - g_compound_total
+
+        # 如果驱动力 < 0，化合物稳定
+        is_stable = driving_force < 0
+
+        return is_stable, driving_force
+
+    def _get_chemical_potential(self,
+                                 composition: Dict[str, float],
+                                 element: str,
+                                 temperature: float,
+                                 phase: str,
+                                 extrapolation_func,
+                                 extrapolation_model_name: str,
+                                 activity_model: str) -> Optional[float]:
+        """计算组分在溶液中的化学势"""
+        x_el = composition.get(element, 0)
+        if x_el < 1e-15:
+            return None
+
+        # 获取纯组分Gibbs能
+        g_pure = self.tdb_parser.get_gibbs_energy(element, phase, temperature)
+        if g_pure is None:
+            g_pure = self.tdb_parser.get_gibbs_energy(element, 'SER', temperature)
+        if g_pure is None:
+            return None
+
+        # 计算活度系数
+        try:
+            ln_gamma = self.calculate_ln_activity_coefficient(
+                composition, element, temperature,
+                'liquid' if phase == 'LIQUID' else 'solid',
+                extrapolation_func, extrapolation_model_name, activity_model
+            )
+            if ln_gamma is None:
+                ln_gamma = 0.0
+        except:
+            ln_gamma = 0.0
+
+        # 化学势 μ = G° + RT*ln(γ*x)
+        mu = g_pure + 8.314 * temperature * (math.log(x_el) + ln_gamma)
+        return mu
 
     def _calculate_solution_phase_equilibrium(self,
                                                alloy_composition: Dict[str, float],

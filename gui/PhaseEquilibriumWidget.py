@@ -1173,17 +1173,25 @@ class PhaseEquilibriumWidget(QWidget):
         """合并多个平衡相计算结果"""
         combined = {
             'status': 'success',
-            'message': f'成功计算 {len(phases)} 个平衡相',
+            'message': '',
             'equilibrium_phases': [],  # 多个平衡相
             'matrix_phase': None,
             'calculation_details': {}
         }
 
+        stable_count = 0
+        unstable_count = 0
+
         for i, result in enumerate(all_results):
-            if result.get('status') == 'success':
-                eq_phase = result.get('equilibrium_phase')
+            status = result.get('status')
+            eq_phase = result.get('equilibrium_phase')
+
+            if status == 'success':
+                # 相稳定且可以析出
                 if eq_phase:
+                    eq_phase['stability_status'] = 'stable'
                     combined['equilibrium_phases'].append(eq_phase)
+                    stable_count += 1
 
                 # 最后一个结果的基体相作为最终基体相
                 if result.get('matrix_phase'):
@@ -1193,7 +1201,32 @@ class PhaseEquilibriumWidget(QWidget):
                 details = result.get('calculation_details', {})
                 for key, value in details.items():
                     combined['calculation_details'][f"{phases[i]}_{key}"] = value
+
+            elif status == 'unstable':
+                # 相热力学不稳定，不会析出
+                unstable_count += 1
+                if eq_phase:
+                    eq_phase['stability_status'] = 'unstable'
+                    combined['equilibrium_phases'].append(eq_phase)
+                else:
+                    combined['equilibrium_phases'].append({
+                        'name': phases[i],
+                        'type': 'compound',
+                        'composition': {},
+                        'mole_fraction': 0,
+                        'mass_fraction': 0,
+                        'gibbs_energy': 0,
+                        'stability_status': 'unstable',
+                        'is_stable': False,
+                        'message': result.get('message', '热力学不稳定')
+                    })
+
+                # 不稳定相的基体相也要更新
+                if result.get('matrix_phase'):
+                    combined['matrix_phase'] = result.get('matrix_phase')
+
             else:
+                # 其他错误
                 combined['equilibrium_phases'].append({
                     'name': phases[i],
                     'type': 'error',
@@ -1201,8 +1234,19 @@ class PhaseEquilibriumWidget(QWidget):
                     'mole_fraction': 0,
                     'mass_fraction': 0,
                     'gibbs_energy': 0,
+                    'stability_status': 'error',
                     'error': result.get('message', '计算失败')
                 })
+
+        # 更新消息
+        if stable_count > 0:
+            combined['message'] = f'成功计算 {stable_count} 个平衡相'
+            if unstable_count > 0:
+                combined['message'] += f'，{unstable_count} 个相热力学不稳定'
+        elif unstable_count > 0:
+            combined['message'] = f'所有 {unstable_count} 个指定相在当前条件下热力学不稳定，不会析出'
+        else:
+            combined['message'] = '无稳定平衡相'
 
         return combined
 
@@ -1227,9 +1271,21 @@ class PhaseEquilibriumWidget(QWidget):
             if eq_phase:
                 text += f"--- 平衡相 {i}: {eq_phase['name']} ---\n"
                 text += f"相类型: {eq_phase['type']}\n"
-                if eq_phase.get('error'):
+
+                # 显示稳定性状态
+                stability_status = eq_phase.get('stability_status', 'unknown')
+                if stability_status == 'unstable':
+                    text += f"⚠ 稳定性: 热力学不稳定，不会析出\n"
+                    if 'driving_force' in eq_phase:
+                        text += f"驱动力: {eq_phase['driving_force']:.2f} J/mol\n"
+                    text += f"摩尔分数: 0.0000 (0.00%)\n\n"
+                elif eq_phase.get('error'):
                     text += f"错误: {eq_phase['error']}\n\n"
                 else:
+                    if stability_status == 'stable':
+                        text += f"✓ 稳定性: 热力学稳定\n"
+                        if 'driving_force' in eq_phase:
+                            text += f"驱动力: {eq_phase['driving_force']:.2f} J/mol\n"
                     text += f"摩尔分数: {eq_phase['mole_fraction']:.6f} ({eq_phase['mole_fraction']*100:.2f}%)\n"
                     text += f"质量分数: {eq_phase['mass_fraction']:.6f} ({eq_phase['mass_fraction']*100:.2f}%)\n"
                     text += f"吉布斯能: {eq_phase['gibbs_energy']:.2f} J/mol\n\n"
@@ -1264,13 +1320,30 @@ class PhaseEquilibriumWidget(QWidget):
             eq_phases = [result.get('equilibrium_phase')]
 
         for eq_phase in eq_phases:
-            if eq_phase and not eq_phase.get('error'):
+            if eq_phase:
+                stability_status = eq_phase.get('stability_status', 'unknown')
+
+                # 跳过错误的相
+                if stability_status == 'error' or eq_phase.get('error'):
+                    continue
+
                 self.mp_results_table.insertRow(row)
-                self.mp_results_table.setItem(row, 0, QTableWidgetItem(eq_phase['name']))
-                self.mp_results_table.setItem(row, 1, QTableWidgetItem(eq_phase['type']))
-                self.mp_results_table.setItem(row, 2, QTableWidgetItem(f"{eq_phase['mole_fraction']*100:.4f}"))
-                self.mp_results_table.setItem(row, 3, QTableWidgetItem(f"{eq_phase['mass_fraction']*100:.4f}"))
-                self.mp_results_table.setItem(row, 4, QTableWidgetItem(f"{eq_phase['gibbs_energy']:.2f}"))
+
+                # 根据稳定性状态显示不同内容
+                if stability_status == 'unstable':
+                    # 不稳定相显示为0
+                    self.mp_results_table.setItem(row, 0, QTableWidgetItem(f"{eq_phase['name']} (不稳定)"))
+                    self.mp_results_table.setItem(row, 1, QTableWidgetItem(eq_phase['type']))
+                    self.mp_results_table.setItem(row, 2, QTableWidgetItem("0.0000"))
+                    self.mp_results_table.setItem(row, 3, QTableWidgetItem("0.0000"))
+                    self.mp_results_table.setItem(row, 4, QTableWidgetItem(f"{eq_phase['gibbs_energy']:.2f}"))
+                else:
+                    # 稳定相正常显示
+                    self.mp_results_table.setItem(row, 0, QTableWidgetItem(eq_phase['name']))
+                    self.mp_results_table.setItem(row, 1, QTableWidgetItem(eq_phase['type']))
+                    self.mp_results_table.setItem(row, 2, QTableWidgetItem(f"{eq_phase['mole_fraction']*100:.4f}"))
+                    self.mp_results_table.setItem(row, 3, QTableWidgetItem(f"{eq_phase['mass_fraction']*100:.4f}"))
+                    self.mp_results_table.setItem(row, 4, QTableWidgetItem(f"{eq_phase['gibbs_energy']:.2f}"))
                 row += 1
 
         matrix_phase = result.get('matrix_phase')
@@ -1308,7 +1381,12 @@ class PhaseEquilibriumWidget(QWidget):
             eq_phases = [result.get('equilibrium_phase')]
 
         for eq_phase in eq_phases:
-            if eq_phase and eq_phase.get('composition') and not eq_phase.get('error'):
+            # 跳过不稳定相和错误相（不稳定相不显示组成，因为它们不会形成）
+            stability_status = eq_phase.get('stability_status', 'unknown') if eq_phase else 'error'
+            if stability_status in ['unstable', 'error'] or eq_phase.get('error'):
+                continue
+
+            if eq_phase and eq_phase.get('composition'):
                 comp = eq_phase['composition']
                 total_mass = sum(comp.get(el, 0) * atomic_masses.get(el.upper(), 50)
                                for el in comp)
@@ -1360,7 +1438,12 @@ class PhaseEquilibriumWidget(QWidget):
             eq_phases = [result.get('equilibrium_phase')]
 
         for eq_phase in eq_phases:
-            if eq_phase and not eq_phase.get('error') and eq_phase.get('mole_fraction', 0) > 0.001:
+            # 跳过不稳定相和错误相（它们的mole_fraction为0）
+            stability_status = eq_phase.get('stability_status', 'unknown') if eq_phase else 'error'
+            if stability_status in ['unstable', 'error'] or eq_phase.get('error'):
+                continue
+
+            if eq_phase and eq_phase.get('mole_fraction', 0) > 0.001:
                 labels.append(eq_phase['name'])
                 fractions.append(eq_phase['mole_fraction'])
 
@@ -1370,7 +1453,7 @@ class PhaseEquilibriumWidget(QWidget):
             fractions.append(matrix_phase['mole_fraction'])
 
         if not labels or sum(fractions) < 0.001:
-            self.mp_canvas.axes.text(0.5, 0.5, '无有效相分数数据',
+            self.mp_canvas.axes.text(0.5, 0.5, '无有效相分数数据\n(指定相可能热力学不稳定)',
                                      ha='center', va='center', fontsize=12)
             self.mp_canvas.draw()
             return
