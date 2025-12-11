@@ -311,8 +311,22 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
         - G_excess: 过剩Gibbs能
 
         选择Gibbs能最低的相作为稳定基体相。
+
+        注意：间隙元素（C, N, H, O, B）在金属中以间隙方式溶解，
+        其溶解能远低于晶格稳定性能量。
         """
         R = 8.314  # J/(mol·K)
+
+        # 间隙元素在各相中的溶解能 (J/mol，相对于SER)
+        # 这些值基于实验数据和热力学评估
+        # C在液态Fe中的溶解能约22 kJ/mol，在FCC中约42 kJ/mol，在BCC中约90 kJ/mol
+        INTERSTITIAL_DISSOLUTION_ENERGY = {
+            'C': {'LIQUID': 22000, 'FCC_A1': 42000, 'BCC_A2': 90000, 'HCP_A3': 50000},
+            'N': {'LIQUID': 15000, 'FCC_A1': 35000, 'BCC_A2': 80000, 'HCP_A3': 40000},
+            'H': {'LIQUID': 10000, 'FCC_A1': 20000, 'BCC_A2': 30000, 'HCP_A3': 25000},
+            'O': {'LIQUID': 20000, 'FCC_A1': 40000, 'BCC_A2': 85000, 'HCP_A3': 45000},
+            'B': {'LIQUID': 18000, 'FCC_A1': 38000, 'BCC_A2': 75000, 'HCP_A3': 42000},
+        }
 
         # 候选相列表
         phases_to_check = ['LIQUID', 'BCC_A2', 'FCC_A1', 'HCP_A3']
@@ -337,16 +351,26 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
                     element_upper = element.upper()
 
-                    # 获取该元素在此相中的Gibbs能
-                    g_ref = self.tdb_parser.get_gibbs_energy(element_upper, phase, temperature)
-
-                    if g_ref is None:
-                        if is_liquid:
-                            # 液相：直接使用SER（液相不是晶格结构）
-                            g_ref = self.tdb_parser.get_gibbs_energy(element_upper, 'SER', temperature)
+                    # 检查是否为间隙元素
+                    if element_upper in INTERSTITIAL_DISSOLUTION_ENERGY:
+                        # 间隙元素：使用溶解能（相对于SER的能量）
+                        dissolution_data = INTERSTITIAL_DISSOLUTION_ENERGY[element_upper]
+                        if phase in dissolution_data:
+                            g_ref = dissolution_data[phase]
                         else:
-                            # 固相：尝试估算晶格稳定性
-                            g_ref = self._estimate_lattice_stability(element_upper, phase, temperature)
+                            # 没有该相的数据，使用最高的溶解能作为估计
+                            g_ref = max(dissolution_data.values())
+                    else:
+                        # 非间隙元素：使用数据库中的Gibbs能
+                        g_ref = self.tdb_parser.get_gibbs_energy(element_upper, phase, temperature)
+
+                        if g_ref is None:
+                            if is_liquid:
+                                # 液相：尝试使用SER
+                                g_ref = self.tdb_parser.get_gibbs_energy(element_upper, 'SER', temperature)
+                            else:
+                                # 固相：尝试估算晶格稳定性
+                                g_ref = self._estimate_lattice_stability(element_upper, phase, temperature)
 
                     if g_ref is None:
                         # 该元素在此相中没有数据，此相可能不适用
@@ -1979,8 +2003,22 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         - G_excess: 过剩Gibbs能
 
         选择Gibbs能最低的相作为稳定基体相。
+
+        注意：间隙元素（C, N, H, O, B）在金属中以间隙方式溶解，
+        其溶解能远低于晶格稳定性能量。
         """
         R = 8.314  # J/(mol·K)
+
+        # 间隙元素在各相中的溶解能 (J/mol，相对于SER)
+        # 这些值基于实验数据和热力学评估
+        # C在液态Fe中的溶解能约22 kJ/mol，在FCC中约42 kJ/mol，在BCC中约90 kJ/mol
+        INTERSTITIAL_DISSOLUTION_ENERGY = {
+            'C': {'LIQUID': 22000, 'FCC_A1': 42000, 'BCC_A2': 90000, 'HCP_A3': 50000},
+            'N': {'LIQUID': 15000, 'FCC_A1': 35000, 'BCC_A2': 80000, 'HCP_A3': 40000},
+            'H': {'LIQUID': 10000, 'FCC_A1': 20000, 'BCC_A2': 30000, 'HCP_A3': 25000},
+            'O': {'LIQUID': 20000, 'FCC_A1': 40000, 'BCC_A2': 85000, 'HCP_A3': 45000},
+            'B': {'LIQUID': 18000, 'FCC_A1': 38000, 'BCC_A2': 75000, 'HCP_A3': 42000},
+        }
 
         # 候选相列表
         phases_to_check = ['LIQUID', 'BCC_A2', 'FCC_A1', 'HCP_A3']
@@ -2005,16 +2043,26 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
                     element_upper = element.upper()
 
-                    # 获取该元素在此相中的Gibbs能
-                    g_ref = self.tdb_parser.get_gibbs_energy(element_upper, phase, temperature)
-
-                    if g_ref is None:
-                        if is_liquid:
-                            # 液相：直接使用SER（液相不是晶格结构）
-                            g_ref = self.tdb_parser.get_gibbs_energy(element_upper, 'SER', temperature)
+                    # 检查是否为间隙元素
+                    if element_upper in INTERSTITIAL_DISSOLUTION_ENERGY:
+                        # 间隙元素：使用溶解能（相对于SER的能量）
+                        dissolution_data = INTERSTITIAL_DISSOLUTION_ENERGY[element_upper]
+                        if phase in dissolution_data:
+                            g_ref = dissolution_data[phase]
                         else:
-                            # 固相：尝试估算晶格稳定性
-                            g_ref = self._estimate_lattice_stability(element_upper, phase, temperature)
+                            # 没有该相的数据，使用最高的溶解能作为估计
+                            g_ref = max(dissolution_data.values())
+                    else:
+                        # 非间隙元素：使用数据库中的Gibbs能
+                        g_ref = self.tdb_parser.get_gibbs_energy(element_upper, phase, temperature)
+
+                        if g_ref is None:
+                            if is_liquid:
+                                # 液相：尝试使用SER
+                                g_ref = self.tdb_parser.get_gibbs_energy(element_upper, 'SER', temperature)
+                            else:
+                                # 固相：尝试估算晶格稳定性
+                                g_ref = self._estimate_lattice_stability(element_upper, phase, temperature)
 
                     if g_ref is None:
                         # 该元素在此相中没有数据，此相可能不适用
