@@ -1132,13 +1132,16 @@ class PhaseEquilibriumWidget(QWidget):
             self.mp_calculate_button.setEnabled(False)
 
             # ========== 新的多相平衡计算逻辑 ==========
+            # 归一化组成键为大写（解决大小写不匹配问题）
+            composition_upper = {k.upper(): v for k, v in composition.items()}
+
             # 步骤1: 首先计算所有相的驱动力（使用原始组成）
             phase_stability_info = []
             for i, phase in enumerate(phases):
                 gibbs_energy = gibbs_energies[i] if i < len(gibbs_energies) else None
                 # 计算该相的驱动力
                 driving_force = self._calculate_phase_driving_force(
-                    composition, phase, temperature, gibbs_energy,
+                    composition_upper, phase, temperature, gibbs_energy,
                     extrap_func, extrap_model_name, activity_model
                 )
                 phase_stability_info.append({
@@ -1158,7 +1161,7 @@ class PhaseEquilibriumWidget(QWidget):
 
             # 步骤3: 按稳定性顺序依次析出，更新剩余组成
             all_results = []
-            remaining_composition = composition.copy()
+            remaining_composition = composition_upper.copy()
             processed_phases = set()
 
             for info in phase_stability_info:
@@ -1168,8 +1171,9 @@ class PhaseEquilibriumWidget(QWidget):
                 # 检查剩余组成中是否还有足够的元素
                 compound_comp = self._get_compound_composition(phase)
                 if compound_comp:
+                    # compound_comp 的键已经是大写，remaining_composition 也已归一化为大写
                     has_elements = all(
-                        remaining_composition.get(el.upper(), 0) > 1e-10
+                        remaining_composition.get(el, 0) > 1e-10
                         for el in compound_comp
                     )
                     if not has_elements:
@@ -1259,19 +1263,24 @@ class PhaseEquilibriumWidget(QWidget):
 
     def _calculate_phase_driving_force(self, composition, phase, temperature, gibbs_energy,
                                         extrap_func, extrap_model_name, activity_model):
-        """计算相的热力学驱动力（ΔG > 0 表示可析出）"""
+        """
+        计算相的热力学驱动力（ΔG > 0 表示可析出）
+
+        注意：composition 的键应该已经归一化为大写
+        """
         try:
             # 如果是溶体相，返回大正值（始终可以存在）
             if self.manual_calculator.is_solution_phase(phase):
                 return 1000.0  # 溶体相始终稳定
 
-            # 获取化合物组成
+            # 获取化合物组成（键为大写）
             compound_comp = self.manual_calculator.parse_compound_formula(phase)
 
             # 检查合金中是否含有所需元素
+            # compound_comp 的键已经是大写，composition 的键也应该是大写
             for el in compound_comp:
                 if el not in composition or composition[el] < 1e-10:
-                    return float('inf')  # 缺少元素，不可能形成
+                    return float('-inf')  # 缺少元素，不可能形成（返回负无穷表示不稳定）
 
             # 估算吉布斯能
             if gibbs_energy is None:
@@ -1291,7 +1300,7 @@ class PhaseEquilibriumWidget(QWidget):
 
         except Exception as e:
             print(f"计算 {phase} 驱动力时出错: {e}")
-            return float('inf')  # 出错时返回正无穷（不稳定）
+            return float('-inf')  # 出错时返回负无穷（不稳定）
 
     def _get_compound_composition(self, phase):
         """获取化合物的组成"""
