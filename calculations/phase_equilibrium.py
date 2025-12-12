@@ -310,30 +310,32 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
         - RT×Σ(xᵢ×ln(xᵢ)): 理想混合熵贡献
         - G_excess: 过剩Gibbs能（通过Miedema模型计算）
 
-        选择Gibbs能最低的相作为稳定基体相。
-
-        注意：间隙元素（C, N, H, O, B）在金属中以间隙方式溶解，
-        其溶解能远低于晶格稳定性能量。
+        对于间隙元素（C, N, H, O, B）：
+        溶解能 = Miedema化学项 + 转变能项
+        转变能项 = 溶质从标准态转变为间隙态的结构转变能，与基体相结构相关
         """
         from models.miedema_model import MiedemaModel
 
         R = 8.314  # J/(mol·K)
 
-        # 间隙元素在各相中的溶解能 (J/mol，相对于SER)
-        # 这些值基于实验数据和热力学评估
-        # C在液态Fe中的溶解能约22 kJ/mol，在FCC中约42 kJ/mol，在BCC中约90 kJ/mol
-        INTERSTITIAL_DISSOLUTION_ENERGY = {
-            'C': {'LIQUID': 22000, 'FCC_A1': 42000, 'BCC_A2': 90000, 'HCP_A3': 50000},
-            'N': {'LIQUID': 15000, 'FCC_A1': 35000, 'BCC_A2': 80000, 'HCP_A3': 40000},
-            'H': {'LIQUID': 10000, 'FCC_A1': 20000, 'BCC_A2': 30000, 'HCP_A3': 25000},
-            'O': {'LIQUID': 20000, 'FCC_A1': 40000, 'BCC_A2': 85000, 'HCP_A3': 45000},
-            'B': {'LIQUID': 18000, 'FCC_A1': 38000, 'BCC_A2': 75000, 'HCP_A3': 42000},
+        # 间隙元素列表
+        INTERSTITIAL_ELEMENTS = {'C', 'N', 'H', 'O', 'B'}
+
+        # 间隙元素的结构转变能 (J/mol)
+        # 这是溶质从其标准态转变为在基体晶格中间隙态的能量
+        # 与基体相结构密切相关：BCC间隙位小，转变能高；FCC间隙位大，转变能低
+        TRANSFORMATION_ENERGY = {
+            'C': {'LIQUID': 20000, 'FCC_A1': 35000, 'BCC_A2': 80000, 'HCP_A3': 45000},
+            'N': {'LIQUID': 12000, 'FCC_A1': 28000, 'BCC_A2': 70000, 'HCP_A3': 35000},
+            'H': {'LIQUID': 8000, 'FCC_A1': 15000, 'BCC_A2': 25000, 'HCP_A3': 20000},
+            'O': {'LIQUID': 18000, 'FCC_A1': 35000, 'BCC_A2': 75000, 'HCP_A3': 40000},
+            'B': {'LIQUID': 15000, 'FCC_A1': 30000, 'BCC_A2': 65000, 'HCP_A3': 38000},
         }
 
         # 候选相列表
         phases_to_check = ['LIQUID', 'BCC_A2', 'FCC_A1', 'HCP_A3']
 
-        # 确定溶剂元素（用于默认相）
+        # 确定溶剂元素（用于默认相和Miedema计算）
         solvent = max(composition.items(), key=lambda x: x[1])[0]
         solvent_upper = solvent.upper()
 
@@ -352,29 +354,23 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
                 # 1. 计算参考态能量加权和：Σ(xᵢ × G°ᵢ(phase))
                 for element_upper, x in valid_elements:
-                    # 检查是否为间隙元素
-                    if element_upper in INTERSTITIAL_DISSOLUTION_ENERGY:
-                        # 间隙元素：使用溶解能（相对于SER的能量）
-                        dissolution_data = INTERSTITIAL_DISSOLUTION_ENERGY[element_upper]
-                        if phase in dissolution_data:
-                            g_ref = dissolution_data[phase]
-                        else:
-                            # 没有该相的数据，使用最高的溶解能作为估计
-                            g_ref = max(dissolution_data.values())
+                    # 间隙元素：使用SER参考态（如C使用石墨）
+                    # Miedema模型和转变能已经处理了溶解过程的能量变化
+                    if element_upper in INTERSTITIAL_ELEMENTS:
+                        g_ref = self.tdb_parser.get_gibbs_energy(element_upper, 'SER', temperature)
+                        if g_ref is None:
+                            g_ref = 0.0
                     else:
-                        # 非间隙元素：使用数据库中的Gibbs能
+                        # 非间隙元素：使用相特定的TDB Gibbs能
                         g_ref = self.tdb_parser.get_gibbs_energy(element_upper, phase, temperature)
 
                         if g_ref is None:
                             if is_liquid:
-                                # 液相：尝试使用SER
                                 g_ref = self.tdb_parser.get_gibbs_energy(element_upper, 'SER', temperature)
                             else:
-                                # 固相：尝试估算晶格稳定性
                                 g_ref = self._estimate_lattice_stability(element_upper, phase, temperature)
 
                     if g_ref is None:
-                        # 该元素在此相中没有数据，此相可能不适用
                         all_elements_valid = False
                         break
 
@@ -387,36 +383,35 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 for element_upper, x in valid_elements:
                     g_total += R * temperature * x * math.log(x)
 
-                # 3. 过剩Gibbs能（通过Miedema模型计算）
-                # 使用Muggianu规则：G_excess = Σᵢ<ⱼ (xᵢ × xⱼ × G_excess_ij / (xᵢ + xⱼ))
-                # 对于二元系，当xᵢ + xⱼ = 1时，G_excess_ij 是二元过剩Gibbs能
+                # 3. 过剩Gibbs能（通过Miedema模型计算所有二元对）
                 g_excess = 0.0
                 for i in range(len(valid_elements)):
                     for j in range(i + 1, len(valid_elements)):
                         el1, x1 = valid_elements[i]
                         el2, x2 = valid_elements[j]
 
-                        # 跳过间隙元素的二元对（它们不遵循Miedema模型）
-                        if el1 in INTERSTITIAL_DISSOLUTION_ENERGY or el2 in INTERSTITIAL_DISSOLUTION_ENERGY:
-                            continue
-
                         try:
                             # 创建Miedema模型实例
                             miedema = MiedemaModel((el1, el2), phase_state)
-                            # 计算二元过剩Gibbs能
-                            # 在二元系统中，以el1为基准，x_el1 = x1/(x1+x2)
                             x1_binary = x1 / (x1 + x2)
                             g_ex_binary = miedema.get_excess_Gibbs(el1, x1_binary, temperature, 'SS')
-                            # Muggianu规则：将二元过剩Gibbs能转换为多元贡献
-                            # 权重因子 = xᵢ × xⱼ × 4 / (xᵢ + xⱼ)² × (xᵢ + xⱼ)
-                            # 简化为 = 4 × xᵢ × xⱼ / (xᵢ + xⱼ)
+
+                            # Muggianu规则权重
                             weight = 4.0 * x1 * x2 / (x1 + x2) if (x1 + x2) > 1e-10 else 0.0
                             g_excess += weight * g_ex_binary
                         except Exception:
-                            # 如果Miedema模型计算失败，跳过该二元对
                             pass
 
                 g_total += g_excess
+
+                # 4. 间隙元素的结构转变能项
+                # 这是额外的能量贡献，代表间隙元素进入基体晶格的结构变形能
+                for element_upper, x in valid_elements:
+                    if element_upper in INTERSTITIAL_ELEMENTS and element_upper in TRANSFORMATION_ENERGY:
+                        trans_data = TRANSFORMATION_ENERGY[element_upper]
+                        if phase in trans_data:
+                            # 添加转变能贡献
+                            g_total += x * trans_data[phase]
 
                 if g_total < min_g_total:
                     min_g_total = g_total
@@ -2029,30 +2024,32 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
         - RT×Σ(xᵢ×ln(xᵢ)): 理想混合熵贡献
         - G_excess: 过剩Gibbs能（通过Miedema模型计算）
 
-        选择Gibbs能最低的相作为稳定基体相。
-
-        注意：间隙元素（C, N, H, O, B）在金属中以间隙方式溶解，
-        其溶解能远低于晶格稳定性能量。
+        对于间隙元素（C, N, H, O, B）：
+        溶解能 = Miedema化学项 + 转变能项
+        转变能项 = 溶质从标准态转变为间隙态的结构转变能，与基体相结构相关
         """
         from models.miedema_model import MiedemaModel
 
         R = 8.314  # J/(mol·K)
 
-        # 间隙元素在各相中的溶解能 (J/mol，相对于SER)
-        # 这些值基于实验数据和热力学评估
-        # C在液态Fe中的溶解能约22 kJ/mol，在FCC中约42 kJ/mol，在BCC中约90 kJ/mol
-        INTERSTITIAL_DISSOLUTION_ENERGY = {
-            'C': {'LIQUID': 22000, 'FCC_A1': 42000, 'BCC_A2': 90000, 'HCP_A3': 50000},
-            'N': {'LIQUID': 15000, 'FCC_A1': 35000, 'BCC_A2': 80000, 'HCP_A3': 40000},
-            'H': {'LIQUID': 10000, 'FCC_A1': 20000, 'BCC_A2': 30000, 'HCP_A3': 25000},
-            'O': {'LIQUID': 20000, 'FCC_A1': 40000, 'BCC_A2': 85000, 'HCP_A3': 45000},
-            'B': {'LIQUID': 18000, 'FCC_A1': 38000, 'BCC_A2': 75000, 'HCP_A3': 42000},
+        # 间隙元素列表
+        INTERSTITIAL_ELEMENTS = {'C', 'N', 'H', 'O', 'B'}
+
+        # 间隙元素的结构转变能 (J/mol)
+        # 这是溶质从其标准态转变为在基体晶格中间隙态的能量
+        # 与基体相结构密切相关：BCC间隙位小，转变能高；FCC间隙位大，转变能低
+        TRANSFORMATION_ENERGY = {
+            'C': {'LIQUID': 20000, 'FCC_A1': 35000, 'BCC_A2': 80000, 'HCP_A3': 45000},
+            'N': {'LIQUID': 12000, 'FCC_A1': 28000, 'BCC_A2': 70000, 'HCP_A3': 35000},
+            'H': {'LIQUID': 8000, 'FCC_A1': 15000, 'BCC_A2': 25000, 'HCP_A3': 20000},
+            'O': {'LIQUID': 18000, 'FCC_A1': 35000, 'BCC_A2': 75000, 'HCP_A3': 40000},
+            'B': {'LIQUID': 15000, 'FCC_A1': 30000, 'BCC_A2': 65000, 'HCP_A3': 38000},
         }
 
         # 候选相列表
         phases_to_check = ['LIQUID', 'BCC_A2', 'FCC_A1', 'HCP_A3']
 
-        # 确定溶剂元素（用于默认相）
+        # 确定溶剂元素（用于默认相和Miedema计算）
         solvent = max(composition.items(), key=lambda x: x[1])[0]
         solvent_upper = solvent.upper()
 
@@ -2071,29 +2068,23 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
                 # 1. 计算参考态能量加权和：Σ(xᵢ × G°ᵢ(phase))
                 for element_upper, x in valid_elements:
-                    # 检查是否为间隙元素
-                    if element_upper in INTERSTITIAL_DISSOLUTION_ENERGY:
-                        # 间隙元素：使用溶解能（相对于SER的能量）
-                        dissolution_data = INTERSTITIAL_DISSOLUTION_ENERGY[element_upper]
-                        if phase in dissolution_data:
-                            g_ref = dissolution_data[phase]
-                        else:
-                            # 没有该相的数据，使用最高的溶解能作为估计
-                            g_ref = max(dissolution_data.values())
+                    # 间隙元素：使用SER参考态（如C使用石墨）
+                    # Miedema模型和转变能已经处理了溶解过程的能量变化
+                    if element_upper in INTERSTITIAL_ELEMENTS:
+                        g_ref = self.tdb_parser.get_gibbs_energy(element_upper, 'SER', temperature)
+                        if g_ref is None:
+                            g_ref = 0.0
                     else:
-                        # 非间隙元素：使用数据库中的Gibbs能
+                        # 非间隙元素：使用相特定的TDB Gibbs能
                         g_ref = self.tdb_parser.get_gibbs_energy(element_upper, phase, temperature)
 
                         if g_ref is None:
                             if is_liquid:
-                                # 液相：尝试使用SER
                                 g_ref = self.tdb_parser.get_gibbs_energy(element_upper, 'SER', temperature)
                             else:
-                                # 固相：尝试估算晶格稳定性
                                 g_ref = self._estimate_lattice_stability(element_upper, phase, temperature)
 
                     if g_ref is None:
-                        # 该元素在此相中没有数据，此相可能不适用
                         all_elements_valid = False
                         break
 
@@ -2106,36 +2097,35 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 for element_upper, x in valid_elements:
                     g_total += R * temperature * x * math.log(x)
 
-                # 3. 过剩Gibbs能（通过Miedema模型计算）
-                # 使用Muggianu规则：G_excess = Σᵢ<ⱼ (xᵢ × xⱼ × G_excess_ij / (xᵢ + xⱼ))
-                # 对于二元系，当xᵢ + xⱼ = 1时，G_excess_ij 是二元过剩Gibbs能
+                # 3. 过剩Gibbs能（通过Miedema模型计算所有二元对）
                 g_excess = 0.0
                 for i in range(len(valid_elements)):
                     for j in range(i + 1, len(valid_elements)):
                         el1, x1 = valid_elements[i]
                         el2, x2 = valid_elements[j]
 
-                        # 跳过间隙元素的二元对（它们不遵循Miedema模型）
-                        if el1 in INTERSTITIAL_DISSOLUTION_ENERGY or el2 in INTERSTITIAL_DISSOLUTION_ENERGY:
-                            continue
-
                         try:
                             # 创建Miedema模型实例
                             miedema = MiedemaModel((el1, el2), phase_state)
-                            # 计算二元过剩Gibbs能
-                            # 在二元系统中，以el1为基准，x_el1 = x1/(x1+x2)
                             x1_binary = x1 / (x1 + x2)
                             g_ex_binary = miedema.get_excess_Gibbs(el1, x1_binary, temperature, 'SS')
-                            # Muggianu规则：将二元过剩Gibbs能转换为多元贡献
-                            # 权重因子 = xᵢ × xⱼ × 4 / (xᵢ + xⱼ)² × (xᵢ + xⱼ)
-                            # 简化为 = 4 × xᵢ × xⱼ / (xᵢ + xⱼ)
+
+                            # Muggianu规则权重
                             weight = 4.0 * x1 * x2 / (x1 + x2) if (x1 + x2) > 1e-10 else 0.0
                             g_excess += weight * g_ex_binary
                         except Exception:
-                            # 如果Miedema模型计算失败，跳过该二元对
                             pass
 
                 g_total += g_excess
+
+                # 4. 间隙元素的结构转变能项
+                # 这是额外的能量贡献，代表间隙元素进入基体晶格的结构变形能
+                for element_upper, x in valid_elements:
+                    if element_upper in INTERSTITIAL_ELEMENTS and element_upper in TRANSFORMATION_ENERGY:
+                        trans_data = TRANSFORMATION_ENERGY[element_upper]
+                        if phase in trans_data:
+                            # 添加转变能贡献
+                            g_total += x * trans_data[phase]
 
                 if g_total < min_g_total:
                     min_g_total = g_total
