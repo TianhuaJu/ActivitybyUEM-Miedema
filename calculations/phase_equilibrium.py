@@ -1987,27 +1987,58 @@ class ManualPhaseEquilibriumCalculator(PhaseDiagramCalculator):
 
     def _calculate_solution_gibbs_energy(self, composition, phase, temperature,
                                           extrapolation_func, model_name, activity_model):
-        """计算溶体相的吉布斯能"""
-        g_total = 0.0
+        """计算溶体相的吉布斯能
 
-        # 参考态能量
-        for el, x in composition.items():
-            if x < 1e-10:
-                continue
-            g_pure = self.tdb_parser.get_gibbs_energy(el, phase, temperature)
-            if g_pure is None:
+        G = Σ(xᵢ × G°ᵢ) + RT×Σ(xᵢ×ln(xᵢ)) + G_excess
+        """
+        from models.miedema_model import MiedemaModel
+
+        g_total = 0.0
+        R = 8.314
+
+        # 间隙元素
+        INTERSTITIAL_ELEMENTS = {'C', 'N', 'H', 'O', 'B'}
+
+        # 获取有效元素列表
+        valid_elements = [(el.upper(), x) for el, x in composition.items() if x > 1e-10]
+        is_liquid = (phase == 'LIQUID')
+        phase_state = "LIQUID" if is_liquid else "SOLID"
+
+        # 1. 参考态能量
+        for el, x in valid_elements:
+            if el in INTERSTITIAL_ELEMENTS:
+                # 间隙元素使用SER参考态
                 g_pure = self.tdb_parser.get_gibbs_energy(el, 'SER', temperature)
+                if g_pure is None:
+                    g_pure = 0.0
+            else:
+                g_pure = self.tdb_parser.get_gibbs_energy(el, phase, temperature)
+                if g_pure is None:
+                    g_pure = self.tdb_parser.get_gibbs_energy(el, 'SER', temperature)
             if g_pure is not None:
                 g_total += x * g_pure
 
-        # 混合熵贡献
-        R = 8.314
-        for x in composition.values():
-            if x > 1e-10:
-                g_total += R * temperature * x * math.log(x)
+        # 2. 混合熵贡献
+        for el, x in valid_elements:
+            g_total += R * temperature * x * math.log(x)
 
-        # 过剩吉布斯能（简化处理）
-        # 实际应该通过外推模型计算
+        # 3. 过剩Gibbs能（通过Miedema模型计算）
+        g_excess = 0.0
+        for i in range(len(valid_elements)):
+            for j in range(i + 1, len(valid_elements)):
+                el1, x1 = valid_elements[i]
+                el2, x2 = valid_elements[j]
+                try:
+                    miedema = MiedemaModel((el1, el2), phase_state)
+                    x1_binary = x1 / (x1 + x2)
+                    g_ex_binary = miedema.get_excess_Gibbs(el1, x1_binary, temperature, 'SS')
+                    # Muggianu规则权重
+                    weight = 4.0 * x1 * x2 / (x1 + x2) if (x1 + x2) > 1e-10 else 0.0
+                    g_excess += weight * g_ex_binary
+                except Exception:
+                    pass
+
+        g_total += g_excess
 
         return g_total
 

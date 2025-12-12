@@ -406,7 +406,11 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 	                             solution_phase, temperature, extrapolation_func,
 	                             extrapolation_model_name='UEM1', activity_model='Wagner',
 	                             use_intermetallic=True):
-		"""改进版溶解度计算"""
+		"""改进版溶解度计算
+
+		当use_intermetallic=True时，考虑金属间化合物平衡
+		否则使用与纯溶质的平衡计算
+		"""
 		if use_intermetallic:
 			calc = self._get_solubility_calculator()
 			if calc:
@@ -415,7 +419,12 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 						temperature, extrapolation_func, extrapolation_model_name,
 						activity_model
 				)
-		return self.calculate_solubility(...)  # 回退到原方法
+		# 使用标准溶解度计算方法
+		return self.calculate_solubility(
+			base_alloy_composition, solute_element, solution_phase,
+			temperature, extrapolation_func, extrapolation_model_name,
+			activity_model
+		)
 	
 	
 	def calculate_ideal_solubility(self,
