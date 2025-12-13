@@ -635,10 +635,13 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
                                                     temperature: float,
                                                     extrapolation_func,
                                                     extrapolation_model_name: str,
-                                                    activity_model: str,
-                                                    max_phases: int = 5) -> Dict:
+                                                    activity_model: str) -> Dict:
         """
         计算指定温度下的相平衡（GUI接口方法）
+
+        平衡相数由热力学自动判断，并使用Gibbs相律验证结果合理性。
+        Gibbs相律：F = C - P + 2（固定T和P时：F = C - P）
+        最大相数：P_max = C（当自由度F=0时）
 
         参数:
             composition: 合金组成 {元素: 摩尔分数}
@@ -646,7 +649,6 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
             extrapolation_func: 外推模型函数
             extrapolation_model_name: 外推模型名称
             activity_model: 活度模型
-            max_phases: 最大相数
 
         返回:
             Dict: {
@@ -655,10 +657,17 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 'total_composition': 总组成,
                 'total_gibbs_energy': 总吉布斯能,
                 'message': 消息,
-                'phases': [PhaseInfo, ...]
+                'phases': [PhaseInfo, ...],
+                'gibbs_phase_rule': Gibbs相律验证信息
             }
         """
         try:
+            # 计算组分数（有效元素数量）
+            num_components = len([el for el, x in composition.items() if x > 1e-10])
+
+            # Gibbs相律：固定T和P时，最大相数 = 组分数
+            max_phases_allowed = num_components
+
             # 调用核心计算方法
             phases_data = self.calculate_phase_equilibrium(
                 alloy_composition=composition,
@@ -666,7 +675,7 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 extrapolation_model_func=extrapolation_func,
                 extrapolation_model_name=extrapolation_model_name,
                 activity_model=activity_model,
-                max_iterations=max_phases
+                max_iterations=max_phases_allowed + 2  # 允许额外迭代以确保收敛
             )
 
             # 转换为PhaseInfo对象列表
@@ -683,13 +692,34 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 phases.append(phase_info)
                 total_gibbs_energy += phase_info.fraction * phase_info.gibbs_energy
 
+            # Gibbs相律验证
+            num_phases = len(phases)
+            degrees_of_freedom = num_components - num_phases  # F = C - P (固定T, P)
+
+            gibbs_validation = {
+                'num_components': num_components,
+                'num_phases': num_phases,
+                'degrees_of_freedom': degrees_of_freedom,
+                'max_phases_allowed': max_phases_allowed,
+                'is_valid': degrees_of_freedom >= 0
+            }
+
+            if degrees_of_freedom < 0:
+                # 违反Gibbs相律，相数过多
+                message = f'警告: 计算得到{num_phases}个相，超过Gibbs相律允许的最大值{max_phases_allowed}'
+                status = 'warning'
+            else:
+                message = f'成功计算 {num_phases} 个平衡相 (自由度F={degrees_of_freedom})'
+                status = 'success'
+
             return {
-                'status': 'success',
+                'status': status,
                 'temperature': temperature,
                 'total_composition': composition,
                 'total_gibbs_energy': total_gibbs_energy,
-                'message': f'成功计算 {len(phases)} 个平衡相',
-                'phases': phases
+                'message': message,
+                'phases': phases,
+                'gibbs_phase_rule': gibbs_validation
             }
 
         except Exception as e:
@@ -699,7 +729,8 @@ class PhaseEquilibriumCalculator(PhaseDiagramCalculator):
                 'total_composition': composition,
                 'total_gibbs_energy': 0.0,
                 'message': f'计算失败: {str(e)}',
-                'phases': []
+                'phases': [],
+                'gibbs_phase_rule': None
             }
 
 

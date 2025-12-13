@@ -169,14 +169,6 @@ class PhaseEquilibriumWidget(QWidget):
         input_layout.addWidget(self.sp_activity_model_combo, row, 1)
         row += 1
 
-        # 最大相数
-        input_layout.addWidget(QLabel("最大相数:"), row, 0, Qt.AlignRight)
-        self.sp_max_phases_combo = QComboBox()
-        self.sp_max_phases_combo.addItems(["1", "2"])
-        self.sp_max_phases_combo.setCurrentText("2")
-        input_layout.addWidget(self.sp_max_phases_combo, row, 1)
-        row += 1
-
         layout.addWidget(input_group)
 
         # 计算按钮
@@ -527,7 +519,6 @@ class PhaseEquilibriumWidget(QWidget):
             temperature = float(self.sp_temperature_input.text())
             extrap_model_name = self.sp_extrap_model_combo.currentText()
             activity_model = self.sp_activity_model_combo.currentText()
-            max_phases = int(self.sp_max_phases_combo.currentText())
 
             # 获取外推模型函数
             extrap_func = getattr(self.binary_model, extrap_model_name)
@@ -536,10 +527,10 @@ class PhaseEquilibriumWidget(QWidget):
             self.sp_progress_bar.setVisible(True)
             self.sp_calculate_button.setEnabled(False)
 
-            # 执行计算
+            # 执行计算（平衡相数由热力学自动判断）
             result = self.calculator.calculate_phase_equilibrium_at_temperature(
                 composition, temperature, extrap_func,
-                extrap_model_name, activity_model, max_phases
+                extrap_model_name, activity_model
             )
 
             # 显示结果
@@ -561,10 +552,23 @@ class PhaseEquilibriumWidget(QWidget):
         text += f"温度: {result.get('temperature', 0):.2f} K\n"
         text += f"总组成: {result.get('total_composition', {})}\n"
         text += f"总吉布斯自由能: {result.get('total_gibbs_energy', 0):.2f} J/mol\n"
-        text += f"消息: {result.get('message', '')}\n\n"
+        text += f"消息: {result.get('message', '')}\n"
+
+        # 显示Gibbs相律验证信息
+        gibbs_info = result.get('gibbs_phase_rule')
+        if gibbs_info:
+            text += f"\n--- Gibbs相律验证 ---\n"
+            text += f"组分数 C = {gibbs_info['num_components']}\n"
+            text += f"相数 P = {gibbs_info['num_phases']}\n"
+            text += f"自由度 F = C - P = {gibbs_info['degrees_of_freedom']}\n"
+            text += f"最大允许相数 = {gibbs_info['max_phases_allowed']}\n"
+            if gibbs_info['is_valid']:
+                text += f"验证结果: 符合Gibbs相律\n"
+            else:
+                text += f"验证结果: 违反Gibbs相律（相数过多）\n"
 
         if 'phases' in result and result['phases']:
-            text += f"平衡相数: {len(result['phases'])}\n\n"
+            text += f"\n平衡相数: {len(result['phases'])}\n\n"
 
             for i, phase in enumerate(result['phases'], 1):
                 text += f"相 {i}: {phase.name}\n"
