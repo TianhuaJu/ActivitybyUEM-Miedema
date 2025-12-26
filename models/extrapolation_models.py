@@ -271,21 +271,23 @@ class BinaryModel:
 		return abs((f_ij - f_kj) / denominator)
 	
 	def _get_dki_uem1_A (self, k: str, i: str, j: str, t: float,phase_state = "liquid"):
-		
-		
+
+
 		mki = BinaryModel()
-		
+
 		# Conditional entropy setting based on element names
 		non_entropy_elements = {"H", "O", "N"}
-		
+
 		mki.set_entropy(not (k in non_entropy_elements or j in non_entropy_elements))
-		
+
 		mki.set_pair_element(k, i)
 		mki.set_state(phase_state)
 		mki.set_temperature(t)
-		
-		fki = lambda x: mki.calculate_derivative(k,i,x,1-x,target_var=k)
-		fik = lambda x: mki.calculate_derivative(k,i,1-x,x,target_var=i)
+
+		# 对xa求导（第一个组分k的摩尔分数）
+		fki = lambda x: mki.calculate_derivative(k, i, x, 1-x, target_var='xa')
+		# 对xb求导（第二个组分i的摩尔分数）
+		fik = lambda x: mki.calculate_derivative(k, i, 1-x, x, target_var='xb')
 		def get_integral (model_instance, e1_name, e2_name):
 			# Cache key includes all relevant parameters
 			key = f"{e1_name}-{e2_name}-{model_instance._lambda}-{model_instance._state}-{t}"
