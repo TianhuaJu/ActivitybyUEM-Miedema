@@ -553,6 +553,7 @@ class ActivityTemperatureVariationWidget(QWidget):
 		self.model_checkboxes = {}
 		models = [
 			("UEM1 模型", "UEM1"),
+			("UEM1_A 模型", "UEM1_A"),
 			("GSM 模型", "GSM"),
 			("UEM2 模型", "UEM2"),
 			("Muggianu 模型", "Muggianu")
@@ -921,7 +922,8 @@ class ActivityTemperatureVariationWidget(QWidget):
 			"UEM1": self.binary_model.UEM1,
 			"UEM2": self.binary_model.UEM2,
 			"GSM": self.binary_model.GSM,
-			"Muggianu": getattr(self.binary_model, 'Muggianu', None)
+			"Muggianu": getattr(self.binary_model, 'Muggianu', None),
+			"UEM1_A":self.binary_model.UEM1_A
 		}
 		
 		func = model_method_map.get(model_name_str)

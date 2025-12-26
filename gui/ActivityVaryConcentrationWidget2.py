@@ -575,9 +575,11 @@ class AlloyAdditionWidget(QWidget):
 		self.model_checkboxes = {}
 		models = [
 			("UEM1 模型", "UEM1"),
+		("UEM1_A 模型", "UEM1_A"),
 			("GSM 模型", "GSM"),
 			("Toop-Muggianu 模型", "Toop-Muggianu"),
-			("Muggianu 模型", "Muggianu")
+			("Muggianu 模型", "Muggianu"),
+			("UEM1_A 模型", "UEM1_A")
 		]
 		
 		for index, (name, key) in enumerate(models):
@@ -851,7 +853,8 @@ class AlloyAdditionWidget(QWidget):
 			"UEM1": self.binary_model.UEM1,
 			"Toop-Muggianu": self.binary_model.Toop_Muggianu,
 			"GSM": self.binary_model.GSM,
-			"Muggianu": self.binary_model.Muggianu
+			"Muggianu": self.binary_model.Muggianu,
+			"UEM1_A":self.binary_model.UEM1_A
 		}
 		
 		func = model_method_map.get(model_name_str)

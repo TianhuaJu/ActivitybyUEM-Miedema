@@ -359,7 +359,7 @@ class AlloyThermolCalProGUI(QMainWindow):
         </ul>
         <p><b>热力学模型:</b></p>
         <ul>
-        <li>外推模型: UEM1, UEM2, UEM2-Adv, GSM, Muggianu, Toop-Kohler等</li>
+        <li>外推模型: UEM1,UEM1_A, UEM2, UEM2-Adv, GSM, Muggianu, Toop-Kohler等</li>
         <li>活度模型: Wagner, Darken, Elliott</li>
         <li>热力学数据: SGTE Unary Database</li>
         </ul>

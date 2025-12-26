@@ -118,7 +118,7 @@ class ThermodynamicPropertiesWidget(QWidget):
         input_layout.addWidget(QLabel("外推模型:"), row, 0, Qt.AlignRight)
         self.extrap_model_combo = QComboBox()
         self.extrap_model_combo.addItems([
-            "UEM1", "UEM2", "UEM2-Adv", "GSM",
+            "UEM1", "UEM1_A","UEM2", "UEM2-Adv", "GSM",
             "Muggianu", "Toop-Muggianu", "Toop-Kohler"
         ])
         input_layout.addWidget(self.extrap_model_combo, row, 1)
@@ -217,7 +217,7 @@ class ThermodynamicPropertiesWidget(QWidget):
             from models.extrapolation_models import BinaryModel
             bm = BinaryModel()
             extrap_func_map = {
-                'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+                'UEM1': bm.UEM1,  'UEM1_A': bm.UEM1_A,'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
                 'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
                 'Toop-Muggianu': bm.Toop_Muggianu
             }

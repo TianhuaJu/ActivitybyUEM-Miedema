@@ -134,7 +134,56 @@ class BinaryModel:
 		dhe = 2 * self._ea.bkm * self._eb.shm * (vb - va) ** 2 / (3 * self._ea.bkm * vb + 4 * self._eb.shm * va)
 		return 1e-9 * dhe
 	
-	
+	def calculate_derivative (self, a, b, xa, xb, target_var='xa', h=1e-6):
+		"""
+		计算 binary_model 的数值微分（偏导数）。
+
+		Args:
+			a, b: 元素对象或名称
+			xa, xb: 组分 A 和 B 的量（摩尔分数或摩尔数）
+			target_var: 指定对哪个变量求导，可选 'xa', 'xb', 'T' (温度)
+			h: 微分步长，默认为 1e-6 (既能保证精度又能避免浮点误差)
+
+		Returns:
+			float: 导数值 dy/d(target_var)
+		"""
+		
+		# 封装一个内部调用函数，方便复用
+		def call_model (inner_xa, inner_xb):
+			return self.binary_model(a, b, inner_xa, inner_xb)
+		
+		# 1. 对 xa 求偏导 (d Model / d xa) | xb constant
+		if target_var == 'xa':
+			y_plus = call_model(xa + h, xb)
+			y_minus = call_model(xa - h, xb)
+			return (y_plus - y_minus) / (2 * h)
+		
+		# 2. 对 xb 求偏导 (d Model / d xb) | xa constant
+		elif target_var == 'xb':
+			y_plus = call_model(xa, xb + h)
+			y_minus = call_model(xa, xb - h)
+			return (y_plus - y_minus) / (2 * h)
+		
+		# 3. 对温度 T 求偏导 (d Model / d T)
+		# 注意：温度通常存储在 self._temperature 中，需要临时修改再恢复
+		elif target_var == 'T' or target_var == 'temperature':
+			original_temp = self._temperature
+			try:
+				# 计算 f(T + h)
+				self._temperature = original_temp + h
+				y_plus = call_model(xa, xb)
+				
+				# 计算 f(T - h)
+				self._temperature = original_temp - h
+				y_minus = call_model(xa, xb)
+				
+				return (y_plus - y_minus) / (2 * h)
+			finally:
+				# 无论是否出错，务必将温度恢复原值，防止副作用
+				self._temperature = original_temp
+		
+		else:
+			raise ValueError(f"不支持的求导变量: {target_var}")
 	
 	def integrate_miedema_mpmath_arbitrary_precision (self, model: Callable[[float], float],  decimal_places=30):
 		"""
@@ -220,6 +269,39 @@ class BinaryModel:
 			return float('inf')
 		
 		return abs((f_ij - f_kj) / denominator)
+	
+	def _get_dki_uem1_A (self, k: str, i: str, j: str, t: float,phase_state = "liquid"):
+		
+		
+		mki = BinaryModel()
+		
+		# Conditional entropy setting based on element names
+		non_entropy_elements = {"H", "O", "N"}
+		
+		mki.set_entropy(not (k in non_entropy_elements or j in non_entropy_elements))
+		
+		mki.set_pair_element(k, i)
+		mki.set_state(phase_state)
+		mki.set_temperature(t)
+		
+		fki = lambda x: mki.calculate_derivative(k,i,x,1-x,target_var=k)
+		fik = lambda x: mki.calculate_derivative(k,i,1-x,x,target_var=i)
+		def get_integral (model_instance, e1_name, e2_name):
+			# Cache key includes all relevant parameters
+			key = f"{e1_name}-{e2_name}-{model_instance._lambda}-{model_instance._state}-{t}"
+			if key in self.df_uem2:
+				return self.df_uem2[key]
+			
+			func = lambda x: abs(fki(x)-fik(x)) * 1000 / (Constants.R * t)
+			f_val = self.integrate_miedema_mpmath_arbitrary_precision(func, 30)
+			self.df_uem2[key] = f_val
+			return f_val
+		
+		
+		d_ki = get_integral(mki, k, i)
+		
+		
+		return d_ki
 	
 	def get_graphic_center (self, k, i, T: float, phase_state="liquid"):
 		"""计算函数图像的中心坐标 (x, y)。"""
@@ -344,6 +426,7 @@ class BinaryModel:
 		return alpha * beta3
 	
 	
+	
 	def UEM2 (self, k, i, j, Tem: float, phase_state: str):
 		"""UEM2 模型实现，采用新的偏差函数计算方法。"""
 		
@@ -387,4 +470,9 @@ class BinaryModel:
 		return d_kj/(d_ki + d_kj)*math.exp(-d_ki)
 		
 		pass
+	
+	def UEM1_A(self, k: str, i: str, j: str, T: float, phase_state: str):
+		d_ki = self._get_dki_uem1_A(k,i,j, T,phase_state)
+		d_kj = self._get_dki_uem1_A(k,j,i, T,phase_state)
+		return d_kj/(d_ki + d_kj)*math.exp(-d_ki)
 	

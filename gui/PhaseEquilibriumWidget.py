@@ -156,7 +156,7 @@ class PhaseEquilibriumWidget(QWidget):
         input_layout.addWidget(QLabel("外推模型:"), row, 0, Qt.AlignRight)
         self.sp_extrap_model_combo = QComboBox()
         self.sp_extrap_model_combo.addItems([
-            "UEM1", "UEM2", "UEM2-Adv", "GSM",
+            "UEM1", "UEM1_A","UEM2", "UEM2-Adv", "GSM",
             "Muggianu", "Toop-Muggianu", "Toop-Kohler"
         ])
         input_layout.addWidget(self.sp_extrap_model_combo, row, 1)
@@ -298,7 +298,7 @@ class PhaseEquilibriumWidget(QWidget):
         input_layout.addWidget(QLabel("外推模型:"), row, 0, Qt.AlignRight)
         self.tv_extrap_model_combo = QComboBox()
         self.tv_extrap_model_combo.addItems([
-            "UEM1", "UEM2", "UEM2-Adv", "GSM",
+            "UEM1","UEM1_A", "UEM2", "UEM2-Adv", "GSM",
             "Muggianu", "Toop-Muggianu", "Toop-Kohler"
         ])
         input_layout.addWidget(self.tv_extrap_model_combo, row, 1)
@@ -440,7 +440,7 @@ class PhaseEquilibriumWidget(QWidget):
         input_layout.addWidget(QLabel("外推模型:"), row, 0, Qt.AlignRight)
         self.cv_extrap_model_combo = QComboBox()
         self.cv_extrap_model_combo.addItems([
-            "UEM1", "UEM2", "UEM2-Adv", "GSM",
+            "UEM1", "UEM1_A","UEM2", "UEM2-Adv", "GSM",
             "Muggianu", "Toop-Muggianu", "Toop-Kohler"
         ])
         input_layout.addWidget(self.cv_extrap_model_combo, row, 1)
@@ -971,7 +971,7 @@ class PhaseEquilibriumWidget(QWidget):
         input_layout.addWidget(QLabel("外推模型:"), row, 0, Qt.AlignRight)
         self.mp_extrap_model_combo = QComboBox()
         self.mp_extrap_model_combo.addItems([
-            "UEM1", "UEM2", "UEM2-Adv", "GSM",
+            "UEM1","UEM1_A", "UEM2", "UEM2-Adv", "GSM",
             "Muggianu", "Toop-Muggianu", "Toop-Kohler"
         ])
         input_layout.addWidget(self.mp_extrap_model_combo, row, 1)
