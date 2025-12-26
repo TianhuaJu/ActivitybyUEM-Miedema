@@ -185,7 +185,7 @@ class BinaryModel:
 		else:
 			raise ValueError(f"不支持的求导变量: {target_var}")
 	
-	def integrate_miedema_mpmath_arbitrary_precision (self, model: Callable[[float], float],  decimal_places=30):
+	def integrate_miedema_mpmath_arbitrary_precision (self, model: Callable[[float], float],  xa = 0,xb = 1.0,decimal_places=30):
 		"""
 		使用 mpmath 库以任意精度对 Miedema 二元模型进行积分。
 
@@ -206,7 +206,7 @@ class BinaryModel:
 		
 		# 使用 mpmath.quad 进行高精度积分
 		# 注意：mpmath.quad 的返回值是 mpmath 的浮点数类型
-		integral_value_mp = mpmath.quad(model, [0, 1])
+		integral_value_mp = mpmath.quad(model, [xa, xb])
 		
 		# 将结果转换为标准的 Python 浮点数后返回
 		return float(integral_value_mp)
@@ -295,7 +295,7 @@ class BinaryModel:
 				return self.df_uem2[key]
 			
 			func = lambda x: abs(fki(x)-fik(x)) * 1000 / (Constants.R * t)
-			f_val = self.integrate_miedema_mpmath_arbitrary_precision(func, 30)
+			f_val = mpmath.quad(func,[0,0.5])
 			self.df_uem2[key] = f_val
 			return f_val
 		
