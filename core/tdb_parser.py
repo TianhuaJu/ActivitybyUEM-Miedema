@@ -595,7 +595,226 @@ class TDBParser:
 		except Exception as e:
 			print(f"Warning: Failed to calculate heat capacity for {element}-{phase} at {temperature}K: {e}")
 			return None
-	
+
+	def _parse_sgte_polynomial_coefficients(self, expression: str) -> Dict[str, float]:
+		"""
+		解析SGTE多项式表达式，提取各项系数
+
+		SGTE多项式格式:
+		G(T) = a + b*T + c*T*LN(T) + d*T^2 + e*T^3 + f*T^-1 + g*T^7 + h*T^-9
+
+		参数:
+		-----
+		expression : str
+			SGTE多项式表达式字符串
+
+		返回:
+		-----
+		Dict[str, float]: 系数字典
+			{'a': 常数项, 'b': T系数, 'c': T*ln(T)系数,
+			 'd': T^2系数, 'e': T^3系数, 'f': T^-1系数,
+			 'g': T^7系数, 'h': T^-9系数}
+		"""
+		coeffs = {'a': 0.0, 'b': 0.0, 'c': 0.0, 'd': 0.0,
+		          'e': 0.0, 'f': 0.0, 'g': 0.0, 'h': 0.0}
+
+		# 清理表达式：移除空格，统一大小写
+		expr = expression.upper().replace(' ', '')
+
+		# 移除对其他函数的引用（如 +GHSERAL, +GHSERFE）
+		# 这些是固相参考态，不参与ΔG_f的计算
+		expr = re.sub(r'[+\-]?GHSER[A-Z]+', '', expr)
+		expr = re.sub(r'[+\-]?GHS[A-Z]+', '', expr)
+
+		# 数字模式：匹配整数、小数、科学计数法
+		num_pattern = r'[+-]?\d+\.?\d*(?:E[+-]?\d+)?'
+
+		# 直接在整个表达式上匹配各类项
+
+		# T**7 项 (如 +79.337E-21*T**7)
+		match_t7 = re.search(rf'({num_pattern})\*?T\*\*7', expr)
+		if match_t7:
+			coeffs['g'] = float(match_t7.group(1))
+
+		# T**(-9) 项
+		match_tn9 = re.search(rf'({num_pattern})\*?T\*\*\(?-9\)?', expr)
+		if match_tn9:
+			coeffs['h'] = float(match_tn9.group(1))
+
+		# T**(-1) 项
+		match_tn1 = re.search(rf'({num_pattern})\*?T\*\*\(?-1\)?', expr)
+		if match_tn1:
+			coeffs['f'] = float(match_tn1.group(1))
+
+		# T**3 项
+		match_t3 = re.search(rf'({num_pattern})\*?T\*\*3', expr)
+		if match_t3:
+			coeffs['e'] = float(match_t3.group(1))
+
+		# T**2 项
+		match_t2 = re.search(rf'({num_pattern})\*?T\*\*2', expr)
+		if match_t2:
+			coeffs['d'] = float(match_t2.group(1))
+
+		# T*LN(T) 项 (如 -31.748192*T*LN(T))
+		match_tlnt = re.search(rf'({num_pattern})\*?T\*?LN\(T\)', expr)
+		if match_tlnt:
+			coeffs['c'] = float(match_tlnt.group(1))
+
+		# 纯T项 (如 -11.84185*T)，但不是 T*LN(T) 或 T**n
+		# 使用负向前瞻排除 T*LN 和 T**
+		match_t = re.search(rf'({num_pattern})\*T(?!\*|LN)', expr)
+		if match_t:
+			coeffs['b'] = float(match_t.group(1))
+
+		# 常数项：表达式开头的数字，或者 + 后面紧跟的数字（不含T）
+		# 先移除所有已匹配的项
+		remaining = expr
+		remaining = re.sub(rf'{num_pattern}\*?T\*\*\(?-?\d+\)?', '', remaining)
+		remaining = re.sub(rf'{num_pattern}\*?T\*?LN\(T\)', '', remaining)
+		remaining = re.sub(rf'{num_pattern}\*T', '', remaining)
+
+		# 提取剩余的常数
+		const_matches = re.findall(rf'^{num_pattern}|(?<=[+\-])\d+\.?\d*(?:E[+-]?\d+)?', remaining)
+		for const in const_matches:
+			try:
+				coeffs['a'] += float(const)
+			except ValueError:
+				pass
+
+		# 如果上面方法没找到常数，尝试直接匹配开头的数字
+		if coeffs['a'] == 0.0:
+			match_const = re.match(rf'({num_pattern})(?=[+\-]|$)', expr)
+			if match_const:
+				coeffs['a'] = float(match_const.group(1))
+
+		return coeffs
+
+	def get_enthalpy_of_fusion(self, element: str, temperature: float = None) -> Optional[float]:
+		"""
+		计算元素在熔点处的熔化焓 ΔH_f
+
+		从SGTE TDB文件解析液相Gibbs能函数，提取ΔG_f多项式系数，
+		然后使用热力学关系计算ΔH_f：
+
+		对于 ΔG_f = a + b*T + c*T*ln(T) + d*T² + e*T³ + f*T⁻¹ + g*T⁷ + h*T⁻⁹
+		熔化焓为：
+		ΔH_f(T) = a - c*T - d*T² - 2*e*T³ + 2*f*T⁻¹ - 6*g*T⁷ + 10*h*T⁻⁹
+
+		注意：ΔG_f表达式仅在熔点以下有效。高温区间的GLIQ表达式是绝对Gibbs能，
+		不能用于计算熔化焓。因此本方法始终使用第一个温度区间（熔点以下）的表达式。
+
+		参数:
+		-----
+		element : str
+			元素符号 (如 'Al', 'Fe')
+		temperature : float, optional
+			温度 (K)。如果为None，使用元素的熔点
+
+		返回:
+		-----
+		float or None: 熔化焓 (J/mol)，如果无法计算则返回None
+		"""
+		element_upper = element.upper()
+
+		# 如果没有指定温度，使用熔点
+		if temperature is None:
+			from core.element import Element
+			elem = Element(element)
+			if elem.is_exist and elem.tm:
+				temperature = elem.tm
+			else:
+				temperature = 1000.0  # 默认值
+
+		# 获取液相函数名 (GLIQAL, GLIQFE, etc.)
+		liquid_func_name = f"GLIQ{element_upper}"
+
+		# 检查是否有该函数
+		if liquid_func_name not in self.functions:
+			# 尝试其他命名方式
+			for func_name in self.functions.keys():
+				if 'LIQ' in func_name and element_upper in func_name:
+					liquid_func_name = func_name
+					break
+			else:
+				return None
+
+		# 获取函数表达式
+		func = self.functions.get(liquid_func_name)
+		if not func or not func.expressions:
+			return None
+
+		# 重要：始终使用第一个表达式（熔点以下的ΔG_f表达式）
+		# 高温区间的表达式是绝对Gibbs能，不包含+GHSER项，不能用于计算ΔH_f
+		expression = func.expressions[0]
+
+		if not expression:
+			return None
+
+		# 检查表达式是否包含GHSER引用（这是ΔG_f表达式的特征）
+		if 'GHSER' not in expression.upper() and 'GHS' not in expression.upper():
+			# 如果没有GHSER引用，可能不是ΔG_f表达式，尝试其他方法
+			# 使用数值微分计算
+			return None
+
+		# 解析系数
+		coeffs = self._parse_sgte_polynomial_coefficients(expression)
+
+		# 计算熔化焓（在熔点温度处）
+		# ΔH_f(T) = a - c*T - d*T² - 2*e*T³ + 2*f*T⁻¹ - 6*g*T⁷ + 10*h*T⁻⁹
+		T = temperature
+		delta_H_f = coeffs['a']
+		delta_H_f -= coeffs['c'] * T
+		delta_H_f -= coeffs['d'] * T**2
+		delta_H_f -= 2 * coeffs['e'] * T**3
+		if T > 0:
+			delta_H_f += 2 * coeffs['f'] / T
+		delta_H_f -= 6 * coeffs['g'] * T**7
+		if T > 0:
+			delta_H_f += 10 * coeffs['h'] / (T**9)
+
+		return delta_H_f
+
+	def get_enthalpy_of_fusion_coefficients(self, element: str) -> Optional[Dict[str, float]]:
+		"""
+		获取元素熔化焓的SGTE多项式系数
+
+		返回ΔG_f表达式的系数，可用于计算任意温度下的ΔH_f
+
+		参数:
+		-----
+		element : str
+			元素符号
+
+		返回:
+		-----
+		Dict[str, float] or None: 系数字典
+		"""
+		element_upper = element.upper()
+
+		# 获取液相函数名
+		liquid_func_name = f"GLIQ{element_upper}"
+
+		if liquid_func_name not in self.functions:
+			for func_name in self.functions.keys():
+				if 'LIQ' in func_name and element_upper in func_name:
+					liquid_func_name = func_name
+					break
+			else:
+				return None
+
+		func = self.functions.get(liquid_func_name)
+		if not func or not func.expressions:
+			return None
+
+		# 通常使用高温区间的表达式（熔点以上）
+		expression = func.expressions[-1] if func.expressions else None
+
+		if not expression:
+			return None
+
+		return self._parse_sgte_polynomial_coefficients(expression)
+
 	def get_element_info (self, element: str) -> Optional[ElementData]:
 		"""
         获取元素基本信息

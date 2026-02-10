@@ -534,8 +534,8 @@ class ThermodynamicProperties:
                 'example': '1811 (Fe的熔点)'
             })
 
-        # 熔化焓数据 (J/mol) - 常见金属
-        ENTHALPY_OF_FUSION = {
+        # 熔化焓数据 (J/mol) - 后备常数表
+        ENTHALPY_OF_FUSION_FALLBACK = {
             'Al': 10710, 'Fe': 13810, 'Cu': 13260, 'Ni': 17480,
             'Mg': 8480, 'Zn': 7320, 'Ti': 14150, 'Cr': 21000,
             'Mn': 12910, 'Si': 50210, 'Co': 16200, 'Mo': 37480,
@@ -543,25 +543,33 @@ class ThermodynamicProperties:
             'Sn': 7030, 'Zr': 21000, 'Nb': 30000, 'V': 21500
         }
 
-        # 获取熔化焓
+        # 获取熔化焓 - 优先级: user_data > TDB解析 > 后备常数表
         delta_H_f = None
         if 'enthalpy_of_fusion' in user_data and solvent in user_data['enthalpy_of_fusion']:
+            # 1. 优先使用用户提供的数据
             user_value = user_data['enthalpy_of_fusion'][solvent]
             # 支持常数或可调用函数
             if callable(user_value):
                 delta_H_f = user_value  # 保持为函数，稍后调用
             else:
                 delta_H_f = float(user_value)
-        elif solvent in ENTHALPY_OF_FUSION:
-            delta_H_f = ENTHALPY_OF_FUSION[solvent]
         else:
-            missing_data.append({
-                'type': 'enthalpy_of_fusion',
-                'element': solvent,
-                'description': f'元素 {solvent} 的熔化焓 (ΔH_f)',
-                'unit': 'J/mol',
-                'example': '13810 (Fe的熔化焓)'
-            })
+            # 2. 尝试从TDB文件解析熔化焓（使用SGTE多项式）
+            # ΔH_f(T) = a - c*T - d*T² - 2*e*T³ + 2*f*T⁻¹ - 6*g*T⁷ + 10*h*T⁻⁹
+            tdb_delta_H = self.tdb_parser.get_enthalpy_of_fusion(solvent, T_pure_m)
+            if tdb_delta_H is not None and tdb_delta_H > 0:
+                delta_H_f = tdb_delta_H
+            # 3. 回退到常数表
+            elif solvent in ENTHALPY_OF_FUSION_FALLBACK:
+                delta_H_f = ENTHALPY_OF_FUSION_FALLBACK[solvent]
+            else:
+                missing_data.append({
+                    'type': 'enthalpy_of_fusion',
+                    'element': solvent,
+                    'description': f'元素 {solvent} 的熔化焓 (ΔH_f)',
+                    'unit': 'J/mol',
+                    'example': '13810 (Fe的熔化焓)'
+                })
 
         # 如果有缺失数据，返回missing_data状态
         if missing_data:
