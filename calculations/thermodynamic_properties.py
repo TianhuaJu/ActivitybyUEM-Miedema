@@ -571,6 +571,18 @@ class ThermodynamicProperties:
                     'example': '13810 (Fe的熔化焓)'
                 })
 
+        # 关键：单位验证 - 熔化焓必须是J/mol，不是kJ/mol
+        # 金属的熔化焓通常在 1000-100000 J/mol 范围内
+        # 如果值小于100，很可能是kJ/mol，需要转换
+        if delta_H_f is not None and not callable(delta_H_f):
+            if delta_H_f < 100:
+                # 警告：可能使用了错误的单位（kJ/mol），自动转换为J/mol
+                print(f"警告: 熔化焓值 {delta_H_f} 过小，可能是kJ/mol单位。自动转换为J/mol")
+                delta_H_f = delta_H_f * 1000
+            elif delta_H_f < 1000:
+                # 警告但不自动转换
+                print(f"警告: 熔化焓值 {delta_H_f} J/mol 较小，请确认单位正确")
+
         # 如果有缺失数据，返回missing_data状态
         if missing_data:
             return {
