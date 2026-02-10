@@ -423,7 +423,8 @@ class ThermodynamicProperties:
         activity_model: str = 'Wagner',
         T_initial_guess: float = None,
         max_iterations: int = 50,
-        tolerance: float = 0.1
+        tolerance: float = 0.1,
+        user_data: Dict = None
     ) -> Dict:
         """
         计算溶剂液相线温度 (Modified Schroder-van Laar Equation)
@@ -456,11 +457,17 @@ class ThermodynamicProperties:
             最大迭代次数 (用于温度相关ε的迭代求解)
         tolerance : float
             收敛容差 (K)
+        user_data : Dict, optional
+            用户提供的数据覆盖，格式为:
+            {
+                'enthalpy_of_fusion': {元素符号: 值或可调用函数f(T)},
+                'melting_point': {元素符号: 值}
+            }
 
         返回:
         -----
         Dict: {
-            'status': 'success' or 'error',
+            'status': 'success', 'error', or 'missing_data',
             'liquidus_temperature': float (K),
             'liquidus_temperature_celsius': float (°C),
             'melting_point_depression': float (K),
@@ -469,7 +476,8 @@ class ThermodynamicProperties:
             'interaction_correction': float,
             'pure_melting_point': float (K),
             'iterations': int,
-            'message': str
+            'message': str,
+            'missing_data': list (当status='missing_data'时)
         }
         """
         from core.element import Element
@@ -504,8 +512,27 @@ class ThermodynamicProperties:
                 'liquidus_temperature': None
             }
 
-        # 纯溶剂熔点 (K) 和熔化焓 (J/mol)
-        T_pure_m = solvent_elem.tm
+        # 初始化user_data
+        if user_data is None:
+            user_data = {}
+
+        # 收集缺失数据
+        missing_data = []
+
+        # 纯溶剂熔点 (K)
+        T_pure_m = None
+        if 'melting_point' in user_data and solvent in user_data['melting_point']:
+            T_pure_m = user_data['melting_point'][solvent]
+        elif solvent_elem.tm and solvent_elem.tm > 0:
+            T_pure_m = solvent_elem.tm
+        else:
+            missing_data.append({
+                'type': 'melting_point',
+                'element': solvent,
+                'description': f'元素 {solvent} 的熔点',
+                'unit': 'K',
+                'example': '1811 (Fe的熔点)'
+            })
 
         # 熔化焓数据 (J/mol) - 常见金属
         ENTHALPY_OF_FUSION = {
@@ -516,7 +543,35 @@ class ThermodynamicProperties:
             'Sn': 7030, 'Zr': 21000, 'Nb': 30000, 'V': 21500
         }
 
-        delta_H_f = ENTHALPY_OF_FUSION.get(solvent, 15000)  # 默认值
+        # 获取熔化焓
+        delta_H_f = None
+        if 'enthalpy_of_fusion' in user_data and solvent in user_data['enthalpy_of_fusion']:
+            user_value = user_data['enthalpy_of_fusion'][solvent]
+            # 支持常数或可调用函数
+            if callable(user_value):
+                delta_H_f = user_value  # 保持为函数，稍后调用
+            else:
+                delta_H_f = float(user_value)
+        elif solvent in ENTHALPY_OF_FUSION:
+            delta_H_f = ENTHALPY_OF_FUSION[solvent]
+        else:
+            missing_data.append({
+                'type': 'enthalpy_of_fusion',
+                'element': solvent,
+                'description': f'元素 {solvent} 的熔化焓 (ΔH_f)',
+                'unit': 'J/mol',
+                'example': '13810 (Fe的熔化焓)'
+            })
+
+        # 如果有缺失数据，返回missing_data状态
+        if missing_data:
+            return {
+                'status': 'missing_data',
+                'message': f'缺少必要的热力学数据',
+                'missing_data': missing_data,
+                'solvent': solvent,
+                'liquidus_temperature': None
+            }
 
         if T_initial_guess is None:
             T_initial_guess = T_pure_m * 0.95
@@ -579,6 +634,12 @@ class ThermodynamicProperties:
 
             return a_solvent, ln_gamma_solvent
 
+        def get_delta_H_f_at_T(T: float) -> float:
+            """获取温度T下的熔化焓（支持温度依赖）"""
+            if callable(delta_H_f):
+                return delta_H_f(T)
+            return delta_H_f
+
         def liquidus_equation(T: float) -> float:
             """
             液相线方程残差:
@@ -589,8 +650,9 @@ class ThermodynamicProperties:
             if a_solvent <= 0 or a_solvent > 1:
                 return float('inf')
 
-            # Schroder-van Laar方程
-            residual = 1/T - 1/T_pure_m + (self.R / delta_H_f) * math.log(a_solvent)
+            # Schroder-van Laar方程 (支持温度依赖的熔化焓)
+            delta_H_f_T = get_delta_H_f_at_T(T)
+            residual = 1/T - 1/T_pure_m + (self.R / delta_H_f_T) * math.log(a_solvent)
             return residual
 
         # 迭代求解（因为ε可能依赖于温度）
@@ -604,12 +666,14 @@ class ThermodynamicProperties:
                 if a_solvent <= 0:
                     break
 
-                # 使用Schroder-van Laar方程计算新的液相线温度
+                # 使用Schroder-van Laar方程计算新的液相线温度 (支持温度依赖的熔化焓)
+                delta_H_f_T = get_delta_H_f_at_T(T_current)
                 ln_a = math.log(a_solvent)
-                T_new = 1.0 / (1.0/T_pure_m - (self.R / delta_H_f) * ln_a)
+                T_new = 1.0 / (1.0/T_pure_m - (self.R / delta_H_f_T) * ln_a)
 
                 # 检查收敛
                 if abs(T_new - T_current) < tolerance:
+                    final_delta_H_f = get_delta_H_f_at_T(T_new)
                     return {
                         'status': 'success',
                         'liquidus_temperature': T_new,
@@ -619,7 +683,7 @@ class ThermodynamicProperties:
                         'solvent_activity': a_solvent,
                         'interaction_correction': interaction_correction,
                         'pure_melting_point': T_pure_m,
-                        'enthalpy_of_fusion': delta_H_f,
+                        'enthalpy_of_fusion': final_delta_H_f,
                         'iterations': iteration + 1,
                         'message': f'收敛于{iteration + 1}次迭代'
                     }
@@ -628,6 +692,7 @@ class ThermodynamicProperties:
                 T_current = 0.7 * T_new + 0.3 * T_current
 
             # 达到最大迭代次数
+            final_delta_H_f = get_delta_H_f_at_T(T_current)
             return {
                 'status': 'warning',
                 'liquidus_temperature': T_current,
@@ -637,6 +702,7 @@ class ThermodynamicProperties:
                 'solvent_activity': a_solvent,
                 'interaction_correction': interaction_correction,
                 'pure_melting_point': T_pure_m,
+                'enthalpy_of_fusion': final_delta_H_f,
                 'iterations': max_iterations,
                 'message': f'达到最大迭代次数{max_iterations}，可能未完全收敛'
             }
@@ -661,7 +727,8 @@ class ThermodynamicProperties:
         activity_model: str = 'Wagner',
         T_min: float = 300.0,
         T_max: float = 2500.0,
-        tolerance: float = 1.0
+        tolerance: float = 1.0,
+        user_data: Dict = None
     ) -> Dict:
         """
         计算杂质析出温度 (Impurity Precipitation Temperature)
@@ -702,10 +769,22 @@ class ThermodynamicProperties:
         tolerance : float
             温度收敛容差 (K)
 
+        user_data : Dict, optional
+            用户提供的析出相数据覆盖，格式为:
+            {
+                'precipitate_data': {
+                    相名: {
+                        'formula': (元素A, 元素B),
+                        'stoich': (m, n),
+                        'delta_G': (A, B) 或 可调用函数f(T)
+                    }
+                }
+            }
+
         返回:
         -----
         Dict: {
-            'status': 'success' or 'error',
+            'status': 'success', 'error', or 'missing_data',
             'precipitation_temperature': float (K),
             'precipitation_temperature_celsius': float (°C),
             'phase_type': str,
@@ -714,7 +793,8 @@ class ThermodynamicProperties:
             'equilibrium_constant': float,
             'gibbs_energy_formation': float (J/mol),
             'element_activities': Dict,
-            'message': str
+            'message': str,
+            'missing_data': list (当status='missing_data'时)
         }
         """
         from core.element import Element
@@ -747,17 +827,47 @@ class ThermodynamicProperties:
             'Cr7C3': {'formula': ('Cr', 'C'), 'stoich': (7, 3), 'delta_G': (-180000, 50.0)},
         }
 
-        if phase_type not in PRECIPITATE_DATABASE:
+        # 初始化user_data
+        if user_data is None:
+            user_data = {}
+
+        # 查找析出相数据：先检查user_data，再检查数据库
+        phase_data = None
+        user_provided_gibbs = False
+
+        if 'precipitate_data' in user_data and phase_type in user_data['precipitate_data']:
+            phase_data = user_data['precipitate_data'][phase_type]
+            user_provided_gibbs = True
+        elif phase_type in PRECIPITATE_DATABASE:
+            phase_data = PRECIPITATE_DATABASE[phase_type]
+        else:
+            # 返回missing_data状态，让GUI提示用户输入
             return {
-                'status': 'error',
-                'message': f'未知的析出相类型: {phase_type}。支持的类型: {list(PRECIPITATE_DATABASE.keys())}',
+                'status': 'missing_data',
+                'message': f'数据库中未找到析出相 {phase_type} 的热力学数据',
+                'missing_data': [{
+                    'type': 'precipitate_data',
+                    'phase_type': phase_type,
+                    'description': f'析出相 {phase_type} 的热力学数据',
+                    'required_fields': ['formula (元素A, 元素B)', 'stoich (化学计量数m, n)', 'delta_G (A + B*T)'],
+                    'example': "TiC: formula=('Ti', 'C'), stoich=(1,1), delta_G=(-191000, 17.0)"
+                }],
+                'known_phases': list(PRECIPITATE_DATABASE.keys()),
                 'precipitation_temperature': None
             }
 
-        phase_data = PRECIPITATE_DATABASE[phase_type]
         elem_A, elem_B = phase_data['formula']
         m, n = phase_data['stoich']
-        delta_G_A, delta_G_B = phase_data['delta_G']
+
+        # delta_G可以是元组(A, B)或可调用函数
+        delta_G_spec = phase_data['delta_G']
+        if callable(delta_G_spec):
+            # 用户提供了温度依赖的函数
+            delta_G_func = delta_G_spec
+            delta_G_A, delta_G_B = None, None  # 无法提取系数
+        else:
+            delta_G_A, delta_G_B = delta_G_spec
+            delta_G_func = None
 
         # 归一化成分
         total = sum(composition.values())
@@ -784,7 +894,7 @@ class ThermodynamicProperties:
                 'precipitation_temperature': None
             }
 
-        def calculate_equilibrium_constant(T: float) -> float:
+        def calculate_equilibrium_constant(T: float) -> Tuple[float, float]:
             """
             计算溶度积常数 K_sp(T)
 
@@ -792,10 +902,18 @@ class ThermodynamicProperties:
             溶度积: K_sp = a_A^m * a_B^n = exp(+ΔG°_f / RT)
 
             当 Q > K_sp 时，溶液过饱和，析出发生
+
+            返回: (K_sp, delta_G)
             """
-            delta_G = delta_G_A + delta_G_B * T
+            if delta_G_func is not None:
+                # 使用用户提供的温度依赖函数
+                delta_G = delta_G_func(T)
+            else:
+                # 使用线性温度依赖: ΔG = A + B*T
+                delta_G = delta_G_A + delta_G_B * T
             # 溶度积 = 1/K_formation = exp(+ΔG_formation/RT)
-            return math.exp(delta_G / (self.R * T))
+            K_sp = math.exp(delta_G / (self.R * T))
+            return K_sp, delta_G
 
         def calculate_activity_product(T: float) -> Tuple[float, Dict]:
             """
@@ -861,7 +979,7 @@ class ThermodynamicProperties:
             当 f(T) > 0: 过饱和，应析出
             当 f(T) < 0: 未饱和，不析出
             """
-            K_eq = calculate_equilibrium_constant(T)
+            K_eq, _ = calculate_equilibrium_constant(T)
             Q, _ = calculate_activity_product(T)
 
             if Q <= 0 or K_eq <= 0:
@@ -899,9 +1017,8 @@ class ThermodynamicProperties:
             T_precip = brentq(precipitation_equation, T_min, T_max, xtol=tolerance)
 
             # 计算最终结果
-            K_eq = calculate_equilibrium_constant(T_precip)
+            K_eq, delta_G = calculate_equilibrium_constant(T_precip)
             Q, activities = calculate_activity_product(T_precip)
-            delta_G = delta_G_A + delta_G_B * T_precip
 
             return {
                 'status': 'success',
