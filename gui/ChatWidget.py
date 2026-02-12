@@ -174,14 +174,23 @@ def format_message_html(text):
     # 先处理花括号形式: X_{abc} → X<sub>abc</sub>, X^{abc} → X<sup>abc</sup>
     text = re.sub(r'_\{([^}]+)\}', r'<sub>\1</sub>', text)
     text = re.sub(r'\^\{([^}]+)\}', r'<sup>\1</sup>', text)
-    # 再处理单字符形式: ε_i → ε<sub>i</sub>, x^2 → x<sup>2</sup>
-    # 匹配前面是字母/希腊字母/闭标签的下标
+    # 单字符形式: 仅当前面是希腊字母、单字母变量、或闭标签时才触发
+    # 不匹配英文单词内的下划线（如 liquidus_temperature）
+    # 希腊字母 + _x → 下标（如 ε_i, γ_0）
+    _greek = 'αβγδεζηθικλμνξπρστυφχψωΓΔΘΛΞΠΣΦΨΩ'
     text = re.sub(
-        r'(?<=[a-zA-Zαβγδεζηθικλμνξπρστυφχψω>])_([a-zA-Z0-9αβγδεζηθικλμνξπρστυφχψω])',
+        r'(?<=[' + _greek + r'>])_([a-zA-Z0-9' + _greek + r'])',
         r'<sub>\1</sub>', text)
     text = re.sub(
-        r'(?<=[a-zA-Zαβγδεζηθικλμνξπρστυφχψω>])\^([a-zA-Z0-9αβγδεζηθικλμνξπρστυφχψω²³⁰¹⁴⁵⁶⁷⁸⁹])',
+        r'(?<=[' + _greek + r'>])\^([a-zA-Z0-9' + _greek + r'²³⁰¹⁴⁵⁶⁷⁸⁹])',
         r'<sup>\1</sup>', text)
+    # 单字母变量 + _x（仅当该单字母前面不是字母时，排除 word_word 情况）
+    text = re.sub(
+        r'(?<![a-zA-Z])([a-zA-Z])_([a-zA-Z0-9' + _greek + r'])',
+        r'\1<sub>\2</sub>', text)
+    text = re.sub(
+        r'(?<![a-zA-Z])([a-zA-Z])\^([a-zA-Z0-9' + _greek + r'²³⁰¹⁴⁵⁶⁷⁸⁹])',
+        r'\1<sup>\2</sup>', text)
 
     # === 第2步: 处理 Markdown ===
 
