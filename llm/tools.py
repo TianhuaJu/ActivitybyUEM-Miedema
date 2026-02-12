@@ -1125,6 +1125,21 @@ class ThermodynamicTools:
         try:
             result = tool_methods[tool_name](**arguments)
             return json.dumps(result, ensure_ascii=False, indent=2)
+        except TypeError as e:
+            # 参数缺失或类型错误 — 给出清晰的中文提示
+            import inspect
+            sig = inspect.signature(tool_methods[tool_name])
+            required = [
+                p.name for p in sig.parameters.values()
+                if p.default is inspect.Parameter.empty and p.name != "self"
+            ]
+            provided = list(arguments.keys())
+            missing = [r for r in required if r not in provided]
+            if missing:
+                msg = f"缺少必需参数: {', '.join(missing)}。此工具需要: {', '.join(required)}"
+            else:
+                msg = f"参数类型错误: {str(e)}"
+            return json.dumps({"status": "error", "message": msg})
         except Exception as e:
             return json.dumps({"status": "error", "message": str(e)})
 
