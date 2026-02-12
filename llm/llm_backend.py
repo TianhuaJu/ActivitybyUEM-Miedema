@@ -422,6 +422,10 @@ def create_backend(provider: str, api_key: str = None, model: str = None) -> LLM
     if api_key is None and config.get("env_key"):
         api_key = os.environ.get(config["env_key"])
 
+    # 对于不需要API key的本地服务（如Ollama），设置占位符以满足OpenAI SDK要求
+    if api_key is None and config.get("env_key") is None:
+        api_key = "not-needed"
+
     # 获取模型
     if model is None:
         model = config["default_model"]

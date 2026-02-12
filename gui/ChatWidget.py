@@ -466,6 +466,10 @@ class ChatWidget(QWidget):
                 on_tool_call=self._on_tool_called
             )
 
+            # 提前初始化客户端，验证连接是否可用
+            if hasattr(self.agent.backend, '_get_client'):
+                self.agent.backend._get_client()
+
             self.status_label.setText(f"已连接: {model}")
             self.status_label.setStyleSheet("color: #27ae60; font-weight: bold;")
             self.send_btn.setEnabled(True)
@@ -474,6 +478,7 @@ class ChatWidget(QWidget):
             self._add_system_message(f"已成功连接到 {provider} ({model})")
 
         except Exception as e:
+            self.agent = None
             QMessageBox.critical(self, "连接失败", f"无法连接LLM后端:\n{str(e)}")
             self.status_label.setText("连接失败")
             self.status_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
