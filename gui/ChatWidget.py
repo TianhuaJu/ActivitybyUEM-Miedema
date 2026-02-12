@@ -434,12 +434,32 @@ class ChatWidget(QWidget):
             }
             self.api_key_input.setPlaceholderText(placeholders.get(provider, "请输入API Key"))
 
+    def _fetch_ollama_models(self) -> list:
+        """从本地Ollama服务获取已安装的模型列表"""
+        import urllib.request
+        try:
+            req = urllib.request.Request("http://localhost:11434/api/tags", method="GET")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode())
+                models = [m["name"] for m in data.get("models", [])]
+                return sorted(models) if models else []
+        except Exception:
+            return []
+
     def _update_model_list(self, provider: str):
-        """更新模型列表"""
+        """更新模型列表（ollama自动检测本地已安装模型）"""
         self.model_combo.clear()
 
+        if provider == "ollama":
+            models = self._fetch_ollama_models()
+            if models:
+                self.model_combo.addItems(models)
+                return
+            # ollama未运行时的回退列表
+            self.model_combo.addItems(["qwen3:8b", "qwen3:4b", "llama3.2:3b", "mistral:7b"])
+            return
+
         model_lists = {
-            "ollama": ["qwen2.5:7b", "qwen2.5:14b", "qwen2.5:32b", "llama3.2:3b", "mistral:7b"],
             "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3", "o3-mini", "o4-mini"],
             "claude": ["claude-sonnet-4-5-20250929", "claude-opus-4-6", "claude-haiku-4-5-20251001",
                         "claude-sonnet-4-20250514", "claude-opus-4-20250514"],

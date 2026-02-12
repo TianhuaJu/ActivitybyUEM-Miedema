@@ -380,7 +380,7 @@ BACKEND_CONFIGS = {
     "ollama": {
         "class": OpenAICompatibleBackend,
         "base_url": "http://localhost:11434/v1",
-        "default_model": "qwen2.5:7b",
+        "default_model": "qwen3:8b",
         "env_key": None  # 本地无需API key
     },
     "claude": {
