@@ -57,6 +57,9 @@ SYSTEM_PROMPT = """你是合金热力学计算软件的AI助手。你的唯一�
 - 温度结果同时给出K和°C（°C = K - 273.15）
 - 结果数值保留4位有效数字
 - 如果有多个组元，可以用简洁的表格展示
+- 上下标必须使用花括号语法：下标用 _{下标内容}，上标用 ^{上标内容}
+  正确: ε_{Si}^{C}、γ_{Fe}、x^{2}、ΔG^{mix}
+  错误: ε_Si^C、γ_Fe（单字符可省略花括号，但多字符必须用花括号）
 
 成分解析能力（非常重要）：
 你具备从用户的自然语言描述中自动解析合金成分的能力。composition格式为{"元素": 摩尔分数}，所有摩尔分数之和=1。
@@ -468,7 +471,7 @@ class ChatAgent:
             solvent = data.get("solvent", "?")
             temp = data.get("temperature", "?")
             if eps is not None:
-                return f"在 {temp}K 的液态{solvent}中，**ε_{solute_i}^{solute_j} = {eps:.4g}**"
+                return f"在 {temp}K 的液态{solvent}中，**ε_{{{solute_i}}}^{{{solute_j}}} = {eps:.4g}**"
 
         if tool_name == "get_infinite_dilution_activity_coefficient":
             ln_gamma = data.get("ln_gamma_0")

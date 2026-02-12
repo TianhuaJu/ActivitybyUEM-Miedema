@@ -170,6 +170,19 @@ def format_message_html(text):
     for cmd in sorted(_LATEX_SYMBOLS.keys(), key=len, reverse=True):
         text = text.replace(cmd, _LATEX_SYMBOLS[cmd])
 
+    # === 第1.5步: 处理文本中的上下标（非LaTeX环境） ===
+    # 先处理花括号形式: X_{abc} → X<sub>abc</sub>, X^{abc} → X<sup>abc</sup>
+    text = re.sub(r'_\{([^}]+)\}', r'<sub>\1</sub>', text)
+    text = re.sub(r'\^\{([^}]+)\}', r'<sup>\1</sup>', text)
+    # 再处理单字符形式: ε_i → ε<sub>i</sub>, x^2 → x<sup>2</sup>
+    # 匹配前面是字母/希腊字母/闭标签的下标
+    text = re.sub(
+        r'(?<=[a-zA-Zαβγδεζηθικλμνξπρστυφχψω>])_([a-zA-Z0-9αβγδεζηθικλμνξπρστυφχψω])',
+        r'<sub>\1</sub>', text)
+    text = re.sub(
+        r'(?<=[a-zA-Zαβγδεζηθικλμνξπρστυφχψω>])\^([a-zA-Z0-9αβγδεζηθικλμνξπρστυφχψω²³⁰¹⁴⁵⁶⁷⁸⁹])',
+        r'<sup>\1</sup>', text)
+
     # === 第2步: 处理 Markdown ===
 
     # 标题
@@ -902,12 +915,13 @@ class ChatWidget(QWidget):
         self._add_chart(chart_data)
 
     def _on_tool_called(self, tool_name: str, arguments: dict):
-        """工具调用回调"""
-        self._add_tool_call(tool_name, arguments)
+        """工具调用回调 — 只显示'计算中'提示，不暴露工具细节"""
+        if not hasattr(self, '_thinking_label') or self._thinking_label is None:
+            self._show_thinking_indicator()
 
     def _on_tool_result(self, tool_name: str, result_json: str):
-        """工具结果回调"""
-        self._add_tool_result(tool_name, result_json)
+        """工具结果回调 — 不显示原始结果，等待LLM整理后输出"""
+        pass
 
     def _add_tool_result(self, tool_name: str, result_json: str):
         """添加工具执行结果显示"""
@@ -922,12 +936,40 @@ class ChatWidget(QWidget):
         self.messages_layout.addStretch()
         self._scroll_to_bottom()
 
+    def _show_thinking_indicator(self):
+        """显示'计算中...'提示"""
+        if self.messages_layout.count() > 0:
+            item = self.messages_layout.itemAt(self.messages_layout.count() - 1)
+            if item.spacerItem():
+                self.messages_layout.removeItem(item)
+
+        self._thinking_label = QLabel("正在计算中...")
+        self._thinking_label.setWordWrap(True)
+        self._thinking_label.setStyleSheet("""
+            color: #888;
+            font-size: 12px;
+            font-style: italic;
+            padding: 5px 10px;
+        """)
+        self.messages_layout.addWidget(self._thinking_label)
+        self.messages_layout.addStretch()
+        self._scroll_to_bottom()
+
+    def _remove_thinking_indicator(self):
+        """移除'计算中...'提示"""
+        if hasattr(self, '_thinking_label') and self._thinking_label is not None:
+            self.messages_layout.removeWidget(self._thinking_label)
+            self._thinking_label.deleteLater()
+            self._thinking_label = None
+
     def _on_response_ready(self, response: str):
         """响应就绪回调"""
+        self._remove_thinking_indicator()
         self._add_assistant_message(response)
 
     def _on_error(self, error_msg: str):
         """错误回调"""
+        self._remove_thinking_indicator()
         self._add_system_message(f"错误: {error_msg}")
 
     def _on_worker_finished(self):
