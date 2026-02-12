@@ -311,6 +311,213 @@ TOOL_SCHEMAS = {
             }
         },
         "required": ["title", "x_label", "y_label", "data_series"]
+    },
+
+    "get_interaction_coefficient": {
+        "type": "object",
+        "properties": {
+            "solvent": {
+                "type": "string",
+                "description": "溶剂元素符号（基体），如 'Fe', 'Al'"
+            },
+            "solute_i": {
+                "type": "string",
+                "description": "溶质i的元素符号（被影响的溶质）"
+            },
+            "solute_j": {
+                "type": "string",
+                "description": "溶质j的元素符号（施加影响的溶质）"
+            },
+            "temperature": {
+                "type": "number",
+                "description": "温度(K)"
+            },
+            "phase": {
+                "type": "string",
+                "description": "相态",
+                "enum": ["liquid", "solid"],
+                "default": "liquid"
+            },
+            "extrapolation_model": {
+                "type": "string",
+                "description": "外推模型名称",
+                "enum": ["UEM1", "UEM2", "Muggianu", "Toop_Muggianu", "Toop_Kohler"],
+                "default": "UEM1"
+            }
+        },
+        "required": ["solvent", "solute_i", "solute_j", "temperature"]
+    },
+
+    "get_second_order_interaction_coefficient": {
+        "type": "object",
+        "properties": {
+            "solvent": {
+                "type": "string",
+                "description": "溶剂元素符号（基体）"
+            },
+            "solute_i": {
+                "type": "string",
+                "description": "溶质i的元素符号"
+            },
+            "solute_j": {
+                "type": "string",
+                "description": "溶质j的元素符号（与solute_i相同则计算自相互作用系数ρ_i^ii）"
+            },
+            "temperature": {
+                "type": "number",
+                "description": "温度(K)"
+            },
+            "coefficient_type": {
+                "type": "string",
+                "description": "二阶系数类型: rho_ii(自相互作用ρ_i^ii), rho_jj(混合ρ_i^jj), rho_ij(交叉ρ_i^ij)",
+                "enum": ["rho_ii", "rho_jj", "rho_ij"],
+                "default": "rho_ij"
+            },
+            "phase": {
+                "type": "string",
+                "description": "相态",
+                "enum": ["liquid", "solid"],
+                "default": "liquid"
+            },
+            "extrapolation_model": {
+                "type": "string",
+                "description": "外推模型名称",
+                "enum": ["UEM1", "UEM2", "Muggianu", "Toop_Muggianu", "Toop_Kohler"],
+                "default": "UEM1"
+            }
+        },
+        "required": ["solvent", "solute_i", "solute_j", "temperature"]
+    },
+
+    "get_infinite_dilution_activity_coefficient": {
+        "type": "object",
+        "properties": {
+            "solvent": {
+                "type": "string",
+                "description": "溶剂元素符号（基体），如 'Fe'"
+            },
+            "solute": {
+                "type": "string",
+                "description": "溶质元素符号，如 'C', 'Mn'"
+            },
+            "temperature": {
+                "type": "number",
+                "description": "温度(K)"
+            },
+            "phase": {
+                "type": "string",
+                "description": "相态",
+                "enum": ["liquid", "solid"],
+                "default": "liquid"
+            }
+        },
+        "required": ["solvent", "solute", "temperature"]
+    },
+
+    "calculate_chemical_potential": {
+        "type": "object",
+        "properties": {
+            "composition": {
+                "type": "object",
+                "description": "合金成分，键为元素符号，值为摩尔分数",
+                "additionalProperties": {"type": "number"}
+            },
+            "component": {
+                "type": "string",
+                "description": "要计算化学势的组元符号"
+            },
+            "temperature": {
+                "type": "number",
+                "description": "温度(K)"
+            },
+            "phase": {
+                "type": "string",
+                "description": "相态",
+                "enum": ["liquid", "solid"],
+                "default": "liquid"
+            },
+            "extrapolation_model": {
+                "type": "string",
+                "description": "外推模型名称",
+                "enum": ["UEM1", "UEM2", "Muggianu", "Toop_Muggianu", "Toop_Kohler"],
+                "default": "UEM1"
+            },
+            "activity_model": {
+                "type": "string",
+                "description": "活度模型",
+                "enum": ["Wagner", "Darken", "Elliott"],
+                "default": "Wagner"
+            }
+        },
+        "required": ["composition", "component", "temperature"]
+    },
+
+    "calculate_entropy": {
+        "type": "object",
+        "properties": {
+            "composition": {
+                "type": "object",
+                "description": "合金成分，键为元素符号，值为摩尔分数",
+                "additionalProperties": {"type": "number"}
+            },
+            "temperature": {
+                "type": "number",
+                "description": "温度(K)"
+            },
+            "phase": {
+                "type": "string",
+                "description": "相态",
+                "enum": ["liquid", "solid"],
+                "default": "liquid"
+            },
+            "extrapolation_model": {
+                "type": "string",
+                "description": "外推模型名称",
+                "enum": ["UEM1", "UEM2", "Muggianu", "Toop_Muggianu", "Toop_Kohler"],
+                "default": "UEM1"
+            },
+            "activity_model": {
+                "type": "string",
+                "description": "活度模型",
+                "enum": ["Wagner", "Darken", "Elliott"],
+                "default": "Wagner"
+            }
+        },
+        "required": ["composition", "temperature"]
+    },
+
+    "calculate_all_properties": {
+        "type": "object",
+        "properties": {
+            "composition": {
+                "type": "object",
+                "description": "合金成分，键为元素符号，值为摩尔分数",
+                "additionalProperties": {"type": "number"}
+            },
+            "temperature": {
+                "type": "number",
+                "description": "温度(K)"
+            },
+            "phase": {
+                "type": "string",
+                "description": "相态",
+                "enum": ["liquid", "solid"],
+                "default": "liquid"
+            },
+            "extrapolation_model": {
+                "type": "string",
+                "description": "外推模型名称",
+                "enum": ["UEM1", "UEM2", "Muggianu", "Toop_Muggianu", "Toop_Kohler"],
+                "default": "UEM1"
+            },
+            "activity_model": {
+                "type": "string",
+                "description": "活度模型",
+                "enum": ["Wagner", "Darken", "Elliott"],
+                "default": "Wagner"
+            }
+        },
+        "required": ["composition", "temperature"]
     }
 }
 
@@ -323,7 +530,13 @@ TOOL_DESCRIPTIONS = {
     "calculate_gibbs_energy": "计算合金的摩尔Gibbs自由能，包含理想混合和过剩贡献。",
     "get_element_properties": "获取元素的基本热力学性质，包括熔点、原子半径、电负性等。",
     "calculate_melting_point_depression": "计算指定溶质含量对溶剂熔点的降低值。",
-    "plot_chart": "在对话中绘制图表。支持折线图、散点图、柱状图。可同时绘制多条数据曲线进行对比。用于将计算结果可视化展示。"
+    "plot_chart": "在对话中绘制图表。支持折线图、散点图、柱状图。可同时绘制多条数据曲线进行对比。用于将计算结果可视化展示。",
+    "get_interaction_coefficient": "计算一阶活度相互作用系数 ε_i^j（epsilon）。描述溶剂中溶质j对溶质i活度系数的影响。基于UEM-Miedema模型。Wagner模型: ln(γ_i) = ln(γ_i^∞) + Σ ε_i^j * x_j。这是冶金热力学中最核心的参数之一。",
+    "get_second_order_interaction_coefficient": "计算二阶活度相互作用系数ρ。支持三种类型: ρ_i^ii(自相互作用), ρ_i^jj(混合相互作用), ρ_i^ij(交叉相互作用)。用于Darken/Elliott等高阶活度模型。",
+    "get_infinite_dilution_activity_coefficient": "计算无限稀释活度系数 ln(γ°_i)。即溶质i在溶剂中浓度趋于0时的活度系数对数。基于Miedema模型计算化学相互作用能。",
+    "calculate_chemical_potential": "计算合金中指定组元的化学势 μ_i = μ°_i(T) + RT·ln(a_i)。其中μ°_i(T)从SGTE热力学数据库获取，a_i由活度计算给出。",
+    "calculate_entropy": "计算合金的摩尔熵 S = (H - G) / T。其中H为摩尔焓，G为摩尔Gibbs自由能。",
+    "calculate_all_properties": "一次性计算合金的所有热力学性质。包括每个组元的活度系数γ、活度a、化学势μ，以及合金整体的摩尔焓H、Gibbs自由能G、摩尔熵S。"
 }
 
 
@@ -598,6 +811,244 @@ class ThermodynamicTools:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+    def get_interaction_coefficient(
+        self,
+        solvent: str,
+        solute_i: str,
+        solute_j: str,
+        temperature: float,
+        phase: str = "liquid",
+        extrapolation_model: str = "UEM1"
+    ) -> Dict[str, Any]:
+        """计算一阶活度相互作用系数 ε_i^j"""
+        try:
+            from core.element import Element
+            from models.activity_interaction_parameters import multicomponentSolution
+
+            solv = Element(solvent)
+            si = Element(solute_i)
+            sj = Element(solute_j)
+
+            if not solv.is_exist:
+                return {"status": "error", "message": f"元素 {solvent} 不存在"}
+            if not si.is_exist:
+                return {"status": "error", "message": f"元素 {solute_i} 不存在"}
+            if not sj.is_exist:
+                return {"status": "error", "message": f"元素 {solute_j} 不存在"}
+
+            extrap_func = self._get_extrapolation_func(extrapolation_model)
+            system = multicomponentSolution(temperature, phase)
+            epsilon = system.activity_interact_coefficient_1st(
+                solv, si, sj, temperature, phase, extrap_func, extrapolation_model
+            )
+
+            return {
+                "status": "success",
+                "solvent": solvent,
+                "solute_i": solute_i,
+                "solute_j": solute_j,
+                "temperature": temperature,
+                "phase": phase,
+                "epsilon_i_j": epsilon,
+                "description": f"ε_{solute_i}^{solute_j} in {solvent}",
+                "meaning": f"溶质{solute_j}对溶质{solute_i}活度系数的影响参数（无量纲，已除以RT）"
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def get_second_order_interaction_coefficient(
+        self,
+        solvent: str,
+        solute_i: str,
+        solute_j: str,
+        temperature: float,
+        coefficient_type: str = "rho_ij",
+        phase: str = "liquid",
+        extrapolation_model: str = "UEM1"
+    ) -> Dict[str, Any]:
+        """计算二阶活度相互作用系数 ρ"""
+        try:
+            from core.element import Element
+            from models.activity_interaction_parameters import multicomponentSolution
+
+            solv = Element(solvent)
+            si = Element(solute_i)
+            sj = Element(solute_j)
+
+            extrap_func = self._get_extrapolation_func(extrapolation_model)
+            system = multicomponentSolution(temperature, phase)
+
+            if coefficient_type == "rho_ii":
+                rho = system.roui_ii(solv, si, temperature, phase, extrap_func, extrapolation_model)
+                label = f"ρ_{solute_i}^{solute_i}{solute_i}"
+            elif coefficient_type == "rho_jj":
+                rho = system.roui_jj(solv, si, sj, temperature, phase, extrap_func, extrapolation_model)
+                label = f"ρ_{solute_i}^{solute_j}{solute_j}"
+            elif coefficient_type == "rho_ij":
+                rho = system.roui_ij(solv, si, sj, temperature, phase, extrap_func, extrapolation_model)
+                label = f"ρ_{solute_i}^{solute_i}{solute_j}"
+            else:
+                return {"status": "error", "message": f"未知系数类型: {coefficient_type}"}
+
+            return {
+                "status": "success",
+                "solvent": solvent,
+                "solute_i": solute_i,
+                "solute_j": solute_j,
+                "temperature": temperature,
+                "phase": phase,
+                "coefficient_type": coefficient_type,
+                "rho": rho,
+                "label": label
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def get_infinite_dilution_activity_coefficient(
+        self,
+        solvent: str,
+        solute: str,
+        temperature: float,
+        phase: str = "liquid"
+    ) -> Dict[str, Any]:
+        """计算无限稀释活度系数 ln(γ°_i)"""
+        try:
+            import math
+            from core.element import Element
+            from models.activity_interaction_parameters import multicomponentSolution
+
+            solv = Element(solvent)
+            sol = Element(solute)
+
+            if not solv.is_exist:
+                return {"status": "error", "message": f"元素 {solvent} 不存在"}
+            if not sol.is_exist:
+                return {"status": "error", "message": f"元素 {solute} 不存在"}
+
+            system = multicomponentSolution(temperature, phase)
+            ln_gamma_0 = system.ln_y0(solv, sol)
+            gamma_0 = math.exp(ln_gamma_0) if ln_gamma_0 is not None else None
+
+            return {
+                "status": "success",
+                "solvent": solvent,
+                "solute": solute,
+                "temperature": temperature,
+                "phase": phase,
+                "ln_gamma_0": ln_gamma_0,
+                "gamma_0": gamma_0,
+                "description": f"ln(γ°_{solute}) in {solvent} at {temperature}K"
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def calculate_chemical_potential(
+        self,
+        composition: Dict[str, float],
+        component: str,
+        temperature: float,
+        phase: str = "liquid",
+        extrapolation_model: str = "UEM1",
+        activity_model: str = "Wagner"
+    ) -> Dict[str, Any]:
+        """计算化学势"""
+        try:
+            extrap_func = self._get_extrapolation_func(extrapolation_model)
+            mu = self.thermo_calc.calculate_chemical_potential(
+                composition=composition,
+                component=component,
+                temperature=temperature,
+                phase_state=phase,
+                extrapolation_model_func=extrap_func,
+                extrapolation_model_name=extrapolation_model,
+                activity_model=activity_model
+            )
+            return {
+                "status": "success",
+                "component": component,
+                "temperature": temperature,
+                "phase": phase,
+                "chemical_potential": mu,
+                "unit": "J/mol"
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def calculate_entropy(
+        self,
+        composition: Dict[str, float],
+        temperature: float,
+        phase: str = "liquid",
+        extrapolation_model: str = "UEM1",
+        activity_model: str = "Wagner"
+    ) -> Dict[str, Any]:
+        """计算摩尔熵"""
+        try:
+            extrap_func = self._get_extrapolation_func(extrapolation_model)
+            S = self.thermo_calc.calculate_entropy(
+                composition=composition,
+                temperature=temperature,
+                phase_state=phase,
+                extrapolation_model_func=extrap_func,
+                extrapolation_model_name=extrapolation_model,
+                activity_model=activity_model
+            )
+            return {
+                "status": "success",
+                "temperature": temperature,
+                "phase": phase,
+                "entropy": S,
+                "unit": "J/(mol·K)"
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def calculate_all_properties(
+        self,
+        composition: Dict[str, float],
+        temperature: float,
+        phase: str = "liquid",
+        extrapolation_model: str = "UEM1",
+        activity_model: str = "Wagner"
+    ) -> Dict[str, Any]:
+        """一次性计算所有热力学性质"""
+        try:
+            import math
+            extrap_func = self._get_extrapolation_func(extrapolation_model)
+            results = self.thermo_calc.calculate_all_properties(
+                composition=composition,
+                temperature=temperature,
+                phase_state=phase,
+                extrapolation_model_func=extrap_func,
+                extrapolation_model_name=extrapolation_model,
+                activity_model=activity_model
+            )
+            # 整理输出格式
+            output = {
+                "status": "success",
+                "temperature": temperature,
+                "phase": phase,
+                "components": {},
+                "alloy": {}
+            }
+            for comp_name, props in results.get("component_properties", {}).items():
+                output["components"][comp_name] = {
+                    "mole_fraction": props.get("mole_fraction"),
+                    "ln_gamma": props.get("ln_gamma"),
+                    "gamma": props.get("gamma"),
+                    "activity": props.get("activity"),
+                    "chemical_potential_J_per_mol": props.get("mu")
+                }
+            alloy = results.get("alloy_properties", {})
+            output["alloy"] = {
+                "molar_enthalpy_J_per_mol": alloy.get("H"),
+                "gibbs_energy_J_per_mol": alloy.get("G"),
+                "entropy_J_per_mol_K": alloy.get("S")
+            }
+            return output
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     def plot_chart(
         self,
         title: str,
@@ -630,9 +1081,9 @@ class ThermodynamicTools:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    def get_tool_definitions(self) -> List[ToolDefinition]:
-        """获取所有工具定义"""
-        tool_methods = {
+    def _get_all_tool_methods(self) -> Dict[str, Any]:
+        """获取所有工具方法映射"""
+        return {
             "calculate_liquidus_temperature": self.calculate_liquidus_temperature,
             "calculate_precipitation_temperature": self.calculate_precipitation_temperature,
             "calculate_activity": self.calculate_activity,
@@ -641,8 +1092,18 @@ class ThermodynamicTools:
             "calculate_gibbs_energy": self.calculate_gibbs_energy,
             "get_element_properties": self.get_element_properties,
             "calculate_melting_point_depression": self.calculate_melting_point_depression,
-            "plot_chart": self.plot_chart
+            "get_interaction_coefficient": self.get_interaction_coefficient,
+            "get_second_order_interaction_coefficient": self.get_second_order_interaction_coefficient,
+            "get_infinite_dilution_activity_coefficient": self.get_infinite_dilution_activity_coefficient,
+            "calculate_chemical_potential": self.calculate_chemical_potential,
+            "calculate_entropy": self.calculate_entropy,
+            "calculate_all_properties": self.calculate_all_properties,
+            "plot_chart": self.plot_chart,
         }
+
+    def get_tool_definitions(self) -> List[ToolDefinition]:
+        """获取所有工具定义"""
+        tool_methods = self._get_all_tool_methods()
 
         tools = []
         for name, func in tool_methods.items():
@@ -656,17 +1117,7 @@ class ThermodynamicTools:
 
     def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
         """执行工具调用"""
-        tool_methods = {
-            "calculate_liquidus_temperature": self.calculate_liquidus_temperature,
-            "calculate_precipitation_temperature": self.calculate_precipitation_temperature,
-            "calculate_activity": self.calculate_activity,
-            "calculate_activity_coefficient": self.calculate_activity_coefficient,
-            "calculate_mixing_enthalpy": self.calculate_mixing_enthalpy,
-            "calculate_gibbs_energy": self.calculate_gibbs_energy,
-            "get_element_properties": self.get_element_properties,
-            "calculate_melting_point_depression": self.calculate_melting_point_depression,
-            "plot_chart": self.plot_chart
-        }
+        tool_methods = self._get_all_tool_methods()
 
         if tool_name not in tool_methods:
             return json.dumps({"status": "error", "message": f"未知工具: {tool_name}"})
