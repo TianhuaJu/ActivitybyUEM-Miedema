@@ -253,19 +253,48 @@ class GeminiBackend(LLMBackend):
                 raise ImportError("请安装 google-generativeai 库: pip install google-generativeai")
         return self._client
 
+    @staticmethod
+    def _clean_schema_for_gemini(schema: dict) -> dict:
+        """清理JSON Schema中Gemini不支持的字段（additionalProperties, default等）"""
+        if not isinstance(schema, dict):
+            return schema
+
+        # Gemini支持的字段
+        supported_keys = {
+            "type", "description", "properties", "required",
+            "enum", "items", "format", "nullable"
+        }
+
+        cleaned = {}
+        for key, value in schema.items():
+            if key not in supported_keys:
+                continue
+            if key == "properties" and isinstance(value, dict):
+                cleaned[key] = {
+                    k: GeminiBackend._clean_schema_for_gemini(v)
+                    for k, v in value.items()
+                }
+            elif key == "items" and isinstance(value, dict):
+                cleaned[key] = GeminiBackend._clean_schema_for_gemini(value)
+            else:
+                cleaned[key] = value
+
+        return cleaned
+
     def chat(self, messages: List[Message], tools: List[ToolDefinition] = None) -> LLMResponse:
         genai = self._get_client()
 
-        # 转换工具为Gemini格式
+        # 转换工具为Gemini格式，清理不支持的schema字段
         gemini_tools = None
         if tools:
             from google.generativeai.types import Tool, FunctionDeclaration
             declarations = []
             for tool in tools:
+                cleaned_params = self._clean_schema_for_gemini(tool.parameters)
                 declarations.append(FunctionDeclaration(
                     name=tool.name,
                     description=tool.description,
-                    parameters=tool.parameters
+                    parameters=cleaned_params
                 ))
             gemini_tools = [Tool(function_declarations=declarations)]
 
