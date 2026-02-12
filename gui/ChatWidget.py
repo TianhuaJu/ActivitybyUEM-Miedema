@@ -388,7 +388,7 @@ class MessageBubble(QFrame):
             content_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
             content_label.setStyleSheet("""
                 background: transparent;
-                font-size: 14px;
+                font-size: 16px;
                 padding: 5px;
             """)
         else:
@@ -398,23 +398,23 @@ class MessageBubble(QFrame):
             content_label.setStyleSheet("""
                 QTextBrowser {
                     background: transparent;
-                    font-size: 14px;
+                    font-size: 16px;
                     padding: 5px;
                     border: none;
                 }
             """)
-            # 根据内容自动调整高度，避免出现滚动条
-            content_label.document().setDocumentMargin(2)
+            # 根据内容自动调整高度：监听documentSizeChanged（布局完成后触发，宽度已确定）
+            content_label.document().setDocumentMargin(4)
             content_label.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             content_label.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            doc_height = content_label.document().size().height()
-            content_label.setMinimumHeight(int(doc_height) + 10)
-            content_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-            # 内容变化时自动调整高度
-            content_label.document().contentsChanged.connect(
-                lambda: content_label.setMinimumHeight(
-                    int(content_label.document().size().height()) + 10
-                )
+            content_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            content_label.setFixedHeight(20)  # 初始占位，布局后会自动调整
+
+            def _adjust_height(size, browser=content_label):
+                browser.setFixedHeight(int(size.height()) + 12)
+
+            content_label.document().documentLayout().documentSizeChanged.connect(
+                _adjust_height
             )
 
         layout.addWidget(role_label)
