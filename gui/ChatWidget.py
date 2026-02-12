@@ -9,6 +9,7 @@ Chat Widget - 对话式热力学计算界面
 """
 
 import json
+import re
 from typing import Optional
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton,
@@ -22,6 +23,180 @@ import matplotlib
 matplotlib.use('Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+
+
+# ============= LaTeX + Markdown → HTML 渲染 =============
+
+_LATEX_GREEK = {
+    r'\alpha': 'α', r'\beta': 'β', r'\gamma': 'γ', r'\delta': 'δ',
+    r'\epsilon': 'ε', r'\varepsilon': 'ε', r'\zeta': 'ζ', r'\eta': 'η',
+    r'\theta': 'θ', r'\iota': 'ι', r'\kappa': 'κ', r'\lambda': 'λ',
+    r'\mu': 'μ', r'\nu': 'ν', r'\xi': 'ξ', r'\pi': 'π',
+    r'\rho': 'ρ', r'\sigma': 'σ', r'\tau': 'τ', r'\upsilon': 'υ',
+    r'\phi': 'φ', r'\varphi': 'φ', r'\chi': 'χ', r'\psi': 'ψ', r'\omega': 'ω',
+    r'\Gamma': 'Γ', r'\Delta': 'Δ', r'\Theta': 'Θ', r'\Lambda': 'Λ',
+    r'\Xi': 'Ξ', r'\Pi': 'Π', r'\Sigma': 'Σ', r'\Phi': 'Φ',
+    r'\Psi': 'Ψ', r'\Omega': 'Ω',
+}
+
+_LATEX_SYMBOLS = {
+    r'\cdot': '·', r'\times': '×', r'\pm': '±', r'\mp': '∓',
+    r'\leq': '≤', r'\le': '≤', r'\geq': '≥', r'\ge': '≥',
+    r'\neq': '≠', r'\ne': '≠', r'\approx': '≈',
+    r'\infty': '∞', r'\partial': '∂', r'\nabla': '∇',
+    r'\sum': 'Σ', r'\prod': 'Π', r'\int': '∫',
+    r'\rightarrow': '→', r'\leftarrow': '←', r'\Rightarrow': '⇒',
+    r'\circ': '°', r'\degree': '°',
+}
+
+_LATEX_REMOVE = [r'\displaystyle', r'\left', r'\right', r'\,', r'\;', r'\!', r'\quad', r'\qquad']
+
+
+def _find_brace_group(text, pos):
+    """从pos位置找到匹配的花括号组，返回(start, end)"""
+    if pos >= len(text) or text[pos] != '{':
+        return None, None
+    depth = 0
+    for i in range(pos, len(text)):
+        if text[i] == '{':
+            depth += 1
+        elif text[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return pos, i
+    return None, None
+
+
+def _replace_frac(text):
+    """替换第一个 \\frac{num}{den} → (num)/(den)"""
+    idx = text.find(r'\frac')
+    if idx == -1:
+        return text
+    pos = idx + len(r'\frac')
+    while pos < len(text) and text[pos] == ' ':
+        pos += 1
+    ns, ne = _find_brace_group(text, pos)
+    if ns is None:
+        return text.replace(r'\frac', '', 1)
+    num = text[ns + 1:ne]
+    pos = ne + 1
+    while pos < len(text) and text[pos] == ' ':
+        pos += 1
+    ds, de = _find_brace_group(text, pos)
+    if ds is None:
+        return text[:idx] + num + text[ne + 1:]
+    den = text[ds + 1:de]
+    replacement = f'({num})/({den})' if len(num) > 1 or len(den) > 1 else f'{num}/{den}'
+    return text[:idx] + replacement + text[de + 1:]
+
+
+def _convert_latex_math(math_text):
+    """将一段 LaTeX 数学公式转为 HTML"""
+    t = math_text
+
+    # 移除装饰命令
+    for cmd in _LATEX_REMOVE:
+        t = t.replace(cmd, '')
+
+    # \ln, \log, \exp 等函数名
+    t = re.sub(r'\\(ln|log|exp|sin|cos|tan|lim|max|min)\b', r'\1', t)
+
+    # \text{...} → 内容
+    t = re.sub(r'\\text\{([^}]*)\}', r'\1', t)
+    # \mathrm{...} → 内容
+    t = re.sub(r'\\mathrm\{([^}]*)\}', r'\1', t)
+
+    # \frac{a}{b} → (a)/(b)
+    for _ in range(5):  # 最多嵌套5层
+        if r'\frac' not in t:
+            break
+        t = _replace_frac(t)
+
+    # \sqrt{x} → √(x)
+    t = re.sub(r'\\sqrt\{([^}]*)\}', r'√(\1)', t)
+
+    # 希腊字母（长名优先，避免部分匹配）
+    for cmd in sorted(_LATEX_GREEK.keys(), key=len, reverse=True):
+        t = t.replace(cmd, _LATEX_GREEK[cmd])
+
+    # 特殊符号
+    for cmd in sorted(_LATEX_SYMBOLS.keys(), key=len, reverse=True):
+        t = t.replace(cmd, _LATEX_SYMBOLS[cmd])
+
+    # 下标: _{...} 或 _x
+    t = re.sub(r'_\{([^}]*)\}', r'<sub>\1</sub>', t)
+    t = re.sub(r'_([a-zA-Z0-9αβγδεζηθικλμνξπρστυφχψωΓΔΘΛΞΠΣΦΨΩ∞°])',
+               r'<sub>\1</sub>', t)
+
+    # 上标: ^{...} 或 ^x
+    t = re.sub(r'\^\{([^}]*)\}', r'<sup>\1</sup>', t)
+    t = re.sub(r'\^([a-zA-Z0-9αβγδεζηθικλμνξπρστυφχψωΓΔΘΛΞΠΣΦΨΩ∞°²³])',
+               r'<sup>\1</sup>', t)
+
+    # 清理残留花括号和反斜杠命令
+    t = t.replace('{', '').replace('}', '')
+    t = re.sub(r'\\[a-zA-Z]+', '', t)  # 移除未识别的 \command
+
+    return t
+
+
+def format_message_html(text):
+    """将包含 Markdown + LaTeX 的消息文本转换为 QLabel 可渲染的 HTML"""
+    if not text:
+        return text
+
+    # === 第1步: 处理 LaTeX 数学公式 ===
+
+    # 块级公式: \[ ... \] 或 $$ ... $$
+    text = re.sub(
+        r'\\\[(.*?)\\\]',
+        lambda m: '<div style="text-align:center;margin:6px 0;font-size:15px;">'
+                  + _convert_latex_math(m.group(1)) + '</div>',
+        text, flags=re.DOTALL)
+    text = re.sub(
+        r'\$\$(.*?)\$\$',
+        lambda m: '<div style="text-align:center;margin:6px 0;font-size:15px;">'
+                  + _convert_latex_math(m.group(1)) + '</div>',
+        text, flags=re.DOTALL)
+
+    # 行内公式: \( ... \) 或 $ ... $ (单个$不跨行)
+    text = re.sub(r'\\\((.*?)\\\)', lambda m: _convert_latex_math(m.group(1)), text)
+    text = re.sub(r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)',
+                  lambda m: _convert_latex_math(m.group(1)), text)
+
+    # 处理散落在文本中的 LaTeX 命令（有些 LLM 不加定界符）
+    for cmd in sorted(_LATEX_GREEK.keys(), key=len, reverse=True):
+        text = text.replace(cmd, _LATEX_GREEK[cmd])
+    for cmd in sorted(_LATEX_SYMBOLS.keys(), key=len, reverse=True):
+        text = text.replace(cmd, _LATEX_SYMBOLS[cmd])
+
+    # === 第2步: 处理 Markdown ===
+
+    # 标题
+    text = re.sub(r'^#### (.+)$', r'<h5>\1</h5>', text, flags=re.MULTILINE)
+    text = re.sub(r'^### (.+)$', r'<h4>\1</h4>', text, flags=re.MULTILINE)
+    text = re.sub(r'^## (.+)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
+    text = re.sub(r'^# (.+)$', r'<h2>\1</h2>', text, flags=re.MULTILINE)
+
+    # 加粗（先于斜体）
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+
+    # 行内代码
+    text = re.sub(r'`([^`]+)`', r'<code style="background:#e8e8e8;padding:1px 4px;border-radius:3px;">\1</code>', text)
+
+    # 无序列表
+    text = re.sub(r'^[-*] (.+)$', r'&nbsp;&nbsp;• \1', text, flags=re.MULTILINE)
+
+    # 有序列表
+    text = re.sub(r'^(\d+)\. (.+)$', r'&nbsp;&nbsp;\1. \2', text, flags=re.MULTILINE)
+
+    # 分隔线
+    text = re.sub(r'^---+$', '<hr>', text, flags=re.MULTILINE)
+
+    # 换行
+    text = text.replace('\n', '<br>')
+
+    return text
 
 
 class ChatWorker(QThread):
@@ -83,8 +258,13 @@ class MessageBubble(QFrame):
             font-size: 12px;
         """)
 
-        # 消息内容
-        content_label = QLabel(text)
+        # 消息内容（助手消息使用富文本渲染，用户消息保持纯文本）
+        content_label = QLabel()
+        if is_user:
+            content_label.setText(text)
+        else:
+            content_label.setTextFormat(Qt.RichText)
+            content_label.setText(format_message_html(text))
         content_label.setWordWrap(True)
         content_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         content_label.setStyleSheet("""
