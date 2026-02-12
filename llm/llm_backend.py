@@ -240,6 +240,9 @@ class ClaudeBackend(LLMBackend):
 
     def get_available_models(self) -> List[str]:
         return [
+            "claude-sonnet-4-5-20250929",
+            "claude-opus-4-6",
+            "claude-haiku-4-5-20251001",
             "claude-sonnet-4-20250514",
             "claude-opus-4-20250514",
             "claude-3-5-sonnet-20241022",
@@ -344,7 +347,13 @@ class GeminiBackend(LLMBackend):
         return LLMResponse(content=content, tool_calls=tool_calls)
 
     def get_available_models(self) -> List[str]:
-        return ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
+        return [
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite"
+        ]
 
 
 # ============= 预配置的后端工厂 =============
@@ -376,12 +385,12 @@ BACKEND_CONFIGS = {
     },
     "claude": {
         "class": ClaudeBackend,
-        "default_model": "claude-sonnet-4-20250514",
+        "default_model": "claude-sonnet-4-5-20250929",
         "env_key": "ANTHROPIC_API_KEY"
     },
     "gemini": {
         "class": GeminiBackend,
-        "default_model": "gemini-2.0-flash",
+        "default_model": "gemini-2.5-flash",
         "env_key": "GOOGLE_API_KEY"
     }
 }

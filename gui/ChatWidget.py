@@ -18,11 +18,17 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QTextCursor, QColor
 
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+
 
 class ChatWorker(QThread):
     """后台对话处理线程"""
     response_ready = pyqtSignal(str)
     tool_called = pyqtSignal(str, dict)
+    chart_requested = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
 
     def __init__(self, agent, message: str):
@@ -32,9 +38,15 @@ class ChatWorker(QThread):
 
     def run(self):
         try:
-            # 设置工具调用回调
+            # 设置工具调用回调，检测图表工具
             original_callback = self.agent.on_tool_call
-            self.agent.on_tool_call = lambda name, args: self.tool_called.emit(name, args)
+
+            def _on_tool(name, args):
+                self.tool_called.emit(name, args)
+                if name == "plot_chart":
+                    self.chart_requested.emit(args)
+
+            self.agent.on_tool_call = _on_tool
 
             response = self.agent.chat(self.message)
             self.response_ready.emit(response)
@@ -131,6 +143,74 @@ class ToolCallBubble(QFrame):
                 border: 1px solid #d8c0e8;
                 border-radius: 8px;
                 margin: 3px 20px;
+            }
+        """)
+
+
+class ChartBubble(QFrame):
+    """图表气泡组件 - 在对话中嵌入matplotlib图表"""
+
+    def __init__(self, chart_data: dict, parent=None):
+        super().__init__(parent)
+        self.setup_ui(chart_data)
+
+    def setup_ui(self, chart_data: dict):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+
+        # 创建matplotlib画布
+        fig = Figure(figsize=(6, 4), dpi=100)
+        fig.patch.set_facecolor('#ffffff')
+        ax = fig.add_subplot(111)
+
+        chart_type = chart_data.get("chart_type", "line")
+        data_series = chart_data.get("data_series", [])
+
+        # 绘制数据
+        colors = ['#2980b9', '#e74c3c', '#27ae60', '#f39c12', '#8e44ad',
+                  '#1abc9c', '#d35400', '#2c3e50']
+        for i, series in enumerate(data_series):
+            x = series.get("x_values", [])
+            y = series.get("y_values", [])
+            name = series.get("name", f"Series {i+1}")
+            color = colors[i % len(colors)]
+
+            if chart_type == "scatter":
+                ax.scatter(x, y, label=name, color=color, s=30, alpha=0.8)
+            elif chart_type == "bar":
+                import numpy as np
+                width = 0.8 / max(len(data_series), 1)
+                offset = (i - len(data_series) / 2 + 0.5) * width
+                ax.bar([xi + offset for xi in range(len(x))], y,
+                       width=width, label=name, color=color, alpha=0.8)
+                if len(x) > 0:
+                    ax.set_xticks(range(len(x)))
+                    ax.set_xticklabels([str(xi) for xi in x], rotation=45, ha='right')
+            else:  # line
+                ax.plot(x, y, label=name, color=color, linewidth=2, marker='o',
+                        markersize=4, alpha=0.9)
+
+        ax.set_title(chart_data.get("title", ""), fontsize=13, fontweight='bold', pad=10)
+        ax.set_xlabel(chart_data.get("x_label", ""), fontsize=11)
+        ax.set_ylabel(chart_data.get("y_label", ""), fontsize=11)
+
+        if len(data_series) > 1:
+            ax.legend(fontsize=9, loc='best')
+
+        ax.grid(True, alpha=0.3, linestyle='--')
+        fig.tight_layout()
+
+        canvas = FigureCanvas(fig)
+        canvas.setMinimumHeight(320)
+        canvas.setMaximumHeight(450)
+        layout.addWidget(canvas)
+
+        self.setStyleSheet("""
+            ChartBubble {
+                background-color: #ffffff;
+                border: 1px solid #c8e6c8;
+                border-radius: 10px;
+                margin: 5px;
             }
         """)
 
@@ -246,8 +326,10 @@ class ChatWidget(QWidget):
             "• 计算Al-5%Cu合金的液相线温度\n"
             "• 铝中每增加1%铜，熔点会降低多少？\n"
             "• 计算Fe-0.2%C合金中C的析出温度\n"
-            "• 获取Fe元素的热力学性质\n\n"
-            "请先在上方配置LLM后端并点击\"连接\"按钮。"
+            "• 获取Fe元素的热力学性质\n"
+            "• 绘制Cu含量对Al合金液相线温度的影响图\n\n"
+            "请先在上方配置LLM后端并点击\"连接\"按钮。\n"
+            "模型下拉框可编辑，支持手动输入自定义模型名称。"
         )
         welcome.setWordWrap(True)
         welcome.setStyleSheet("""
@@ -272,13 +354,15 @@ class ChatWidget(QWidget):
         # 输入框
         self.input_text = QTextEdit()
         self.input_text.setPlaceholderText("输入您的问题... (Ctrl+Enter 发送)")
-        self.input_text.setMaximumHeight(100)
+        self.input_text.setMinimumHeight(80)
+        self.input_text.setMaximumHeight(160)
         self.input_text.setStyleSheet("""
             QTextEdit {
                 border: 2px solid #ddd;
                 border-radius: 8px;
-                padding: 10px;
-                font-size: 14px;
+                padding: 12px;
+                font-size: 16px;
+                line-height: 1.5;
             }
             QTextEdit:focus {
                 border-color: #3498db;
@@ -355,11 +439,12 @@ class ChatWidget(QWidget):
         self.model_combo.clear()
 
         model_lists = {
-            "ollama": ["qwen2.5:7b", "qwen2.5:14b", "llama3.2:3b", "mistral:7b"],
-            "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
-            "claude": ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
-            "gemini": ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"],
-            "deepseek": ["deepseek-chat", "deepseek-coder"],
+            "ollama": ["qwen2.5:7b", "qwen2.5:14b", "qwen2.5:32b", "llama3.2:3b", "mistral:7b"],
+            "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3", "o3-mini", "o4-mini"],
+            "claude": ["claude-sonnet-4-5-20250929", "claude-opus-4-6", "claude-haiku-4-5-20251001",
+                        "claude-sonnet-4-20250514", "claude-opus-4-20250514"],
+            "gemini": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"],
+            "deepseek": ["deepseek-chat", "deepseek-reasoner"],
             "kimichat": ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"]
         }
 
@@ -417,6 +502,7 @@ class ChatWidget(QWidget):
         self.worker = ChatWorker(self.agent, message)
         self.worker.response_ready.connect(self._on_response_ready)
         self.worker.tool_called.connect(self._on_tool_called)
+        self.worker.chart_requested.connect(self._on_chart_requested)
         self.worker.error_occurred.connect(self._on_error)
         self.worker.finished.connect(self._on_worker_finished)
         self.worker.start()
@@ -481,6 +567,23 @@ class ChatWidget(QWidget):
         self.messages_layout.addWidget(bubble)
         self.messages_layout.addStretch()
         self._scroll_to_bottom()
+
+    def _add_chart(self, chart_data: dict):
+        """添加图表到对话区域"""
+        # 移除stretch
+        if self.messages_layout.count() > 0:
+            item = self.messages_layout.itemAt(self.messages_layout.count() - 1)
+            if item.spacerItem():
+                self.messages_layout.removeItem(item)
+
+        bubble = ChartBubble(chart_data)
+        self.messages_layout.addWidget(bubble)
+        self.messages_layout.addStretch()
+        self._scroll_to_bottom()
+
+    def _on_chart_requested(self, chart_data: dict):
+        """图表绘制回调"""
+        self._add_chart(chart_data)
 
     def _on_tool_called(self, tool_name: str, arguments: dict):
         """工具调用回调"""

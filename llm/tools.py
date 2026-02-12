@@ -262,6 +262,55 @@ TOOL_SCHEMAS = {
             }
         },
         "required": ["solvent", "solute", "solute_content_percent"]
+    },
+
+    "plot_chart": {
+        "type": "object",
+        "properties": {
+            "chart_type": {
+                "type": "string",
+                "description": "图表类型",
+                "enum": ["line", "scatter", "bar"],
+                "default": "line"
+            },
+            "title": {
+                "type": "string",
+                "description": "图表标题"
+            },
+            "x_label": {
+                "type": "string",
+                "description": "X轴标签"
+            },
+            "y_label": {
+                "type": "string",
+                "description": "Y轴标签"
+            },
+            "data_series": {
+                "type": "array",
+                "description": "数据系列列表，每个系列包含名称和数据点",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "数据系列名称（图例标签）"
+                        },
+                        "x_values": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "description": "X轴数据"
+                        },
+                        "y_values": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "description": "Y轴数据"
+                        }
+                    },
+                    "required": ["name", "x_values", "y_values"]
+                }
+            }
+        },
+        "required": ["title", "x_label", "y_label", "data_series"]
     }
 }
 
@@ -273,7 +322,8 @@ TOOL_DESCRIPTIONS = {
     "calculate_mixing_enthalpy": "计算合金的混合焓（过剩焓），基于Miedema模型。",
     "calculate_gibbs_energy": "计算合金的摩尔Gibbs自由能，包含理想混合和过剩贡献。",
     "get_element_properties": "获取元素的基本热力学性质，包括熔点、原子半径、电负性等。",
-    "calculate_melting_point_depression": "计算指定溶质含量对溶剂熔点的降低值。"
+    "calculate_melting_point_depression": "计算指定溶质含量对溶剂熔点的降低值。",
+    "plot_chart": "在对话中绘制图表。支持折线图、散点图、柱状图。可同时绘制多条数据曲线进行对比。用于将计算结果可视化展示。"
 }
 
 
@@ -548,6 +598,38 @@ class ThermodynamicTools:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+    def plot_chart(
+        self,
+        title: str,
+        x_label: str,
+        y_label: str,
+        data_series: List[Dict[str, Any]],
+        chart_type: str = "line"
+    ) -> Dict[str, Any]:
+        """绘制图表（返回图表数据，由UI层渲染）"""
+        try:
+            # 验证数据
+            if not data_series:
+                return {"status": "error", "message": "数据系列不能为空"}
+
+            for i, series in enumerate(data_series):
+                if "x_values" not in series or "y_values" not in series:
+                    return {"status": "error", "message": f"数据系列 {i} 缺少 x_values 或 y_values"}
+                if len(series["x_values"]) != len(series["y_values"]):
+                    return {"status": "error", "message": f"数据系列 {i} 的 x_values 和 y_values 长度不一致"}
+
+            return {
+                "status": "success",
+                "type": "chart",
+                "chart_type": chart_type,
+                "title": title,
+                "x_label": x_label,
+                "y_label": y_label,
+                "data_series": data_series
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     def get_tool_definitions(self) -> List[ToolDefinition]:
         """获取所有工具定义"""
         tool_methods = {
@@ -558,7 +640,8 @@ class ThermodynamicTools:
             "calculate_mixing_enthalpy": self.calculate_mixing_enthalpy,
             "calculate_gibbs_energy": self.calculate_gibbs_energy,
             "get_element_properties": self.get_element_properties,
-            "calculate_melting_point_depression": self.calculate_melting_point_depression
+            "calculate_melting_point_depression": self.calculate_melting_point_depression,
+            "plot_chart": self.plot_chart
         }
 
         tools = []
@@ -581,7 +664,8 @@ class ThermodynamicTools:
             "calculate_mixing_enthalpy": self.calculate_mixing_enthalpy,
             "calculate_gibbs_energy": self.calculate_gibbs_energy,
             "get_element_properties": self.get_element_properties,
-            "calculate_melting_point_depression": self.calculate_melting_point_depression
+            "calculate_melting_point_depression": self.calculate_melting_point_depression,
+            "plot_chart": self.plot_chart
         }
 
         if tool_name not in tool_methods:
