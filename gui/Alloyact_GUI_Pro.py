@@ -40,6 +40,7 @@ from gui.PhaseDiagramWidget import PhaseDiagramWidget
 from gui.SolubilityWidget import SolubilityWidget
 from gui.PhaseEquilibriumWidget import PhaseEquilibriumWidget
 from gui.PrecipitationTemperatureWidget import PrecipitationTemperatureWidget
+from gui.ChatWidget import ChatWidget
 
 
 class MplCanvas(FigureCanvas):
@@ -115,6 +116,10 @@ class AlloyThermolCalProGUI(QMainWindow):
 		
 		#数据库管理
 		self.create_database_mangner_tabs()
+
+		# AI对话助手
+		self.create_chat_tab()
+
 		# 创建状态栏
 		self.status_bar = QStatusBar()
 		self.setStatusBar(self.status_bar)
@@ -286,6 +291,11 @@ class AlloyThermolCalProGUI(QMainWindow):
 	def create_database_mangner_tabs (self):
 		self.database_widget = DatabaseManagerTab(self)
 		self.tabs.addTab(self.database_widget, "数据管理")
+
+	def create_chat_tab(self):
+		"""创建AI对话助手选项卡"""
+		self.chat_widget = ChatWidget(self)
+		self.tabs.addTab(self.chat_widget, "AI助手")
 
 	def create_concentration_variation_tab (self):
 		"""创建浓度变化分析选项卡"""
