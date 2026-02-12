@@ -14,7 +14,9 @@ from typing import Optional
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton,
     QLabel, QComboBox, QLineEdit, QScrollArea, QFrame,
-    QGroupBox, QSplitter, QMessageBox, QSizePolicy
+    QGroupBox, QSplitter, QMessageBox, QSizePolicy,
+    QTextBrowser, QDialog, QListWidget, QListWidgetItem,
+    QAbstractItemView, QDialogButtonBox
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QTextCursor, QColor
@@ -192,31 +194,38 @@ def _convert_markdown_tables(text):
                 rows.append(_parse_table_row(row_line))
                 j += 1
 
-            # 构建 HTML 表格
+            # 构建 HTML 表格（QTextBrowser 友好的样式）
             table_css = (
-                'border-collapse:collapse;margin:8px 0;width:100%;'
-                'font-size:13px;'
+                'border-collapse:collapse;margin:10px 0;width:100%;'
+                'font-size:13px;border:1px solid #c0c0c0;'
             )
             th_css = (
-                'border:1px solid #b0b0b0;padding:6px 12px;'
-                'background-color:#e8e8e8;font-weight:bold;'
+                'border:1px solid #b0b0b0;padding:8px 14px;'
+                'background-color:#4a90d9;color:#ffffff;font-weight:bold;'
             )
-            td_css = 'border:1px solid #ccc;padding:5px 12px;'
+            td_css_even = (
+                'border:1px solid #d0d0d0;padding:7px 14px;'
+                'background-color:#ffffff;'
+            )
+            td_css_odd = (
+                'border:1px solid #d0d0d0;padding:7px 14px;'
+                'background-color:#f2f7fc;'
+            )
 
             html = f'<table style="{table_css}">'
             # 表头
             html += '<tr>'
             for idx, h in enumerate(headers):
-                align = alignments[idx] if idx < len(alignments) else 'left'
+                align = alignments[idx] if idx < len(alignments) else 'center'
                 html += f'<th style="{th_css}text-align:{align};">{h}</th>'
             html += '</tr>'
             # 数据行（斑马条纹）
             for row_idx, row in enumerate(rows):
-                bg = '#ffffff' if row_idx % 2 == 0 else '#f5f5f5'
+                td_css = td_css_even if row_idx % 2 == 0 else td_css_odd
                 html += '<tr>'
                 for idx, cell in enumerate(row):
-                    align = alignments[idx] if idx < len(alignments) else 'left'
-                    html += f'<td style="{td_css}text-align:{align};background:{bg};">{cell}</td>'
+                    align = alignments[idx] if idx < len(alignments) else 'center'
+                    html += f'<td style="{td_css}text-align:{align};">{cell}</td>'
                 html += '</tr>'
             html += '</table>'
 
@@ -371,20 +380,42 @@ class MessageBubble(QFrame):
             font-size: 12px;
         """)
 
-        # 消息内容（助手消息使用富文本渲染，用户消息保持纯文本）
-        content_label = QLabel()
+        # 消息内容（助手消息使用QTextBrowser渲染，支持完整HTML表格；用户消息保持QLabel）
         if is_user:
+            content_label = QLabel()
             content_label.setText(text)
+            content_label.setWordWrap(True)
+            content_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            content_label.setStyleSheet("""
+                background: transparent;
+                font-size: 14px;
+                padding: 5px;
+            """)
         else:
-            content_label.setTextFormat(Qt.RichText)
-            content_label.setText(format_message_html(text))
-        content_label.setWordWrap(True)
-        content_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        content_label.setStyleSheet("""
-            background: transparent;
-            font-size: 14px;
-            padding: 5px;
-        """)
+            content_label = QTextBrowser()
+            content_label.setOpenExternalLinks(False)
+            content_label.setHtml(format_message_html(text))
+            content_label.setStyleSheet("""
+                QTextBrowser {
+                    background: transparent;
+                    font-size: 14px;
+                    padding: 5px;
+                    border: none;
+                }
+            """)
+            # 根据内容自动调整高度，避免出现滚动条
+            content_label.document().setDocumentMargin(2)
+            content_label.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            content_label.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            doc_height = content_label.document().size().height()
+            content_label.setMinimumHeight(int(doc_height) + 10)
+            content_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+            # 内容变化时自动调整高度
+            content_label.document().contentsChanged.connect(
+                lambda: content_label.setMinimumHeight(
+                    int(content_label.document().size().height()) + 10
+                )
+            )
 
         layout.addWidget(role_label)
         layout.addWidget(content_label)
@@ -589,6 +620,157 @@ class ChartBubble(QFrame):
         """)
 
 
+class MemoryDialog(QDialog):
+    """记忆管理对话框 — 查看、添加、删除AI助手的持久记忆"""
+
+    # 分类中文映射
+    _CATEGORIES = {
+        "preference": "计算偏好",
+        "alloy_system": "常用合金体系",
+        "calculation": "计算规则",
+        "general": "其他",
+    }
+
+    def __init__(self, memory_store, parent=None):
+        super().__init__(parent)
+        self.memory_store = memory_store
+        self.setWindowTitle("AI 记忆管理")
+        self.setMinimumSize(560, 420)
+        self._setup_ui()
+        self._refresh_list()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        # 说明
+        hint = QLabel("AI助手会根据对话自动记住您的计算偏好。您也可以在此手动管理。")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color:#666;font-size:12px;margin-bottom:6px;")
+        layout.addWidget(hint)
+
+        # 记忆列表
+        self.list_widget = QListWidget()
+        self.list_widget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.list_widget.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                font-size: 13px;
+            }
+            QListWidget::item {
+                padding: 6px 8px;
+                border-bottom: 1px solid #eee;
+            }
+            QListWidget::item:selected {
+                background-color: #d5e8f6;
+                color: #000;
+            }
+        """)
+        layout.addWidget(self.list_widget, stretch=1)
+
+        # 手动添加区域
+        add_layout = QHBoxLayout()
+        self.input_edit = QLineEdit()
+        self.input_edit.setPlaceholderText("输入要记住的内容，如：默认使用Elliott活度模型")
+        add_layout.addWidget(self.input_edit, stretch=1)
+
+        self.category_combo = QComboBox()
+        for key, label in self._CATEGORIES.items():
+            self.category_combo.addItem(label, key)
+        self.category_combo.setMinimumWidth(100)
+        add_layout.addWidget(self.category_combo)
+
+        add_btn = QPushButton("添加")
+        add_btn.clicked.connect(self._add_memory)
+        add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60; color: white;
+                padding: 6px 16px; border: none; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #219a52; }
+        """)
+        add_layout.addWidget(add_btn)
+        layout.addLayout(add_layout)
+
+        # 底部按钮
+        btn_layout = QHBoxLayout()
+
+        del_btn = QPushButton("删除选中")
+        del_btn.clicked.connect(self._delete_selected)
+        del_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c; color: white;
+                padding: 6px 16px; border: none; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #c0392b; }
+        """)
+        btn_layout.addWidget(del_btn)
+
+        clear_btn = QPushButton("清除全部")
+        clear_btn.clicked.connect(self._clear_all)
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6; color: white;
+                padding: 6px 16px; border: none; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #7f8c8d; }
+        """)
+        btn_layout.addWidget(clear_btn)
+
+        btn_layout.addStretch()
+
+        close_btn = QPushButton("关闭")
+        close_btn.clicked.connect(self.accept)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db; color: white;
+                padding: 6px 20px; border: none; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #2980b9; }
+        """)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+    def _refresh_list(self):
+        """刷新记忆列表"""
+        self.list_widget.clear()
+        for mem in self.memory_store.get_all():
+            cat_label = self._CATEGORIES.get(mem.category, mem.category)
+            item = QListWidgetItem(f"[{cat_label}]  {mem.content}")
+            item.setData(Qt.UserRole, mem.content)
+            self.list_widget.addItem(item)
+
+    def _add_memory(self):
+        """手动添加记忆"""
+        content = self.input_edit.text().strip()
+        if not content:
+            return
+        category = self.category_combo.currentData()
+        self.memory_store.add(content, category, source="用户手动添加")
+        self.input_edit.clear()
+        self._refresh_list()
+
+    def _delete_selected(self):
+        """删除选中的记忆"""
+        selected = self.list_widget.selectedItems()
+        if not selected:
+            return
+        for item in selected:
+            content = item.data(Qt.UserRole)
+            self.memory_store.remove(content)
+        self._refresh_list()
+
+    def _clear_all(self):
+        """清除所有记忆"""
+        reply = QMessageBox.question(
+            self, "确认", "确定要清除所有记忆吗？此操作不可撤销。",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.memory_store.clear_all()
+            self._refresh_list()
+
+
 class ChatWidget(QWidget):
     """对话式热力学计算界面"""
 
@@ -693,6 +875,22 @@ class ChatWidget(QWidget):
         self.status_label = QLabel("未连接")
         self.status_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
         layout.addWidget(self.status_label)
+
+        # 记忆管理按钮
+        self.memory_btn = QPushButton("记忆管理")
+        self.memory_btn.setToolTip("查看和管理AI助手的持久记忆（计算偏好、常用体系等）")
+        self.memory_btn.clicked.connect(self._open_memory_dialog)
+        self.memory_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #8e44ad;
+                color: white;
+                padding: 6px 14px;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #7d3c98; }
+        """)
+        layout.addWidget(self.memory_btn)
 
         layout.addStretch()
 
@@ -945,6 +1143,18 @@ class ChatWidget(QWidget):
             QMessageBox.critical(self, "连接失败", f"无法连接LLM后端:\n{str(e)}")
             self.status_label.setText("连接失败")
             self.status_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
+
+    def _open_memory_dialog(self):
+        """打开记忆管理对话框"""
+        from llm.memory import MemoryStore
+        store = self.agent.memory if self.agent else MemoryStore()
+        dlg = MemoryDialog(store, parent=self)
+        dlg.exec_()
+        # 如果已连接，刷新系统提示中的记忆
+        if self.agent:
+            mem_count = len(store.get_all())
+            if mem_count > 0:
+                self._add_system_message(f"记忆已更新，当前共 {mem_count} 条")
 
     def _send_message(self):
         """发送消息"""
