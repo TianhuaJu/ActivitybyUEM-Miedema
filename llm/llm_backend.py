@@ -300,6 +300,8 @@ class GeminiBackend(LLMBackend):
 
     def chat(self, messages: List[Message], tools: List[ToolDefinition] = None) -> LLMResponse:
         genai = self._get_client()
+        import google.generativeai as genai_module
+        from google.generativeai import protos
 
         # 转换工具为Gemini格式，清理不支持的schema字段
         gemini_tools = None
@@ -315,30 +317,105 @@ class GeminiBackend(LLMBackend):
                 ))
             gemini_tools = [Tool(function_declarations=declarations)]
 
-        # 创建模型
-        model = genai.GenerativeModel(self.model, tools=gemini_tools)
-
-        # 构建对话历史
-        history = []
+        # 提取system instruction
         system_instruction = None
-        for msg in messages[:-1]:
+        for msg in messages:
             if msg.role == "system":
                 system_instruction = msg.content
-            elif msg.role == "user":
-                history.append({"role": "user", "parts": [msg.content]})
+                break
+
+        # 创建模型（传入system_instruction）
+        model_kwargs = {"model_name": self.model}
+        if gemini_tools:
+            model_kwargs["tools"] = gemini_tools
+        if system_instruction:
+            model_kwargs["system_instruction"] = system_instruction
+        model = genai_module.GenerativeModel(**model_kwargs)
+
+        # 构建对话历史，正确处理tool_call和tool_response
+        history = []
+        non_system_messages = [m for m in messages if m.role != "system"]
+
+        # 所有消息（除最后一条）放入history，最后一条通过send_message发送
+        for msg in non_system_messages[:-1]:
+            if msg.role == "user":
+                history.append(protos.Content(
+                    role="user",
+                    parts=[protos.Part(text=msg.content)]
+                ))
             elif msg.role == "assistant":
-                history.append({"role": "model", "parts": [msg.content]})
+                parts = []
+                if msg.content:
+                    parts.append(protos.Part(text=msg.content))
+                # 如果包含tool_calls，添加function_call parts
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        fc = tc["function"]
+                        try:
+                            args = json.loads(fc["arguments"]) if isinstance(fc["arguments"], str) else fc["arguments"]
+                        except (json.JSONDecodeError, TypeError):
+                            args = {}
+                        parts.append(protos.Part(
+                            function_call=protos.FunctionCall(
+                                name=fc["name"],
+                                args=args
+                            )
+                        ))
+                if parts:
+                    history.append(protos.Content(role="model", parts=parts))
+            elif msg.role == "tool":
+                # tool response → user role with function_response part
+                try:
+                    result_data = json.loads(msg.content) if isinstance(msg.content, str) else msg.content
+                except (json.JSONDecodeError, TypeError):
+                    result_data = {"result": msg.content}
+                # 从tool_call_id提取函数名 (format: "call_<function_name>")
+                func_name = msg.tool_call_id.replace("call_", "", 1) if msg.tool_call_id else "unknown"
+                history.append(protos.Content(
+                    role="user",
+                    parts=[protos.Part(
+                        function_response=protos.FunctionResponse(
+                            name=func_name,
+                            response=result_data
+                        )
+                    )]
+                ))
+
+        # 处理最后一条消息
+        last_msg = non_system_messages[-1] if non_system_messages else None
+        if last_msg is None:
+            return LLMResponse(content="", tool_calls=[])
+
+        # 构建最后一条消息的content
+        if last_msg.role == "tool":
+            # 最后一条是工具结果，作为function_response发送
+            try:
+                result_data = json.loads(last_msg.content) if isinstance(last_msg.content, str) else last_msg.content
+            except (json.JSONDecodeError, TypeError):
+                result_data = {"result": last_msg.content}
+            func_name = last_msg.tool_call_id.replace("call_", "", 1) if last_msg.tool_call_id else "unknown"
+            last_content = protos.Content(
+                role="user",
+                parts=[protos.Part(
+                    function_response=protos.FunctionResponse(
+                        name=func_name,
+                        response=result_data
+                    )
+                )]
+            )
+        else:
+            last_content = last_msg.content or ""
 
         chat = model.start_chat(history=history)
-        response = chat.send_message(messages[-1].content if messages else "")
+        response = chat.send_message(last_content)
 
         # 解析响应
         content = ""
         tool_calls = []
         for part in response.parts:
-            if hasattr(part, 'text'):
+            if hasattr(part, 'text') and part.text:
                 content += part.text
-            elif hasattr(part, 'function_call'):
+            elif hasattr(part, 'function_call') and part.function_call:
                 fc = part.function_call
                 tool_calls.append({
                     "id": f"call_{fc.name}",
