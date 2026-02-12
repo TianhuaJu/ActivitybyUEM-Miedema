@@ -305773,4 +305773,130 @@ T =  1712.49 K
 #--------------------------------------------------
 Fe-Si       : 0.5839		Fe-C        : 0.0000		 in (Si-C)
 Si-Fe       : 0.5816		Si-C        : 0.0000		 in (Fe-C)
-C-Si        : 0.0000		C-Fe        : 0.0000		 in (Fe-Si)
+C-Si        : 0.0000		C-Fe        : 0.0000		 in (Fe-Si)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:03 ---
+Alloy System:  Al-Fe-Si
+T =  886.73 K
+#--------------------------------------------------
+Al-Fe       : 0.0377		Al-Si       : 0.9173		 in (Fe-Si)
+Fe-Al       : 0.3520		Fe-Si       : 0.2750		 in (Al-Si)
+Si-Fe       : 0.0297		Si-Al       : 0.9256		 in (Al-Fe)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:03 ---
+Alloy System:  Al-Si-Fe
+T =  886.73 K
+#--------------------------------------------------
+Al-Si       : 0.9173		Al-Fe       : 0.0377		 in (Si-Fe)
+Si-Al       : 0.9256		Si-Fe       : 0.0297		 in (Al-Fe)
+Fe-Si       : 0.2750		Fe-Al       : 0.3520		 in (Al-Si)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:04 ---
+Alloy System:  Al-Fe-Si
+T =  916.08 K
+#--------------------------------------------------
+Al-Fe       : 0.0377		Al-Si       : 0.9173		 in (Fe-Si)
+Fe-Al       : 0.3520		Fe-Si       : 0.2750		 in (Al-Si)
+Si-Fe       : 0.0297		Si-Al       : 0.9256		 in (Al-Fe)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:04 ---
+Alloy System:  Al-Si-Fe
+T =  916.08 K
+#--------------------------------------------------
+Al-Si       : 0.9173		Al-Fe       : 0.0377		 in (Si-Fe)
+Si-Al       : 0.9256		Si-Fe       : 0.0297		 in (Al-Fe)
+Fe-Si       : 0.2750		Fe-Al       : 0.3520		 in (Al-Si)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:04 ---
+Alloy System:  Al-Fe-Si
+T =  924.89 K
+#--------------------------------------------------
+Al-Fe       : 0.0377		Al-Si       : 0.9173		 in (Fe-Si)
+Fe-Al       : 0.3520		Fe-Si       : 0.2750		 in (Al-Si)
+Si-Fe       : 0.0297		Si-Al       : 0.9256		 in (Al-Fe)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:04 ---
+Alloy System:  Al-Si-Fe
+T =  924.89 K
+#--------------------------------------------------
+Al-Si       : 0.9173		Al-Fe       : 0.0377		 in (Si-Fe)
+Si-Al       : 0.9256		Si-Fe       : 0.0297		 in (Al-Fe)
+Fe-Si       : 0.2750		Fe-Al       : 0.3520		 in (Al-Si)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:04 ---
+Alloy System:  Al-Fe-Si
+T =  927.53 K
+#--------------------------------------------------
+Al-Fe       : 0.0377		Al-Si       : 0.9173		 in (Fe-Si)
+Fe-Al       : 0.3520		Fe-Si       : 0.2750		 in (Al-Si)
+Si-Fe       : 0.0297		Si-Al       : 0.9256		 in (Al-Fe)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:05 ---
+Alloy System:  Al-Si-Fe
+T =  927.53 K
+#--------------------------------------------------
+Al-Si       : 0.9173		Al-Fe       : 0.0377		 in (Si-Fe)
+Si-Al       : 0.9256		Si-Fe       : 0.0297		 in (Al-Fe)
+Fe-Si       : 0.2750		Fe-Al       : 0.3520		 in (Al-Si)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:05 ---
+Alloy System:  Al-Fe-Si
+T =  928.32 K
+#--------------------------------------------------
+Al-Fe       : 0.0377		Al-Si       : 0.9173		 in (Fe-Si)
+Fe-Al       : 0.3520		Fe-Si       : 0.2750		 in (Al-Si)
+Si-Fe       : 0.0297		Si-Al       : 0.9256		 in (Al-Fe)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:05 ---
+Alloy System:  Al-Si-Fe
+T =  928.32 K
+#--------------------------------------------------
+Al-Si       : 0.9173		Al-Fe       : 0.0377		 in (Si-Fe)
+Si-Al       : 0.9256		Si-Fe       : 0.0297		 in (Al-Fe)
+Fe-Si       : 0.2750		Fe-Al       : 0.3520		 in (Al-Si)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:05 ---
+Alloy System:  Al-Fe-Si
+T =  928.56 K
+#--------------------------------------------------
+Al-Fe       : 0.0377		Al-Si       : 0.9173		 in (Fe-Si)
+Fe-Al       : 0.3520		Fe-Si       : 0.2750		 in (Al-Si)
+Si-Fe       : 0.0297		Si-Al       : 0.9256		 in (Al-Fe)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:05 ---
+Alloy System:  Al-Si-Fe
+T =  928.56 K
+#--------------------------------------------------
+Al-Si       : 0.9173		Al-Fe       : 0.0377		 in (Si-Fe)
+Si-Al       : 0.9256		Si-Fe       : 0.0297		 in (Al-Fe)
+Fe-Si       : 0.2750		Fe-Al       : 0.3520		 in (Al-Si)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:06 ---
+Alloy System:  Al-Fe-Si
+T =  928.63 K
+#--------------------------------------------------
+Al-Fe       : 0.0377		Al-Si       : 0.9173		 in (Fe-Si)
+Fe-Al       : 0.3520		Fe-Si       : 0.2750		 in (Al-Si)
+Si-Fe       : 0.0297		Si-Al       : 0.9256		 in (Al-Fe)Extrapolation Model: UEM1 模型
+============================================================
+
+# --- Calculation Record: 2026-02-12 07:10:06 ---
+Alloy System:  Al-Si-Fe
+T =  928.63 K
+#--------------------------------------------------
+Al-Si       : 0.9173		Al-Fe       : 0.0377		 in (Si-Fe)
+Si-Al       : 0.9256		Si-Fe       : 0.0297		 in (Al-Fe)
+Fe-Si       : 0.2750		Fe-Al       : 0.3520		 in (Al-Si)
