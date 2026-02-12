@@ -464,7 +464,8 @@ BACKEND_CONFIGS = {
         "base_url": "http://localhost:11434/v1",
         "default_model": "qwen3:8b",
         "env_key": None,  # 本地无需API key
-        "timeout": 300  # 本地模型推理较慢，给更长超时
+        "timeout": 300,  # 本地模型推理较慢，给更长超时
+        "env_base_url": "OLLAMA_HOST"  # 支持通过环境变量指定Ollama服务地址
     },
     "claude": {
         "class": ClaudeBackend,
@@ -479,7 +480,8 @@ BACKEND_CONFIGS = {
 }
 
 
-def create_backend(provider: str, api_key: str = None, model: str = None) -> LLMBackend:
+def create_backend(provider: str, api_key: str = None, model: str = None,
+                   base_url: str = None) -> LLMBackend:
     """
     创建LLM后端实例
 
@@ -491,6 +493,9 @@ def create_backend(provider: str, api_key: str = None, model: str = None) -> LLM
         API密钥，如果为None则从环境变量读取
     model : str, optional
         模型名称，如果为None则使用默认模型
+    base_url : str, optional
+        自定义API地址，用于局域网部署等场景。
+        对于Ollama，也可通过环境变量 OLLAMA_HOST 指定。
 
     返回:
     -----
@@ -513,11 +518,23 @@ def create_backend(provider: str, api_key: str = None, model: str = None) -> LLM
     if model is None:
         model = config["default_model"]
 
+    # 确定base_url：优先使用参数传入 > 环境变量 > 配置默认值
+    if base_url is None and config.get("env_base_url"):
+        env_url = os.environ.get(config["env_base_url"])
+        if env_url:
+            if not env_url.startswith("http"):
+                env_url = f"http://{env_url}"
+            if not env_url.endswith("/v1"):
+                env_url = env_url.rstrip("/") + "/v1"
+            base_url = env_url
+
     # 创建实例
     backend_class = config["class"]
     kwargs = {"api_key": api_key, "model": model}
 
-    if "base_url" in config:
+    if base_url:
+        kwargs["base_url"] = base_url
+    elif "base_url" in config:
         kwargs["base_url"] = config["base_url"]
 
     if "timeout" in config:

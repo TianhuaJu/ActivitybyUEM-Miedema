@@ -268,6 +268,7 @@ class ChatAgent:
         provider: str = "ollama",
         api_key: str = None,
         model: str = None,
+        base_url: str = None,
         system_prompt: str = None,
         max_tool_iterations: int = 10,
         on_tool_call: Callable[[str, Dict], None] = None,
@@ -285,6 +286,8 @@ class ChatAgent:
             API密钥（ollama不需要）
         model : str, optional
             模型名称
+        base_url : str, optional
+            自定义API地址，用于局域网Ollama等场景
         system_prompt : str, optional
             系统提示词（默认使用内置提示词）
         max_tool_iterations : int
@@ -296,7 +299,7 @@ class ChatAgent:
         on_response : callable, optional
             响应回调 fn(content)
         """
-        self.backend = create_backend(provider, api_key, model)
+        self.backend = create_backend(provider, api_key, model, base_url=base_url)
         self.memory = MemoryStore()
         self.tools = ThermodynamicTools(memory_store=self.memory)
         self.session = ChatSession()

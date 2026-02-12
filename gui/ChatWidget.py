@@ -630,6 +630,15 @@ class ChatWidget(QWidget):
         self.provider_combo.currentTextChanged.connect(self._on_provider_changed)
         layout.addWidget(self.provider_combo)
 
+        # 服务器地址（局域网Ollama等场景）
+        self.server_label = QLabel("地址:")
+        layout.addWidget(self.server_label)
+        self.server_input = QLineEdit()
+        self.server_input.setPlaceholderText("localhost:11434")
+        self.server_input.setMinimumWidth(150)
+        self.server_input.setMaximumWidth(200)
+        layout.addWidget(self.server_input)
+
         # 模型选择
         layout.addWidget(QLabel("模型:"))
         self.model_combo = QComboBox()
@@ -637,6 +646,22 @@ class ChatWidget(QWidget):
         self.model_combo.setMinimumWidth(200)
         self._update_model_list("ollama")
         layout.addWidget(self.model_combo)
+
+        # 刷新模型按钮
+        self.refresh_btn = QPushButton("刷新")
+        self.refresh_btn.setToolTip("从服务器获取可用模型列表")
+        self.refresh_btn.clicked.connect(self._refresh_models)
+        self.refresh_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6;
+                color: white;
+                padding: 6px 12px;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #7f8c8d; }
+        """)
+        layout.addWidget(self.refresh_btn)
 
         # API Key 输入
         layout.addWidget(QLabel("API Key:"))
@@ -795,6 +820,12 @@ class ChatWidget(QWidget):
         """提供商变更处理"""
         self._update_model_list(provider)
 
+        # 仅ollama显示服务器地址和刷新按钮
+        is_ollama = (provider == "ollama")
+        self.server_label.setVisible(is_ollama)
+        self.server_input.setVisible(is_ollama)
+        self.refresh_btn.setVisible(is_ollama)
+
         # 更新API Key提示
         if provider == "ollama":
             self.api_key_input.setPlaceholderText("本地模型无需填写")
@@ -808,17 +839,38 @@ class ChatWidget(QWidget):
             }
             self.api_key_input.setPlaceholderText(placeholders.get(provider, "请输入API Key"))
 
+    def _get_ollama_base(self) -> str:
+        """获取当前Ollama服务器地址"""
+        addr = self.server_input.text().strip()
+        if not addr:
+            return "http://localhost:11434"
+        if not addr.startswith("http"):
+            addr = f"http://{addr}"
+        return addr.rstrip("/")
+
     def _fetch_ollama_models(self) -> list:
-        """从本地Ollama服务获取已安装的模型列表"""
+        """从Ollama服务获取已安装的模型列表"""
         import urllib.request
         try:
-            req = urllib.request.Request("http://localhost:11434/api/tags", method="GET")
+            base = self._get_ollama_base()
+            req = urllib.request.Request(f"{base}/api/tags", method="GET")
             with urllib.request.urlopen(req, timeout=3) as resp:
                 data = json.loads(resp.read().decode())
                 models = [m["name"] for m in data.get("models", [])]
                 return sorted(models) if models else []
         except Exception:
             return []
+
+    def _refresh_models(self):
+        """手动刷新Ollama模型列表"""
+        models = self._fetch_ollama_models()
+        self.model_combo.clear()
+        if models:
+            self.model_combo.addItems(models)
+        else:
+            base = self._get_ollama_base()
+            self.model_combo.addItems(["qwen3:8b", "qwen3:4b", "llama3.2:3b", "mistral:7b"])
+            self._add_system_message(f"无法连接 {base}，使用默认模型列表")
 
     def _update_model_list(self, provider: str):
         """更新模型列表（ollama自动检测本地已安装模型）"""
@@ -850,6 +902,17 @@ class ChatWidget(QWidget):
         model = self.model_combo.currentText()
         api_key = self.api_key_input.text().strip() or None
 
+        # 构建自定义base_url（仅ollama使用服务器地址输入框）
+        base_url = None
+        if provider == "ollama":
+            addr = self.server_input.text().strip()
+            if addr:
+                if not addr.startswith("http"):
+                    addr = f"http://{addr}"
+                base_url = addr.rstrip("/") + "/v1"
+            # 连接时自动刷新模型列表
+            self._refresh_models()
+
         try:
             from llm.chat_agent import ChatAgent
 
@@ -857,6 +920,7 @@ class ChatWidget(QWidget):
                 provider=provider,
                 api_key=api_key,
                 model=model,
+                base_url=base_url,
                 on_tool_call=self._on_tool_called
             )
 
