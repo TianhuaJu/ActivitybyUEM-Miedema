@@ -140,6 +140,94 @@ def _convert_latex_math(math_text):
     return t
 
 
+def _parse_table_row(line):
+    """解析表格行，返回单元格内容列表"""
+    line = line.strip()
+    if line.startswith('|'):
+        line = line[1:]
+    if line.endswith('|'):
+        line = line[:-1]
+    return [cell.strip() for cell in line.split('|')]
+
+
+def _parse_table_alignments(sep_line):
+    """从分隔行解析对齐方式（:--- 左, :---: 居中, ---: 右）"""
+    cells = _parse_table_row(sep_line)
+    alignments = []
+    for cell in cells:
+        cell = cell.strip()
+        left_colon = cell.startswith(':')
+        right_colon = cell.endswith(':')
+        if left_colon and right_colon:
+            alignments.append('center')
+        elif right_colon:
+            alignments.append('right')
+        else:
+            alignments.append('left')
+    return alignments
+
+
+def _convert_markdown_tables(text):
+    """将文本中的 Markdown 表格转换为带样式的 HTML <table>"""
+    lines = text.split('\n')
+    result = []
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        # 检测表格：当前行含 |，下一行是分隔符 |---|
+        if ('|' in line and i + 1 < len(lines)
+                and re.match(r'^\|?[\s\-:]+(\|[\s\-:]+)+\|?\s*$', lines[i + 1].strip())):
+            headers = _parse_table_row(line)
+            alignments = _parse_table_alignments(lines[i + 1].strip())
+            j = i + 2
+            rows = []
+            while j < len(lines):
+                row_line = lines[j].strip()
+                if '|' not in row_line or not row_line:
+                    break
+                # 跳过额外的分隔行
+                if re.match(r'^\|?[\s\-:]+(\|[\s\-:]+)+\|?\s*$', row_line):
+                    j += 1
+                    continue
+                rows.append(_parse_table_row(row_line))
+                j += 1
+
+            # 构建 HTML 表格
+            table_css = (
+                'border-collapse:collapse;margin:8px 0;width:100%;'
+                'font-size:13px;'
+            )
+            th_css = (
+                'border:1px solid #b0b0b0;padding:6px 12px;'
+                'background-color:#e8e8e8;font-weight:bold;'
+            )
+            td_css = 'border:1px solid #ccc;padding:5px 12px;'
+
+            html = f'<table style="{table_css}">'
+            # 表头
+            html += '<tr>'
+            for idx, h in enumerate(headers):
+                align = alignments[idx] if idx < len(alignments) else 'left'
+                html += f'<th style="{th_css}text-align:{align};">{h}</th>'
+            html += '</tr>'
+            # 数据行（斑马条纹）
+            for row_idx, row in enumerate(rows):
+                bg = '#ffffff' if row_idx % 2 == 0 else '#f5f5f5'
+                html += '<tr>'
+                for idx, cell in enumerate(row):
+                    align = alignments[idx] if idx < len(alignments) else 'left'
+                    html += f'<td style="{td_css}text-align:{align};background:{bg};">{cell}</td>'
+                html += '</tr>'
+            html += '</table>'
+
+            result.append(html)
+            i = j
+        else:
+            result.append(lines[i])
+            i += 1
+    return '\n'.join(result)
+
+
 def format_message_html(text):
     """将包含 Markdown + LaTeX 的消息文本转换为 QLabel 可渲染的 HTML"""
     if not text:
@@ -192,7 +280,10 @@ def format_message_html(text):
         r'(?<![a-zA-Z])([a-zA-Z])\^([a-zA-Z0-9' + _greek + r'²³⁰¹⁴⁵⁶⁷⁸⁹])',
         r'\1<sup>\2</sup>', text)
 
-    # === 第2步: 处理 Markdown ===
+    # === 第2步: 处理 Markdown 表格（需在换行转换前完成） ===
+    text = _convert_markdown_tables(text)
+
+    # === 第3步: 处理其他 Markdown ===
 
     # 标题
     text = re.sub(r'^#### (.+)$', r'<h5>\1</h5>', text, flags=re.MULTILINE)
