@@ -130,6 +130,7 @@ class ChatAgent:
         system_prompt: str = None,
         max_tool_iterations: int = 5,
         on_tool_call: Callable[[str, Dict], None] = None,
+        on_tool_result: Callable[[str, str], None] = None,
         on_response: Callable[[str], None] = None
     ):
         """
@@ -149,6 +150,8 @@ class ChatAgent:
             单次对话最大工具调用次数
         on_tool_call : callable, optional
             工具调用回调 fn(tool_name, arguments)
+        on_tool_result : callable, optional
+            工具结果回调 fn(tool_name, result_json)
         on_response : callable, optional
             响应回调 fn(content)
         """
@@ -157,6 +160,7 @@ class ChatAgent:
         self.session = ChatSession()
         self.max_tool_iterations = max_tool_iterations
         self.on_tool_call = on_tool_call
+        self.on_tool_result = on_tool_result
         self.on_response = on_response
 
         # 初始化系统消息
@@ -195,6 +199,8 @@ class ChatAgent:
         tool_defs = self.tools.get_tool_definitions()
 
         # 迭代处理工具调用
+        last_tool_results = []  # 记录最近一轮工具结果，用于空回复兜底
+
         for iteration in range(self.max_tool_iterations):
             try:
                 response = self.backend.chat(
@@ -216,6 +222,7 @@ class ChatAgent:
                 )
 
                 # 执行每个工具调用
+                last_tool_results = []
                 for tool_call in response.tool_calls:
                     tool_name = tool_call["function"]["name"]
                     try:
@@ -229,6 +236,11 @@ class ChatAgent:
 
                     # 执行工具
                     result = self.tools.execute_tool(tool_name, arguments)
+                    last_tool_results.append((tool_name, result))
+
+                    # 工具结果回调
+                    if self.on_tool_result:
+                        self.on_tool_result(tool_name, result)
 
                     # 添加工具结果消息
                     self.session.add_message(
@@ -238,17 +250,56 @@ class ChatAgent:
                     )
             else:
                 # 没有工具调用，返回最终回复
-                self.session.add_message("assistant", response.content)
+                final_content = response.content
+
+                # 如果LLM回复为空但之前有工具结果，用工具结果兜底
+                if not final_content.strip() and last_tool_results:
+                    final_content = self._format_tool_results_fallback(last_tool_results)
+
+                self.session.add_message("assistant", final_content)
 
                 if self.on_response:
-                    self.on_response(response.content)
+                    self.on_response(final_content)
 
-                return response.content
+                return final_content
 
-        # 达到最大迭代次数
-        final_msg = "已达到最大工具调用次数限制。"
+        # 达到最大迭代次数，如果有工具结果则展示
+        if last_tool_results:
+            final_msg = self._format_tool_results_fallback(last_tool_results)
+        else:
+            final_msg = "已达到最大工具调用次数限制。"
         self.session.add_message("assistant", final_msg)
         return final_msg
+
+    @staticmethod
+    def _format_tool_results_fallback(tool_results: list) -> str:
+        """当LLM回复为空时，将工具结果格式化为可读文本"""
+        parts = []
+        for tool_name, result_json in tool_results:
+            try:
+                data = json.loads(result_json) if isinstance(result_json, str) else result_json
+            except (json.JSONDecodeError, TypeError):
+                data = {"result": result_json}
+
+            if isinstance(data, dict) and data.get("status") == "error":
+                parts.append(f"**{tool_name}** 调用失败: {data.get('message', '未知错误')}")
+                continue
+
+            # 格式化关键数值结果
+            lines = [f"**{tool_name}** 计算结果:"]
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    if key in ("status", "message", "iterations"):
+                        continue
+                    if isinstance(value, float):
+                        lines.append(f"  - {key}: {value:.6g}")
+                    elif isinstance(value, (int, str, bool)):
+                        lines.append(f"  - {key}: {value}")
+            else:
+                lines.append(f"  {data}")
+            parts.append("\n".join(lines))
+
+        return "\n\n".join(parts)
 
     def reset(self):
         """重置会话"""

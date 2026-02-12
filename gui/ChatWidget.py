@@ -28,6 +28,7 @@ class ChatWorker(QThread):
     """后台对话处理线程"""
     response_ready = pyqtSignal(str)
     tool_called = pyqtSignal(str, dict)
+    tool_result_ready = pyqtSignal(str, str)  # (tool_name, result_json)
     chart_requested = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
 
@@ -39,20 +40,26 @@ class ChatWorker(QThread):
     def run(self):
         try:
             # 设置工具调用回调，检测图表工具
-            original_callback = self.agent.on_tool_call
+            original_call_cb = self.agent.on_tool_call
+            original_result_cb = self.agent.on_tool_result
 
             def _on_tool(name, args):
                 self.tool_called.emit(name, args)
                 if name == "plot_chart":
                     self.chart_requested.emit(args)
 
+            def _on_result(name, result):
+                self.tool_result_ready.emit(name, result)
+
             self.agent.on_tool_call = _on_tool
+            self.agent.on_tool_result = _on_result
 
             response = self.agent.chat(self.message)
             self.response_ready.emit(response)
 
             # 恢复原始回调
-            self.agent.on_tool_call = original_callback
+            self.agent.on_tool_call = original_call_cb
+            self.agent.on_tool_result = original_result_cb
         except Exception as e:
             self.error_occurred.emit(str(e))
 
@@ -144,6 +151,80 @@ class ToolCallBubble(QFrame):
                 border-radius: 8px;
                 margin: 3px 20px;
             }
+        """)
+
+
+class ToolResultBubble(QFrame):
+    """工具执行结果气泡组件"""
+
+    def __init__(self, tool_name: str, result_json: str, parent=None):
+        super().__init__(parent)
+        self.setup_ui(tool_name, result_json)
+
+    def setup_ui(self, tool_name: str, result_json: str):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 5, 10, 5)
+
+        # 解析结果
+        try:
+            data = json.loads(result_json) if isinstance(result_json, str) else result_json
+        except (json.JSONDecodeError, TypeError):
+            data = {"result": result_json}
+
+        is_error = isinstance(data, dict) and data.get("status") == "error"
+
+        # 标题
+        status_icon = "x" if is_error else "="
+        title_label = QLabel(f"  {status_icon} 结果: {tool_name}")
+        title_label.setStyleSheet(f"""
+            font-weight: bold;
+            color: {'#e74c3c' if is_error else '#27ae60'};
+            font-size: 12px;
+        """)
+
+        # 结果内容（格式化关键数值）
+        if is_error:
+            result_text = data.get("message", str(data))
+        elif isinstance(data, dict):
+            lines = []
+            for key, value in data.items():
+                if key in ("status", "iterations"):
+                    continue
+                if isinstance(value, float):
+                    lines.append(f"{key}: {value:.6g}")
+                elif isinstance(value, (int, str, bool)):
+                    lines.append(f"{key}: {value}")
+                elif isinstance(value, dict):
+                    lines.append(f"{key}: {json.dumps(value, ensure_ascii=False)}")
+            result_text = "\n".join(lines) if lines else json.dumps(data, ensure_ascii=False, indent=2)
+        else:
+            result_text = str(data)
+
+        if len(result_text) > 500:
+            result_text = result_text[:500] + "\n..."
+
+        result_label = QLabel(result_text)
+        result_label.setWordWrap(True)
+        result_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        result_label.setStyleSheet("""
+            font-family: Consolas, Monaco, monospace;
+            font-size: 11px;
+            color: #333;
+            padding: 5px;
+        """)
+
+        layout.addWidget(title_label)
+        layout.addWidget(result_label)
+
+        bg_color = "#fff0f0" if is_error else "#f0fff0"
+        border_color = "#e8c0c0" if is_error else "#c0e8c0"
+        self.setStyleSheet(f"""
+            ToolResultBubble {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+                margin: 0px 20px 3px 20px;
+            }}
         """)
 
 
@@ -543,6 +624,7 @@ class ChatWidget(QWidget):
         self.worker = ChatWorker(self.agent, message)
         self.worker.response_ready.connect(self._on_response_ready)
         self.worker.tool_called.connect(self._on_tool_called)
+        self.worker.tool_result_ready.connect(self._on_tool_result)
         self.worker.chart_requested.connect(self._on_chart_requested)
         self.worker.error_occurred.connect(self._on_error)
         self.worker.finished.connect(self._on_worker_finished)
@@ -637,6 +719,23 @@ class ChatWidget(QWidget):
     def _on_tool_called(self, tool_name: str, arguments: dict):
         """工具调用回调"""
         self._add_tool_call(tool_name, arguments)
+
+    def _on_tool_result(self, tool_name: str, result_json: str):
+        """工具结果回调"""
+        self._add_tool_result(tool_name, result_json)
+
+    def _add_tool_result(self, tool_name: str, result_json: str):
+        """添加工具执行结果显示"""
+        # 移除stretch
+        if self.messages_layout.count() > 0:
+            item = self.messages_layout.itemAt(self.messages_layout.count() - 1)
+            if item.spacerItem():
+                self.messages_layout.removeItem(item)
+
+        bubble = ToolResultBubble(tool_name, result_json)
+        self.messages_layout.addWidget(bubble)
+        self.messages_layout.addStretch()
+        self._scroll_to_bottom()
 
     def _on_response_ready(self, response: str):
         """响应就绪回调"""
