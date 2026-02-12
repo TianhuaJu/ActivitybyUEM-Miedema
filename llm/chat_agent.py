@@ -153,6 +153,11 @@ SYSTEM_PROMPT = """你是合金热力学计算软件的AI助手。你的唯一�
 - calculate_precipitation_temperature → 析出温度 (参数: composition, solute)
 - calculate_melting_point_depression → 熔点降低 (参数: solvent, solute, solute_content_percent)
 
+【合金设计】
+- screen_elements_liquidus_effect → 批量筛选元素对液相线温度的影响 (参数: solvent, candidate_elements, addition_percent, base_composition可选)
+  用途：一次性对比多种元素的添加效果，自动排序找出影响最大/最小的元素。适合合金设计中的元素筛选。
+  示例调用：solvent="Al", candidate_elements=["Cu","Mg","Si","Zn","Mn","Fe","Ti","Ni"], addition_percent=1.0
+
 【辅助】
 - get_element_properties → 元素性质 (参数: element)
 - plot_chart → 绘图 (参数: title, x_label, y_label, data_series)
@@ -185,10 +190,29 @@ SYSTEM_PROMPT = """你是合金热力学计算软件的AI助手。你的唯一�
 - "全部性质"/"所有性质" → calculate_all_properties
 - "元素"/"性质"/"熔点" → get_element_properties
 - "画图"/"绘图"/"可视化" → plot_chart
+- "筛选元素"/"元素筛选"/"哪个元素影响最大"/"对比元素"/"合金设计"/"元素对液相线影响" → screen_elements_liquidus_effect
 - "Elliott"/"Elliot"/"elliott" → 设置 activity_model="Elliott"
 - "Darken"/"darken" → 设置 activity_model="Darken"
 - "Wagner"/"wagner" → 设置 activity_model="Wagner"
 - "对比模型"/"三种模型" → 分别用三种活度模型各计算一次
+
+========== 合金设计工作流 ==========
+当用户需要进行合金设计/元素筛选时，推荐以下工作流：
+
+1. 用户指定基体合金 → 调用 screen_elements_liquidus_effect 一次性筛选所有候选元素
+2. 拿到筛选结果后，用Markdown表格展示排序结果，明确指出：
+   - 降低液相线最多的元素（有利于降低熔点/促进凝固）
+   - 对液相线影响最小的元素（对熔点影响较小的"中性"元素）
+   - 升高液相线的元素（如果有）
+3. 如果用户需要可视化，调用 plot_chart 绘制柱状图对比各元素效果
+4. 根据筛选结果给出简短的设计建议
+
+screen_elements_liquidus_effect 返回的结果格式示例：
+- base_liquidus_K: 基础合金液相线温度
+- results: 按ΔT排序的列表，每项含 element, liquidus_temperature_K, delta_T_K
+- summary: max_depression(降低最多的元素), min_depression(降低最少/升高最多的元素)
+
+展示时应使用表格，列出每个元素的ΔT值和排名。
 
 用中文回答，直接给出计算结果。"""
 
@@ -245,7 +269,7 @@ class ChatAgent:
         api_key: str = None,
         model: str = None,
         system_prompt: str = None,
-        max_tool_iterations: int = 5,
+        max_tool_iterations: int = 10,
         on_tool_call: Callable[[str, Dict], None] = None,
         on_tool_result: Callable[[str, str], None] = None,
         on_response: Callable[[str], None] = None
@@ -412,6 +436,7 @@ class ChatAgent:
         "get_contribution_coefficients": "贡献系数",
         "get_infinite_dilution_activity_coefficient": "无限稀释活度系数",
         "get_element_properties": "元素性质",
+        "screen_elements_liquidus_effect": "元素筛选",
     }
 
     # 需要隐藏的内部字段（不展示给用户）
@@ -618,6 +643,10 @@ class ChatAgent:
         if tool_name == "calculate_all_properties":
             return cls._format_all_properties(data)
 
+        # ---------- 元素筛选 ----------
+        if tool_name == "screen_elements_liquidus_effect":
+            return cls._format_screening_result(data)
+
         # ---------- 通用兜底：用中文标签替代英文字段名 ----------
         lines = [f"**{tool_zh}**:"]
         for key, value in data.items():
@@ -750,6 +779,46 @@ class ChatAgent:
                 a = f"{activity:.4g}" if isinstance(activity, float) else str(activity)
                 m = f"{mu:.4g}" if isinstance(mu, float) else str(mu)
                 lines.append(f"| {comp} | {x} | {g} | {a} | {m} |")
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_screening_result(data: dict) -> str:
+        """格式化 screen_elements_liquidus_effect 结果"""
+        base_k = data.get("base_liquidus_K", "?")
+        base_c = data.get("base_liquidus_C", "?")
+        pct = data.get("addition_percent", "?")
+        base_desc = data.get("base_composition", "?")
+        results = data.get("results", [])
+        summary = data.get("summary", {})
+
+        lines = [f"**元素对液相线温度影响筛选**（基础合金: {base_desc}）"]
+        lines.append(f"基础液相线温度: {base_k} K ({base_c}°C)，添加量: {pct}%\n")
+        lines.append("| 排名 | 元素 | 液相线温度 (K) | 液相线温度 (°C) | ΔT (K) |")
+        lines.append("|------|------|---------------|----------------|--------|")
+        for i, r in enumerate(results, 1):
+            elem = r.get("element", "?")
+            t_k = r.get("liquidus_temperature_K", "?")
+            t_c = r.get("liquidus_temperature_C", "?")
+            dt = r.get("delta_T_K", "?")
+            dt_str = f"{dt:+.2f}" if isinstance(dt, (int, float)) else str(dt)
+            lines.append(f"| {i} | {elem} | {t_k} | {t_c} | {dt_str} |")
+
+        if summary:
+            lines.append("")
+            max_dep = summary.get("max_depression", {})
+            min_dep = summary.get("min_depression", {})
+            if max_dep:
+                lines.append(f"降低液相线最多: **{max_dep.get('element')}** (ΔT = {max_dep.get('delta_T_K'):+.2f} K)")
+            if min_dep:
+                lines.append(f"降低液相线最少: **{min_dep.get('element')}** (ΔT = {min_dep.get('delta_T_K'):+.2f} K)")
+
+        errors = data.get("errors", [])
+        if errors:
+            lines.append("")
+            lines.append("计算失败的元素:")
+            for err in errors:
+                lines.append(f"  - {err.get('element', '?')}: {err.get('error', '未知错误')}")
 
         return "\n".join(lines)
 

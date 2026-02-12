@@ -555,6 +555,45 @@ TOOL_SCHEMAS = {
         "required": ["composition", "temperature"]
     },
 
+    # === 合金设计工具 ===
+    "screen_elements_liquidus_effect": {
+        "type": "object",
+        "properties": {
+            "solvent": {
+                "type": "string",
+                "description": "溶剂（基体）元素符号，如 'Fe', 'Al'"
+            },
+            "candidate_elements": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "候选溶质元素列表，如 [\"Cu\", \"Mg\", \"Si\", \"Zn\", \"Mn\"]"
+            },
+            "addition_percent": {
+                "type": "number",
+                "description": "每种候选元素的添加量(摩尔百分比)，默认1%",
+                "default": 1.0
+            },
+            "base_composition": {
+                "type": "object",
+                "description": "可选的基础合金成分(摩尔分数)。如不指定，则以纯溶剂为基础。如 {\"Fe\": 0.95, \"C\": 0.02, \"Mn\": 0.03}",
+                "additionalProperties": {"type": "number"}
+            },
+            "extrapolation_model": {
+                "type": "string",
+                "description": "外推模型名称",
+                "enum": ["UEM1", "UEM2", "Muggianu", "Toop_Muggianu", "Toop_Kohler"],
+                "default": "UEM1"
+            },
+            "activity_model": {
+                "type": "string",
+                "description": "活度模型",
+                "enum": ["Wagner", "Darken", "Elliott"],
+                "default": "Wagner"
+            }
+        },
+        "required": ["solvent", "candidate_elements"]
+    },
+
     # === 记忆工具 ===
     "save_memory": {
         "type": "object",
@@ -612,6 +651,7 @@ TOOL_DESCRIPTIONS = {
     "calculate_chemical_potential": "计算合金中指定组元的化学势 μ_i = μ°_i(T) + RT·ln(a_i)。其中μ°_i(T)从SGTE热力学数据库获取，a_i由活度计算给出。",
     "calculate_entropy": "计算合金的摩尔熵 S = (H - G) / T。其中H为摩尔焓，G为摩尔Gibbs自由能。",
     "calculate_all_properties": "一次性计算合金的所有热力学性质。包括每个组元的活度系数γ、活度a、化学势μ，以及合金整体的摩尔焓H、Gibbs自由能G、摩尔熵S。",
+    "screen_elements_liquidus_effect": "批量筛选多种元素对合金液相线温度的影响。输入溶剂和候选元素列表，一次性计算所有元素在指定添加量下对液相线温度的降低/升高效果，返回按影响大小排序的结果。用于合金设计中的元素筛选。",
     "save_memory": "保存一条重要信息到长期记忆。当用户提到偏好、常用合金体系、计算习惯等值得记住的信息时，主动调用此工具保存。分类: preference(偏好)、alloy_system(合金体系)、calculation(计算经验)、general(其他)。",
     "recall_memories": "回忆已保存的记忆。可按关键词搜索，不填关键词则返回所有记忆。当用户问'你还记得吗'、'之前说过'等时调用。",
     "delete_memory": "删除一条已保存的记忆。当用户要求忘记某信息时调用。"
@@ -1189,6 +1229,115 @@ class ThermodynamicTools:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+    def screen_elements_liquidus_effect(
+        self,
+        solvent: str,
+        candidate_elements: List[str],
+        addition_percent: float = 1.0,
+        base_composition: Dict[str, float] = None,
+        extrapolation_model: str = "UEM1",
+        activity_model: str = "Wagner"
+    ) -> Dict[str, Any]:
+        """批量筛选元素对液相线温度的影响"""
+        try:
+            x_add = float(addition_percent) / 100.0
+            if x_add <= 0 or x_add >= 1:
+                return {"status": "error", "message": f"添加量 {addition_percent}% 无效，须在0-100之间"}
+
+            # 确定基础成分
+            if base_composition:
+                base_comp = {k: float(v) for k, v in base_composition.items()}
+            else:
+                base_comp = {solvent: 1.0}
+
+            # 归一化基础成分
+            base_total = sum(base_comp.values())
+            if base_total > 0:
+                base_comp = {k: v / base_total for k, v in base_comp.items()}
+
+            # 计算基础合金的液相线温度
+            base_result = self.calculate_liquidus_temperature(
+                composition=dict(base_comp),
+                extrapolation_model=extrapolation_model,
+                activity_model=activity_model
+            )
+            if base_result.get("status") == "error":
+                return {"status": "error", "message": f"基础合金液相线计算失败: {base_result.get('message')}"}
+
+            base_liquidus = base_result.get("liquidus_temperature")
+            if base_liquidus is None:
+                return {"status": "error", "message": "无法获取基础合金液相线温度"}
+
+            # 遍历候选元素
+            results = []
+            errors = []
+            for elem in candidate_elements:
+                elem = elem.strip()
+                if not elem:
+                    continue
+
+                # 构建添加该元素后的成分：按比例压缩原成分，腾出空间
+                new_comp = {k: v * (1.0 - x_add) for k, v in base_comp.items()}
+                # 如果元素已存在于基础成分中，则叠加
+                new_comp[elem] = new_comp.get(elem, 0) + x_add
+
+                try:
+                    result = self.calculate_liquidus_temperature(
+                        composition=new_comp,
+                        extrapolation_model=extrapolation_model,
+                        activity_model=activity_model
+                    )
+                    if result.get("status") == "error":
+                        errors.append({"element": elem, "error": result.get("message", "未知错误")})
+                        continue
+
+                    new_liquidus = result.get("liquidus_temperature")
+                    if new_liquidus is None:
+                        errors.append({"element": elem, "error": "未能获取液相线温度"})
+                        continue
+
+                    delta_t = new_liquidus - base_liquidus
+                    results.append({
+                        "element": elem,
+                        "liquidus_temperature_K": round(new_liquidus, 2),
+                        "liquidus_temperature_C": round(new_liquidus - 273.15, 2),
+                        "delta_T_K": round(delta_t, 2),
+                    })
+                except Exception as e:
+                    errors.append({"element": elem, "error": str(e)})
+
+            # 按 delta_T 排序（从最大降低到最小降低）
+            results.sort(key=lambda r: r["delta_T_K"])
+
+            # 找出影响最大和最小的
+            summary = {}
+            if results:
+                summary["max_depression"] = {
+                    "element": results[0]["element"],
+                    "delta_T_K": results[0]["delta_T_K"]
+                }
+                summary["min_depression"] = {
+                    "element": results[-1]["element"],
+                    "delta_T_K": results[-1]["delta_T_K"]
+                }
+
+            base_desc = " + ".join(f"{k}:{v:.4g}" for k, v in base_comp.items())
+            output = {
+                "status": "success",
+                "base_composition": base_desc,
+                "base_liquidus_K": round(base_liquidus, 2),
+                "base_liquidus_C": round(base_liquidus - 273.15, 2),
+                "addition_percent": addition_percent,
+                "element_count": len(results),
+                "results": results,
+                "summary": summary,
+            }
+            if errors:
+                output["errors"] = errors
+            return output
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     def plot_chart(
         self,
         title: str,
@@ -1270,6 +1419,7 @@ class ThermodynamicTools:
             "calculate_chemical_potential": self.calculate_chemical_potential,
             "calculate_entropy": self.calculate_entropy,
             "calculate_all_properties": self.calculate_all_properties,
+            "screen_elements_liquidus_effect": self.screen_elements_liquidus_effect,
             "plot_chart": self.plot_chart,
             "save_memory": self.save_memory,
             "recall_memories": self.recall_memories,
@@ -1315,6 +1465,17 @@ class ThermodynamicTools:
                 args["solute_content_percent"] = float(args["solute_content_percent"])
             except ValueError:
                 pass
+
+        # addition_percent: 可能传成字符串
+        if "addition_percent" in args and isinstance(args["addition_percent"], str):
+            try:
+                args["addition_percent"] = float(args["addition_percent"])
+            except ValueError:
+                pass
+
+        # candidate_elements: 可能传成逗号分隔的字符串
+        if "candidate_elements" in args and isinstance(args["candidate_elements"], str):
+            args["candidate_elements"] = [e.strip() for e in args["candidate_elements"].split(",") if e.strip()]
 
         return args
 
