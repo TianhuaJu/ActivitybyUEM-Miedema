@@ -624,7 +624,9 @@ class ThermodynamicTools:
         return model_map.get(model_name, self.binary_model.UEM1)
 
     def _normalize_composition(self, composition: Dict[str, float]) -> Dict[str, float]:
-        """归一化成分到摩尔分数"""
+        """归一化成分到摩尔分数（自动将字符串转为浮点数）"""
+        # LLM有时会把数值传成字符串，这里统一转换
+        composition = {k: float(v) for k, v in composition.items()}
         total = sum(composition.values())
         if total <= 0:
             return composition
@@ -1192,12 +1194,43 @@ class ThermodynamicTools:
             ))
         return tools
 
+    @staticmethod
+    def _coerce_arguments(arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """修正LLM传参中的常见类型错误（如字符串数字、字符串字典）"""
+        args = dict(arguments)
+
+        # composition: 值可能是字符串，统一转float
+        if "composition" in args and isinstance(args["composition"], dict):
+            args["composition"] = {
+                k: float(v) if isinstance(v, str) else v
+                for k, v in args["composition"].items()
+            }
+
+        # temperature: 可能传成字符串
+        if "temperature" in args and isinstance(args["temperature"], str):
+            try:
+                args["temperature"] = float(args["temperature"])
+            except ValueError:
+                pass
+
+        # solute_content_percent: 可能传成字符串
+        if "solute_content_percent" in args and isinstance(args["solute_content_percent"], str):
+            try:
+                args["solute_content_percent"] = float(args["solute_content_percent"])
+            except ValueError:
+                pass
+
+        return args
+
     def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
         """执行工具调用"""
         tool_methods = self._get_all_tool_methods()
 
         if tool_name not in tool_methods:
             return json.dumps({"status": "error", "message": f"未知工具: {tool_name}"})
+
+        # 自动修正LLM常见的类型错误
+        arguments = self._coerce_arguments(arguments)
 
         try:
             result = tool_methods[tool_name](**arguments)
