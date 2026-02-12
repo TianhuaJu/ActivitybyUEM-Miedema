@@ -132,22 +132,34 @@ class MemoryStore:
             return ""
 
         categories = {
-            "preference": "用户偏好",
+            "preference": "默认计算设置",
             "alloy_system": "常用合金体系",
-            "calculation": "计算经验",
+            "calculation": "计算规则与经验",
             "general": "其他"
         }
 
-        lines = ["\n你记得以下关于用户的信息："]
+        # 计算规则类记忆用更强的语气，确保 LLM 遵守
+        lines = ["\n========== 用户记忆（你必须遵守的设置） =========="]
         grouped = {}
         for m in self.memories:
             cat = categories.get(m.category, m.category)
             grouped.setdefault(cat, []).append(m.content)
 
+        # 优先显示计算规则和默认设置
+        priority_order = ["默认计算设置", "计算规则与经验", "常用合金体系", "其他"]
+        for cat_name in priority_order:
+            items = grouped.get(cat_name)
+            if items:
+                lines.append(f"【{cat_name}】")
+                for item in items:
+                    lines.append(f"  - {item}")
+
+        # 显示未在优先列表中的分类
         for cat_name, items in grouped.items():
-            lines.append(f"【{cat_name}】")
-            for item in items:
-                lines.append(f"  - {item}")
+            if cat_name not in priority_order:
+                lines.append(f"【{cat_name}】")
+                for item in items:
+                    lines.append(f"  - {item}")
 
         return "\n".join(lines)
 
