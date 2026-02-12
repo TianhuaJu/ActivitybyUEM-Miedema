@@ -34,6 +34,30 @@ SYSTEM_PROMPT = """你是合金热力学计算软件的AI助手。你的唯一�
 5. 回答简洁，重点展示计算结果数值
 6. 每个工具只调用一次，拿到结果后直接回复用户，不要重复调用同一个工具
 
+========== 结果输出格式（非常重要） ==========
+拿到工具返回结果后，必须用自然语言总结，不要罗列JSON字段。
+
+正确示例：
+- 液相线温度：「Al-0.2%Fe-0.5%Si合金的液相线温度为 927.3 K（654.2°C），相比纯铝（933.5K）降低了 6.2 K。」
+- 活度系数：「在1873K下，Fe-5%C合金中C的活度系数 γ = 0.901（ln γ = -0.104），活度 a = 0.045。」
+- 混合焓：「Fe-5%C合金在1873K下的混合焓为 -12345 J/mol。」
+- 相互作用系数：「在1873K的液态Fe中，C对Si的一阶活度相互作用系数 ε_Si^C = 5.23。」
+- 全部性质：列出关键结果，用表格或分类展示，不要逐行罗列status/component等元数据字段。
+
+错误示例（绝对不要这样做）：
+- status: success
+- component: C
+- temperature: 1873
+- ln_gamma: -0.104
+- gamma: 0.901
+这种逐行罗列JSON字段的方式对用户完全没有帮助。
+
+规则：
+- 只展示用户关心的核心数值（温度、活度、系数等），忽略status/phase等内部字段
+- 温度结果同时给出K和°C（°C = K - 273.15）
+- 结果数值保留4位有效数字
+- 如果有多个组元，可以用简洁的表格展示
+
 成分解析能力（非常重要）：
 你具备从用户的自然语言描述中自动解析合金成分的能力。composition格式为{"元素": 摩尔分数}，所有摩尔分数之和=1。
 解析示例：
@@ -355,9 +379,36 @@ class ChatAgent:
         self.session.add_message("assistant", final_msg)
         return final_msg
 
-    @staticmethod
-    def _format_tool_results_fallback(tool_results: list) -> str:
-        """当LLM回复为空时，将工具结果格式化为可读文本"""
+    # 工具名→中文名 映射
+    _TOOL_NAMES_ZH = {
+        "calculate_liquidus_temperature": "液相线温度",
+        "calculate_precipitation_temperature": "析出温度",
+        "calculate_activity": "活度",
+        "calculate_activity_coefficient": "活度系数",
+        "calculate_mixing_enthalpy": "混合焓",
+        "calculate_gibbs_energy": "Gibbs自由能",
+        "calculate_melting_point_depression": "熔点降低",
+        "calculate_chemical_potential": "化学势",
+        "calculate_entropy": "摩尔熵",
+        "calculate_all_properties": "热力学性质",
+        "get_interaction_coefficient": "活度相互作用系数",
+        "get_second_order_interaction_coefficient": "二阶相互作用系数",
+        "get_infinite_dilution_activity_coefficient": "无限稀释活度系数",
+        "get_element_properties": "元素性质",
+    }
+
+    # 需要隐藏的内部字段
+    _SKIP_KEYS = {"status", "message", "iterations", "type", "chart_type"}
+
+    # 需要展示K→°C双单位的字段
+    _TEMPERATURE_KEYS = {
+        "liquidus_temperature_K", "temperature", "precipitation_temperature_K",
+        "melting_point_depression_K", "melting_point_K",
+    }
+
+    @classmethod
+    def _format_tool_results_fallback(cls, tool_results: list) -> str:
+        """当LLM回复为空时，将工具结果格式化为人类可读的自然语言"""
         parts = []
         for tool_name, result_json in tool_results:
             try:
@@ -366,24 +417,150 @@ class ChatAgent:
                 data = {"result": result_json}
 
             if isinstance(data, dict) and data.get("status") == "error":
-                parts.append(f"**{tool_name}** 调用失败: {data.get('message', '未知错误')}")
+                parts.append(f"计算失败: {data.get('message', '未知错误')}")
                 continue
 
-            # 格式化关键数值结果
-            lines = [f"**{tool_name}** 计算结果:"]
-            if isinstance(data, dict):
-                for key, value in data.items():
-                    if key in ("status", "message", "iterations"):
-                        continue
-                    if isinstance(value, float):
-                        lines.append(f"  - {key}: {value:.6g}")
-                    elif isinstance(value, (int, str, bool)):
-                        lines.append(f"  - {key}: {value}")
-            else:
-                lines.append(f"  {data}")
-            parts.append("\n".join(lines))
+            tool_zh = cls._TOOL_NAMES_ZH.get(tool_name, tool_name)
+            formatted = cls._format_single_result(tool_name, tool_zh, data)
+            if formatted:
+                parts.append(formatted)
 
-        return "\n\n".join(parts)
+        return "\n\n".join(parts) if parts else "计算完成，但未返回结果。"
+
+    @classmethod
+    def _format_single_result(cls, tool_name: str, tool_zh: str, data: dict) -> str:
+        """将单个工具结果格式化为自然语言"""
+        if not isinstance(data, dict):
+            return str(data)
+
+        # ---------- 液相线温度 ----------
+        if tool_name == "calculate_liquidus_temperature":
+            t_k = data.get("liquidus_temperature_K")
+            depression = data.get("melting_point_depression_K")
+            if t_k is not None:
+                t_c = t_k - 273.15
+                text = f"**液相线温度**: {t_k:.1f} K ({t_c:.1f}°C)"
+                if depression is not None:
+                    text += f"，熔点降低 {depression:.1f} K"
+                return text
+
+        # ---------- 活度 / 活度系数 ----------
+        if tool_name in ("calculate_activity", "calculate_activity_coefficient"):
+            comp = data.get("component", "?")
+            temp = data.get("temperature", "?")
+            gamma = data.get("gamma")
+            ln_gamma = data.get("ln_gamma")
+            activity = data.get("activity")
+            parts = [f"**{comp}** 在 {temp}K 下"]
+            if gamma is not None:
+                parts.append(f"活度系数 γ = {gamma:.4g}")
+            if ln_gamma is not None:
+                parts.append(f"(ln γ = {ln_gamma:.4g})")
+            if activity is not None:
+                parts.append(f"，活度 a = {activity:.4g}")
+            return " ".join(parts)
+
+        # ---------- 相互作用系数 ----------
+        if tool_name == "get_interaction_coefficient":
+            eps = data.get("epsilon")
+            solute_i = data.get("solute_i", "?")
+            solute_j = data.get("solute_j", "?")
+            solvent = data.get("solvent", "?")
+            temp = data.get("temperature", "?")
+            if eps is not None:
+                return f"在 {temp}K 的液态{solvent}中，**ε_{solute_i}^{solute_j} = {eps:.4g}**"
+
+        if tool_name == "get_infinite_dilution_activity_coefficient":
+            ln_gamma = data.get("ln_gamma_0")
+            solute = data.get("solute", "?")
+            solvent = data.get("solvent", "?")
+            temp = data.get("temperature", "?")
+            if ln_gamma is not None:
+                import math
+                gamma = math.exp(ln_gamma)
+                return f"在 {temp}K 的{solvent}中，{solute}的**无限稀释活度系数 ln(γ°) = {ln_gamma:.4g}**（γ° = {gamma:.4g}）"
+
+        # ---------- 混合焓 / Gibbs自由能 / 熵 ----------
+        if tool_name in ("calculate_mixing_enthalpy", "calculate_gibbs_energy", "calculate_entropy"):
+            value_key = None
+            unit = "J/mol"
+            for k, v in data.items():
+                if k not in cls._SKIP_KEYS and isinstance(v, (int, float)):
+                    value_key = k
+                    break
+            if value_key is not None:
+                temp = data.get("temperature", "?")
+                return f"**{tool_zh}**: {data[value_key]:.4g} {unit}（{temp}K）"
+
+        # ---------- 化学势 ----------
+        if tool_name == "calculate_chemical_potential":
+            mu = data.get("chemical_potential")
+            comp = data.get("component", "?")
+            temp = data.get("temperature", "?")
+            if mu is not None:
+                return f"**{comp}** 在 {temp}K 下的化学势 μ = {mu:.4g} J/mol"
+
+        # ---------- 析出温度 ----------
+        if tool_name == "calculate_precipitation_temperature":
+            t_k = data.get("precipitation_temperature_K")
+            if t_k is not None:
+                t_c = t_k - 273.15
+                return f"**析出温度**: {t_k:.1f} K ({t_c:.1f}°C)"
+
+        # ---------- 熔点降低 ----------
+        if tool_name == "calculate_melting_point_depression":
+            depression = data.get("depression_K")
+            if depression is not None:
+                return f"**熔点降低**: {depression:.2f} K"
+
+        # ---------- 全部性质 ----------
+        if tool_name == "calculate_all_properties":
+            return cls._format_all_properties(data)
+
+        # ---------- 通用兜底：只显示数值字段 ----------
+        lines = [f"**{tool_zh}**:"]
+        for key, value in data.items():
+            if key in cls._SKIP_KEYS:
+                continue
+            if isinstance(value, float):
+                line = f"  {key} = {value:.4g}"
+                if key in cls._TEMPERATURE_KEYS:
+                    line += f" ({value - 273.15:.1f}°C)"
+                lines.append(line)
+            elif isinstance(value, (int, str, bool)) and key not in ("phase",):
+                lines.append(f"  {key} = {value}")
+        return "\n".join(lines) if len(lines) > 1 else ""
+
+    @staticmethod
+    def _format_all_properties(data: dict) -> str:
+        """格式化 calculate_all_properties 结果"""
+        temp = data.get("temperature", "?")
+        lines = [f"**热力学性质**（{temp}K）:\n"]
+
+        # 整体性质
+        for key, label in [("mixing_enthalpy", "混合焓"),
+                           ("gibbs_energy", "Gibbs自由能"),
+                           ("entropy", "摩尔熵")]:
+            val = data.get(key)
+            if val is not None:
+                lines.append(f"  {label}: {val:.4g} J/mol")
+
+        # 各组元性质
+        components = data.get("components", {})
+        if components:
+            lines.append("")
+            lines.append("  | 组元 | γ (活度系数) | a (活度) | μ (化学势, J/mol) |")
+            lines.append("  |------|-------------|---------|------------------|")
+            for comp, props in components.items():
+                gamma = props.get("gamma", "—")
+                activity = props.get("activity", "—")
+                mu = props.get("chemical_potential", "—")
+                g = f"{gamma:.4g}" if isinstance(gamma, float) else str(gamma)
+                a = f"{activity:.4g}" if isinstance(activity, float) else str(activity)
+                m = f"{mu:.4g}" if isinstance(mu, float) else str(mu)
+                lines.append(f"  | {comp} | {g} | {a} | {m} |")
+
+        return "\n".join(lines)
 
     def save_session(self):
         """保存当前对话到磁盘"""
