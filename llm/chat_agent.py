@@ -110,6 +110,19 @@ SYSTEM_PROMPT = """你是合金热力学计算软件的AI助手。你的唯一�
 - Toop_Muggianu：非对称Toop-Muggianu外推
 - Toop_Kohler：非对称Toop-Kohler外推
 
+========== 贡献系数（Contribution Coefficients）说明 ==========
+贡献系数是从二元子体系外推到三元（及多元）体系时的权重因子。
+对于三元体系 k(溶剂)-i(溶质)-j(溶质)，共有6个贡献系数：
+- a(k:i)_(i,j) 和 a(k:j)_(i,j)：二元子体系(i,j)中的贡献
+- a(i:k)_(j,k) 和 a(i:j)_(j,k)：二元子体系(j,k)中的贡献
+- a(j:i)_(i,k) 和 a(j:k)_(i,k)：二元子体系(i,k)中的贡献
+
+使用 get_contribution_coefficients 工具来查询这些系数。
+用户可能的表述：
+- "Fe-C-Si体系的贡献系数" → solvent="Fe", solute_i="C", solute_j="Si"
+- "UEM1模型下铝铜锰的贡献系数" → solvent="Al", solute_i="Cu", solute_j="Mn", extrapolation_model="UEM1"
+- "对比UEM1和Muggianu的贡献系数" → 分别用两种模型各调用一次
+
 ========== 计算条件设置规则 ==========
 - 相态(phase): "liquid"(液态，默认) 或 "solid"(固态)
 - 温度(temperature): 单位为K（开尔文），用户给°C时自动+273.15
@@ -396,6 +409,7 @@ class ChatAgent:
         "calculate_all_properties": "热力学性质",
         "get_interaction_coefficient": "活度相互作用系数",
         "get_second_order_interaction_coefficient": "二阶相互作用系数",
+        "get_contribution_coefficients": "贡献系数",
         "get_infinite_dilution_activity_coefficient": "无限稀释活度系数",
         "get_element_properties": "元素性质",
     }
@@ -532,6 +546,23 @@ class ChatAgent:
             temp = data.get("temperature", "?")
             if rho is not None:
                 return f"在 {temp}K 的液态{solvent}中，**ρ_{{{solute_i}}}^{{{solute_j}}} = {rho:.4g}**"
+
+        # ---------- 贡献系数 ----------
+        if tool_name == "get_contribution_coefficients":
+            solvent = data.get("solvent", "?")
+            solute_i = data.get("solute_i", "?")
+            solute_j = data.get("solute_j", "?")
+            temp = data.get("temperature", "?")
+            model = data.get("extrapolation_model", "UEM1")
+            coeffs = data.get("coefficients", {})
+            if coeffs:
+                k, i, j = solvent, solute_i, solute_j
+                lines = [f"**{k}-{i}-{j}体系贡献系数**（{temp}K，{model}模型）:\n"]
+                lines.append(f"| 二元子体系 | 贡献系数 | 值 |")
+                lines.append(f"|-----------|---------|-----|")
+                for label, val in coeffs.items():
+                    lines.append(f"| {label} | | {val:.4g} |")
+                return "\n".join(lines)
 
         # ---------- 无限稀释活度系数 ----------
         if tool_name == "get_infinite_dilution_activity_coefficient":

@@ -389,6 +389,41 @@ TOOL_SCHEMAS = {
         "required": ["solvent", "solute_i", "solute_j", "temperature"]
     },
 
+    "get_contribution_coefficients": {
+        "type": "object",
+        "properties": {
+            "solvent": {
+                "type": "string",
+                "description": "溶剂元素符号（基体），如 'Fe'"
+            },
+            "solute_i": {
+                "type": "string",
+                "description": "溶质i的元素符号，如 'C'"
+            },
+            "solute_j": {
+                "type": "string",
+                "description": "溶质j的元素符号，如 'Si'"
+            },
+            "temperature": {
+                "type": "number",
+                "description": "温度(K)"
+            },
+            "phase": {
+                "type": "string",
+                "description": "相态",
+                "enum": ["liquid", "solid"],
+                "default": "liquid"
+            },
+            "extrapolation_model": {
+                "type": "string",
+                "description": "外推模型名称",
+                "enum": ["UEM1", "UEM2", "Muggianu", "Toop_Muggianu", "Toop_Kohler"],
+                "default": "UEM1"
+            }
+        },
+        "required": ["solvent", "solute_i", "solute_j", "temperature"]
+    },
+
     "get_infinite_dilution_activity_coefficient": {
         "type": "object",
         "properties": {
@@ -572,6 +607,7 @@ TOOL_DESCRIPTIONS = {
     "plot_chart": "在对话中绘制图表。支持折线图、散点图、柱状图。可同时绘制多条数据曲线进行对比。用于将计算结果可视化展示。",
     "get_interaction_coefficient": "计算一阶活度相互作用系数 ε_i^j（epsilon）。描述溶剂中溶质j对溶质i活度系数的影响。基于UEM-Miedema模型。Wagner模型: ln(γ_i) = ln(γ_i^∞) + Σ ε_i^j * x_j。这是冶金热力学中最核心的参数之一。",
     "get_second_order_interaction_coefficient": "计算二阶活度相互作用系数ρ。支持三种类型: ρ_i^ii(自相互作用), ρ_i^jj(混合相互作用), ρ_i^ij(交叉相互作用)。用于Darken/Elliott等高阶活度模型。",
+    "get_contribution_coefficients": "计算三元体系的贡献系数（contribution coefficients）。贡献系数是从二元子体系外推到多元体系时的权重因子，共6个参数：a_{k:i}^{i,j}、a_{k:j}^{i,j}、a_{i:k}^{j,k}、a_{i:j}^{j,k}、a_{j:i}^{i,k}、a_{j:k}^{i,k}。不同外推模型（UEM1、Muggianu等）会给出不同的贡献系数值。这些系数用于计算活度相互作用系数ε。",
     "get_infinite_dilution_activity_coefficient": "计算无限稀释活度系数 ln(γ°_i)。即溶质i在溶剂中浓度趋于0时的活度系数对数。基于Miedema模型计算化学相互作用能。",
     "calculate_chemical_potential": "计算合金中指定组元的化学势 μ_i = μ°_i(T) + RT·ln(a_i)。其中μ°_i(T)从SGTE热力学数据库获取，a_i由活度计算给出。",
     "calculate_entropy": "计算合金的摩尔熵 S = (H - G) / T。其中H为摩尔焓，G为摩尔Gibbs自由能。",
@@ -949,6 +985,65 @@ class ThermodynamicTools:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+    def get_contribution_coefficients(
+        self,
+        solvent: str,
+        solute_i: str,
+        solute_j: str,
+        temperature: float,
+        phase: str = "liquid",
+        extrapolation_model: str = "UEM1"
+    ) -> Dict[str, Any]:
+        """计算三元体系的6个贡献系数"""
+        try:
+            from core.element import Element
+
+            solv = Element(solvent)
+            si = Element(solute_i)
+            sj = Element(solute_j)
+
+            if not solv.is_exist:
+                return {"status": "error", "message": f"元素 {solvent} 不存在"}
+            if not si.is_exist:
+                return {"status": "error", "message": f"元素 {solute_i} 不存在"}
+            if not sj.is_exist:
+                return {"status": "error", "message": f"元素 {solute_j} 不存在"}
+
+            extrap_func = self._get_extrapolation_func(extrapolation_model)
+
+            # 计算6个贡献系数（与 activity_interact_coefficient_1st 中一致）
+            # k=溶剂, i=solute_i, j=solute_j
+            aki_ij = extrap_func(solv.name, si.name, sj.name, temperature, phase)
+            akj_ij = extrap_func(solv.name, sj.name, si.name, temperature, phase)
+            aik_jk = extrap_func(si.name, solv.name, sj.name, temperature, phase)
+            aij_jk = extrap_func(si.name, sj.name, solv.name, temperature, phase)
+            aji_ik = extrap_func(sj.name, si.name, solv.name, temperature, phase)
+            ajk_ik = extrap_func(sj.name, solv.name, si.name, temperature, phase)
+
+            k, i, j = solvent, solute_i, solute_j
+            return {
+                "status": "success",
+                "solvent": solvent,
+                "solute_i": solute_i,
+                "solute_j": solute_j,
+                "temperature": temperature,
+                "phase": phase,
+                "extrapolation_model": extrapolation_model,
+                "coefficients": {
+                    f"a({k}:{i})_({i},{j})": round(aki_ij, 6),
+                    f"a({k}:{j})_({i},{j})": round(akj_ij, 6),
+                    f"a({i}:{k})_({j},{k})": round(aik_jk, 6),
+                    f"a({i}:{j})_({j},{k})": round(aij_jk, 6),
+                    f"a({j}:{i})_({i},{k})": round(aji_ik, 6),
+                    f"a({j}:{k})_({i},{k})": round(ajk_ik, 6),
+                },
+                "description": (
+                    f"三元{k}-{i}-{j}体系在{temperature}K下的贡献系数（{extrapolation_model}模型）"
+                )
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     def get_infinite_dilution_activity_coefficient(
         self,
         solvent: str,
@@ -1170,6 +1265,7 @@ class ThermodynamicTools:
             "calculate_melting_point_depression": self.calculate_melting_point_depression,
             "get_interaction_coefficient": self.get_interaction_coefficient,
             "get_second_order_interaction_coefficient": self.get_second_order_interaction_coefficient,
+            "get_contribution_coefficients": self.get_contribution_coefficients,
             "get_infinite_dilution_activity_coefficient": self.get_infinite_dilution_activity_coefficient,
             "calculate_chemical_potential": self.calculate_chemical_potential,
             "calculate_entropy": self.calculate_entropy,
