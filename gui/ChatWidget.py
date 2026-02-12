@@ -519,9 +519,25 @@ class ChatWidget(QWidget):
         # 添加用户消息气泡
         self._add_user_message(message)
 
-        # 禁用发送按钮
-        self.send_btn.setEnabled(False)
-        self.send_btn.setText("思考中...")
+        # 切换为取消按钮
+        self.send_btn.setText("取消")
+        self.send_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                padding: 10px 25px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+        """)
+        self.send_btn.disconnect()
+        self.send_btn.clicked.connect(self._cancel_request)
+        self._is_processing = True
 
         # 启动后台线程
         self.worker = ChatWorker(self.agent, message)
@@ -531,6 +547,14 @@ class ChatWidget(QWidget):
         self.worker.error_occurred.connect(self._on_error)
         self.worker.finished.connect(self._on_worker_finished)
         self.worker.start()
+
+    def _cancel_request(self):
+        """取消当前请求"""
+        if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
+            self.worker.terminate()
+            self.worker.wait(2000)
+            self._add_system_message("请求已取消")
+            self._restore_send_button()
 
     def _add_user_message(self, text: str):
         """添加用户消息"""
@@ -624,8 +648,32 @@ class ChatWidget(QWidget):
 
     def _on_worker_finished(self):
         """工作线程完成回调"""
+        self._restore_send_button()
+
+    def _restore_send_button(self):
+        """恢复发送按钮状态"""
+        self._is_processing = False
+        self.send_btn.disconnect()
+        self.send_btn.clicked.connect(self._send_message)
         self.send_btn.setEnabled(True)
         self.send_btn.setText("发送")
+        self.send_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                padding: 10px 25px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #219a52;
+            }
+            QPushButton:disabled {
+                background-color: #bdc3c7;
+            }
+        """)
 
     def _clear_chat(self):
         """清空对话"""

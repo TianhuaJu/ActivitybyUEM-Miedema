@@ -80,15 +80,20 @@ class OpenAICompatibleBackend(LLMBackend):
     """OpenAI兼容API后端（支持DeepSeek、Kimichat、Ollama等）"""
 
     def __init__(self, api_key: str = None, base_url: str = "https://api.openai.com/v1",
-                 model: str = "gpt-4o"):
+                 model: str = "gpt-4o", timeout: float = 120):
         super().__init__(api_key, base_url, model)
         self._client = None
+        self.timeout = timeout
 
     def _get_client(self):
         if self._client is None:
             _ensure_package("openai", "openai")
             from openai import OpenAI
-            self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+            self._client = OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+                timeout=self.timeout
+            )
         return self._client
 
     def chat(self, messages: List[Message], tools: List[ToolDefinition] = None) -> LLMResponse:
@@ -381,7 +386,8 @@ BACKEND_CONFIGS = {
         "class": OpenAICompatibleBackend,
         "base_url": "http://localhost:11434/v1",
         "default_model": "qwen3:8b",
-        "env_key": None  # 本地无需API key
+        "env_key": None,  # 本地无需API key
+        "timeout": 300  # 本地模型推理较慢，给更长超时
     },
     "claude": {
         "class": ClaudeBackend,
@@ -436,6 +442,9 @@ def create_backend(provider: str, api_key: str = None, model: str = None) -> LLM
 
     if "base_url" in config:
         kwargs["base_url"] = config["base_url"]
+
+    if "timeout" in config:
+        kwargs["timeout"] = config["timeout"]
 
     return backend_class(**kwargs)
 
