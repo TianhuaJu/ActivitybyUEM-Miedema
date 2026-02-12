@@ -10,9 +10,24 @@ LLM Backend - 多模型后端统一接口
 
 import json
 import os
+import subprocess
+import sys
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
+
+
+def _ensure_package(import_name: str, pip_name: str):
+    """尝试导入包，若不存在则自动pip安装"""
+    try:
+        __import__(import_name)
+    except ImportError:
+        print(f"[自动安装] 正在安装 {pip_name} ...")
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", pip_name],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        print(f"[自动安装] {pip_name} 安装完成")
 
 
 @dataclass
@@ -71,11 +86,9 @@ class OpenAICompatibleBackend(LLMBackend):
 
     def _get_client(self):
         if self._client is None:
-            try:
-                from openai import OpenAI
-                self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
-            except ImportError:
-                raise ImportError("请安装 openai 库: pip install openai")
+            _ensure_package("openai", "openai")
+            from openai import OpenAI
+            self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
         return self._client
 
     def chat(self, messages: List[Message], tools: List[ToolDefinition] = None) -> LLMResponse:
@@ -156,11 +169,9 @@ class ClaudeBackend(LLMBackend):
 
     def _get_client(self):
         if self._client is None:
-            try:
-                import anthropic
-                self._client = anthropic.Anthropic(api_key=self.api_key)
-            except ImportError:
-                raise ImportError("请安装 anthropic 库: pip install anthropic")
+            _ensure_package("anthropic", "anthropic")
+            import anthropic
+            self._client = anthropic.Anthropic(api_key=self.api_key)
         return self._client
 
     def chat(self, messages: List[Message], tools: List[ToolDefinition] = None) -> LLMResponse:
@@ -239,18 +250,16 @@ class ClaudeBackend(LLMBackend):
 class GeminiBackend(LLMBackend):
     """Google Gemini 后端"""
 
-    def __init__(self, api_key: str = None, model: str = "gemini-1.5-pro"):
+    def __init__(self, api_key: str = None, model: str = "gemini-2.0-flash"):
         super().__init__(api_key, model=model)
         self._client = None
 
     def _get_client(self):
         if self._client is None:
-            try:
-                import google.generativeai as genai
-                genai.configure(api_key=self.api_key)
-                self._client = genai
-            except ImportError:
-                raise ImportError("请安装 google-generativeai 库: pip install google-generativeai")
+            _ensure_package("google.generativeai", "google-generativeai")
+            import google.generativeai as genai
+            genai.configure(api_key=self.api_key)
+            self._client = genai
         return self._client
 
     @staticmethod
@@ -335,7 +344,7 @@ class GeminiBackend(LLMBackend):
         return LLMResponse(content=content, tool_calls=tool_calls)
 
     def get_available_models(self) -> List[str]:
-        return ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash-exp"]
+        return ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
 
 
 # ============= 预配置的后端工厂 =============
@@ -372,7 +381,7 @@ BACKEND_CONFIGS = {
     },
     "gemini": {
         "class": GeminiBackend,
-        "default_model": "gemini-1.5-pro",
+        "default_model": "gemini-2.0-flash",
         "env_key": "GOOGLE_API_KEY"
     }
 }

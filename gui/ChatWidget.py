@@ -358,7 +358,7 @@ class ChatWidget(QWidget):
             "ollama": ["qwen2.5:7b", "qwen2.5:14b", "llama3.2:3b", "mistral:7b"],
             "openai": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
             "claude": ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
-            "gemini": ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash-exp"],
+            "gemini": ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"],
             "deepseek": ["deepseek-chat", "deepseek-coder"],
             "kimichat": ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"]
         }
