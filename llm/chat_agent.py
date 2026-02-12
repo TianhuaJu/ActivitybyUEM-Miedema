@@ -21,6 +21,7 @@ from llm.llm_backend import (
     create_backend, BACKEND_CONFIGS
 )
 from llm.tools import ThermodynamicTools
+from llm.memory import MemoryStore
 
 
 SYSTEM_PROMPT = """你是合金热力学计算软件的AI助手。你的唯一职责是：接收用户的计算需求，调用工具执行计算，返回结果。
@@ -71,6 +72,17 @@ SYSTEM_PROMPT = """你是合金热力学计算软件的AI助手。你的唯一�
 【辅助】
 - get_element_properties → 元素性质 (参数: element)
 - plot_chart → 绘图 (参数: title, x_label, y_label, data_series)
+
+【记忆】
+- save_memory → 保存重要信息到长期记忆 (参数: content, category)
+- recall_memories → 回忆已保存的信息 (参数: keyword可选)
+- delete_memory → 删除一条记忆 (参数: content)
+
+记忆使用规则：
+- 当用户提到偏好、常用合金、习惯等信息时，主动调用save_memory保存
+- 分类: preference(偏好)、alloy_system(常用合金体系)、calculation(计算经验)、general(其他)
+- 用户问"你记得吗"/"之前说过"时，调用recall_memories查询
+- 用户要求"忘记"/"删除记忆"时，调用delete_memory
 
 关键词→工具映射：
 - "活度相互作用系数"/"ε"/"epsilon"/"一阶" → get_interaction_coefficient
@@ -171,15 +183,22 @@ class ChatAgent:
             响应回调 fn(content)
         """
         self.backend = create_backend(provider, api_key, model)
-        self.tools = ThermodynamicTools()
+        self.memory = MemoryStore()
+        self.tools = ThermodynamicTools(memory_store=self.memory)
         self.session = ChatSession()
         self.max_tool_iterations = max_tool_iterations
         self.on_tool_call = on_tool_call
         self.on_tool_result = on_tool_result
         self.on_response = on_response
 
-        # 初始化系统消息
+        # 构建系统消息：基础提示 + 已有记忆 + 最近对话摘要
         prompt = system_prompt or SYSTEM_PROMPT
+        memory_context = self.memory.format_for_prompt()
+        history_context = self.memory.get_recent_summary(max_sessions=3)
+        if memory_context:
+            prompt += "\n" + memory_context
+        if history_context:
+            prompt += "\n" + history_context
         self.session.add_message("system", prompt)
 
     def get_available_providers(self) -> List[str]:
@@ -316,8 +335,15 @@ class ChatAgent:
 
         return "\n\n".join(parts)
 
+    def save_session(self):
+        """保存当前对话到磁盘"""
+        history = self.get_history()
+        if history:
+            self.memory.save_session(history)
+
     def reset(self):
-        """重置会话"""
+        """重置会话（先保存再重置）"""
+        self.save_session()
         self.session.clear()
 
     def get_history(self) -> List[Dict[str, str]]:

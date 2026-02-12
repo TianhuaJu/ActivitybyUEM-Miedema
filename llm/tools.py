@@ -518,6 +518,45 @@ TOOL_SCHEMAS = {
             }
         },
         "required": ["composition", "temperature"]
+    },
+
+    # === 记忆工具 ===
+    "save_memory": {
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "要记住的信息内容"
+            },
+            "category": {
+                "type": "string",
+                "description": "记忆分类",
+                "enum": ["preference", "alloy_system", "calculation", "general"],
+                "default": "general"
+            }
+        },
+        "required": ["content"]
+    },
+    "recall_memories": {
+        "type": "object",
+        "properties": {
+            "keyword": {
+                "type": "string",
+                "description": "搜索关键词（可选，不填则返回所有记忆）",
+                "default": ""
+            }
+        },
+        "required": []
+    },
+    "delete_memory": {
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "要删除的记忆内容（精确匹配）"
+            }
+        },
+        "required": ["content"]
     }
 }
 
@@ -536,17 +575,21 @@ TOOL_DESCRIPTIONS = {
     "get_infinite_dilution_activity_coefficient": "计算无限稀释活度系数 ln(γ°_i)。即溶质i在溶剂中浓度趋于0时的活度系数对数。基于Miedema模型计算化学相互作用能。",
     "calculate_chemical_potential": "计算合金中指定组元的化学势 μ_i = μ°_i(T) + RT·ln(a_i)。其中μ°_i(T)从SGTE热力学数据库获取，a_i由活度计算给出。",
     "calculate_entropy": "计算合金的摩尔熵 S = (H - G) / T。其中H为摩尔焓，G为摩尔Gibbs自由能。",
-    "calculate_all_properties": "一次性计算合金的所有热力学性质。包括每个组元的活度系数γ、活度a、化学势μ，以及合金整体的摩尔焓H、Gibbs自由能G、摩尔熵S。"
+    "calculate_all_properties": "一次性计算合金的所有热力学性质。包括每个组元的活度系数γ、活度a、化学势μ，以及合金整体的摩尔焓H、Gibbs自由能G、摩尔熵S。",
+    "save_memory": "保存一条重要信息到长期记忆。当用户提到偏好、常用合金体系、计算习惯等值得记住的信息时，主动调用此工具保存。分类: preference(偏好)、alloy_system(合金体系)、calculation(计算经验)、general(其他)。",
+    "recall_memories": "回忆已保存的记忆。可按关键词搜索，不填关键词则返回所有记忆。当用户问'你还记得吗'、'之前说过'等时调用。",
+    "delete_memory": "删除一条已保存的记忆。当用户要求忘记某信息时调用。"
 }
 
 
 class ThermodynamicTools:
     """热力学计算工具集"""
 
-    def __init__(self):
+    def __init__(self, memory_store=None):
         self._thermo_calc = None
         self._precip_calc = None
         self._binary_model = None
+        self._memory_store = memory_store
 
     @property
     def thermo_calc(self):
@@ -1081,6 +1124,37 @@ class ThermodynamicTools:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+    # ============= 记忆工具 =============
+
+    def save_memory(self, content: str, category: str = "general") -> Dict[str, Any]:
+        """保存记忆"""
+        if self._memory_store is None:
+            return {"status": "error", "message": "记忆功能未启用"}
+        msg = self._memory_store.add(content, category)
+        return {"status": "success", "message": msg}
+
+    def recall_memories(self, keyword: str = "") -> Dict[str, Any]:
+        """回忆记忆"""
+        if self._memory_store is None:
+            return {"status": "error", "message": "记忆功能未启用"}
+        if keyword:
+            memories = self._memory_store.search(keyword)
+        else:
+            memories = self._memory_store.get_all()
+        items = [{"content": m.content, "category": m.category} for m in memories]
+        return {
+            "status": "success",
+            "count": len(items),
+            "memories": items
+        }
+
+    def delete_memory(self, content: str) -> Dict[str, Any]:
+        """删除记忆"""
+        if self._memory_store is None:
+            return {"status": "error", "message": "记忆功能未启用"}
+        msg = self._memory_store.remove(content)
+        return {"status": "success", "message": msg}
+
     def _get_all_tool_methods(self) -> Dict[str, Any]:
         """获取所有工具方法映射"""
         return {
@@ -1099,6 +1173,9 @@ class ThermodynamicTools:
             "calculate_entropy": self.calculate_entropy,
             "calculate_all_properties": self.calculate_all_properties,
             "plot_chart": self.plot_chart,
+            "save_memory": self.save_memory,
+            "recall_memories": self.recall_memories,
+            "delete_memory": self.delete_memory,
         }
 
     def get_tool_definitions(self) -> List[ToolDefinition]:

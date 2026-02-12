@@ -756,7 +756,12 @@ class ChatWidget(QWidget):
             self.send_btn.setEnabled(True)
             self.connect_btn.setText("重新连接")
 
-            self._add_system_message(f"已成功连接到 {provider} ({model})")
+            # 显示记忆状态
+            mem_count = len(self.agent.memory.get_all())
+            conn_msg = f"已成功连接到 {provider} ({model})"
+            if mem_count > 0:
+                conn_msg += f"  |  已加载 {mem_count} 条记忆"
+            self._add_system_message(conn_msg)
 
         except Exception as e:
             self.agent = None
@@ -928,6 +933,12 @@ class ChatWidget(QWidget):
     def _on_worker_finished(self):
         """工作线程完成回调"""
         self._restore_send_button()
+        # 自动保存对话历史
+        if self.agent:
+            try:
+                self.agent.save_session()
+            except Exception:
+                pass
 
     def _restore_send_button(self):
         """恢复发送按钮状态"""
