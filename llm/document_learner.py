@@ -21,7 +21,7 @@ from typing import List, Dict, Any, Tuple, Optional, Callable
 
 def extract_text_from_pdf(filepath: str) -> Tuple[str, Dict[str, Any]]:
     """
-    从PDF文件提取全文
+    从PDF文件提取全文，包括表格内容和图片信息
 
     返回:
         (全文文本, 元信息字典)
@@ -42,14 +42,36 @@ def extract_text_from_pdf(filepath: str) -> Tuple[str, Dict[str, Any]]:
         "filename": os.path.basename(filepath),
     }
 
-    full_text = []
-    for page in doc:
+    page_contents = []
+    table_count = 0
+    image_count = 0
+    ocr_state = {"tested": False, "available": False}
+
+    for page_num, page in enumerate(doc, start=1):
+        # 普通文本
         text = page.get_text("text")
         if text.strip():
-            full_text.append(text)
+            page_contents.append(text)
+
+        # 表格提取
+        tables = _extract_tables_from_page(page, page_num)
+        if tables:
+            table_count += len(tables)
+            page_contents.extend(tables)
+
+        # 图片上下文提取（说明文字 + OCR）
+        img_texts = _extract_image_context(page, doc, page_num, ocr_state)
+        if img_texts:
+            image_count += len(img_texts)
+            page_contents.extend(img_texts)
 
     doc.close()
-    return "\n\n".join(full_text), meta
+
+    meta["tables_extracted"] = table_count
+    meta["images_processed"] = image_count
+    meta["ocr_available"] = ocr_state.get("available", False)
+
+    return "\n\n".join(page_contents), meta
 
 
 def extract_text_from_txt(filepath: str) -> Tuple[str, Dict[str, Any]]:
@@ -124,6 +146,183 @@ _ELEMENT_SYMBOLS = {
     "Cs", "Ba", "La", "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt",
     "Au", "Hg", "Tl", "Pb", "Bi",
 }
+
+
+# ==================== 表格与图片提取 ====================
+
+def _extract_tables_from_page(page, page_num: int) -> List[str]:
+    """从PDF页面提取表格，转换为结构化Markdown文本"""
+    tables_text = []
+    try:
+        tabs = page.find_tables()
+        for table in tabs.tables:
+            data = table.extract()
+            if not data or len(data) < 2:
+                continue
+            # 构建Markdown格式表格
+            try:
+                md = table.to_markdown()
+            except AttributeError:
+                md = _table_data_to_markdown(data)
+            if md and md.strip():
+                header = f"[表格 - 第{page_num}页, {table.row_count}行x{table.col_count}列]"
+                tables_text.append(f"{header}\n{md}")
+    except Exception:
+        pass
+    return tables_text
+
+
+def _table_data_to_markdown(data: List[List]) -> str:
+    """将表格数据（二维列表）转换为Markdown表格字符串"""
+    if not data:
+        return ""
+    header = data[0]
+    cols = len(header)
+    lines = []
+    cells = [str(c or "").replace("|", "\\|").replace("\n", " ") for c in header]
+    lines.append("| " + " | ".join(cells) + " |")
+    lines.append("| " + " | ".join(["---"] * cols) + " |")
+    for row in data[1:]:
+        cells = [str(c or "").replace("|", "\\|").replace("\n", " ") for c in row]
+        while len(cells) < cols:
+            cells.append("")
+        lines.append("| " + " | ".join(cells[:cols]) + " |")
+    return "\n".join(lines)
+
+
+def _get_text_blocks_with_position(page) -> List[Dict]:
+    """获取页面上所有文本块及其位置坐标"""
+    blocks = []
+    try:
+        text_dict = page.get_text("dict")
+        for block in text_dict.get("blocks", []):
+            if block.get("type") == 0:
+                text = ""
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        text += span.get("text", "")
+                text = text.strip()
+                if text:
+                    blocks.append({"text": text, "bbox": block["bbox"]})
+    except Exception:
+        pass
+    return blocks
+
+
+def _get_image_rect(page, xref: int):
+    """获取图片在页面上的位置矩形"""
+    try:
+        rects = page.get_image_rects(xref)
+        if rects:
+            return rects[0]
+    except (AttributeError, Exception):
+        pass
+    try:
+        return page.get_image_bbox(xref)
+    except Exception:
+        return None
+
+
+def _find_nearby_caption(img_rect, text_blocks: list, margin: float = 60.0) -> str:
+    """查找图片附近的说明文字（图注）"""
+    captions = []
+    ix0, iy0, ix1, iy1 = img_rect.x0, img_rect.y0, img_rect.x1, img_rect.y1
+
+    for block in text_blocks:
+        bx0, by0, bx1, by1 = block["bbox"]
+        # 水平方向需有重叠
+        if bx1 < ix0 - margin or bx0 > ix1 + margin:
+            continue
+        text = block["text"]
+        # 图片下方（最常见的图注位置）
+        if 0 <= by0 - iy1 < margin:
+            if re.search(r'(图\s*[\d.]+|Fig\.?\s*[\d.]+|Figure\s*[\d.]+|'
+                         r'表\s*[\d.]+|Table\s*[\d.]+)', text, re.IGNORECASE):
+                captions.insert(0, text)
+            else:
+                captions.append(text)
+        # 图片上方
+        elif 0 <= iy0 - by1 < margin * 0.5:
+            if re.search(r'(图\s*[\d.]+|Fig\.?\s*[\d.]+|Figure\s*[\d.]+)',
+                         text, re.IGNORECASE):
+                captions.insert(0, text)
+    return " ".join(captions[:3]).strip() if captions else ""
+
+
+def _try_ocr_image(doc, xref: int, ocr_state: dict) -> str:
+    """
+    尝试对图片进行OCR识别（需要系统安装 Tesseract-OCR）
+
+    参数:
+        doc: PyMuPDF Document 对象
+        xref: 图片的交叉引用号
+        ocr_state: 可变字典，记录OCR是否可用以避免重复尝试
+    """
+    if ocr_state.get("tested") and not ocr_state.get("available"):
+        return ""
+    try:
+        import fitz
+        pix = fitz.Pixmap(doc, xref)
+        if pix.n - pix.alpha > 3:
+            pix = fitz.Pixmap(fitz.csRGB, pix)
+        if pix.width < 100 or pix.height < 100:
+            return ""
+        pdf_bytes = pix.pdfocr_tobytes(language="eng+chi_sim")
+        ocr_state["tested"] = True
+        ocr_state["available"] = True
+        ocr_doc = fitz.open("pdf", pdf_bytes)
+        text = ""
+        for p in ocr_doc:
+            text += p.get_text()
+        ocr_doc.close()
+        return text.strip()
+    except Exception:
+        if not ocr_state.get("tested"):
+            ocr_state["tested"] = True
+            ocr_state["available"] = False
+        return ""
+
+
+def _extract_image_context(page, doc, page_num: int, ocr_state: dict) -> List[str]:
+    """从PDF页面提取图片上下文信息（说明文字 + OCR识别结果）"""
+    results = []
+    try:
+        images = page.get_images(full=True)
+        if not images:
+            return results
+
+        text_blocks = _get_text_blocks_with_position(page)
+        processed_xrefs = set()
+
+        for img_info in images:
+            xref = img_info[0]
+            if xref in processed_xrefs:
+                continue
+            processed_xrefs.add(xref)
+
+            width, height = img_info[2], img_info[3]
+            if width < 80 or height < 80:
+                continue
+
+            img_rect = _get_image_rect(page, xref)
+
+            # 查找图片说明文字
+            caption = ""
+            if img_rect and text_blocks:
+                caption = _find_nearby_caption(img_rect, text_blocks)
+
+            # 尝试OCR识别图片文字
+            ocr_text = _try_ocr_image(doc, xref, ocr_state)
+
+            if caption:
+                results.append(f"[图片说明 - 第{page_num}页] {caption}")
+            if ocr_text:
+                if len(ocr_text) > 500:
+                    ocr_text = ocr_text[:500] + "..."
+                results.append(f"[图片内容(OCR) - 第{page_num}页]\n{ocr_text}")
+    except Exception:
+        pass
+    return results
 
 
 def _find_section_breaks(text: str) -> List[int]:
@@ -367,4 +566,7 @@ def import_document(filepath: str, knowledge_store,
         "skipped_low_relevance": skipped_low_relevance,
         "skipped_duplicate": skipped_duplicate,
         "pages": meta.get("pages", 0),
+        "tables_extracted": meta.get("tables_extracted", 0),
+        "images_processed": meta.get("images_processed", 0),
+        "ocr_available": meta.get("ocr_available", False),
     }

@@ -16,7 +16,8 @@ from PyQt5.QtWidgets import (
     QLabel, QComboBox, QLineEdit, QScrollArea, QFrame,
     QGroupBox, QSplitter, QMessageBox, QSizePolicy,
     QTextBrowser, QDialog, QListWidget, QListWidgetItem,
-    QAbstractItemView, QDialogButtonBox, QFileDialog, QProgressBar
+    QAbstractItemView, QDialogButtonBox, QFileDialog, QProgressBar,
+    QTabWidget
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QTextCursor, QColor
@@ -901,43 +902,72 @@ class KnowledgeDialog(QDialog):
         super().__init__(parent)
         self.knowledge_store = knowledge_store
         self._import_worker = None
+        self._knowledge_entries = []
+        self._data_entries = []
         self.setWindowTitle("知识库管理")
-        self.setMinimumSize(700, 560)
+        self.setMinimumSize(780, 520)
+        # 自适应屏幕尺寸
+        try:
+            from PyQt5.QtGui import QGuiApplication
+            screen = QGuiApplication.primaryScreen().availableGeometry()
+            w = min(960, int(screen.width() * 0.62))
+            h = min(720, int(screen.height() * 0.72))
+            self.resize(w, h)
+        except Exception:
+            self.resize(900, 660)
         self._setup_ui()
         self._refresh_all()
 
+    # ==================== UI 布局 ====================
+
     def _setup_ui(self):
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(8)
+
+        # 标题
+        title = QLabel("知识库管理")
+        title.setStyleSheet(
+            "font-size:18px; font-weight:bold; color:#2c3e50; margin-bottom:2px;"
+        )
+        layout.addWidget(title)
 
         # 说明
-        hint = QLabel("AI助手通过对话不断学习领域知识，并保存用户提供的实验数据。"
-                       "您也可以导入教材/文献 PDF，让AI从书本中学习。")
+        hint = QLabel(
+            "AI助手通过对话不断学习领域知识，并保存用户提供的实验数据。"
+            "您也可以导入教材/文献 PDF（含表格与图片识别），让AI从书本中学习。"
+        )
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#666;font-size:12px;margin-bottom:6px;")
+        hint.setStyleSheet("color:#7f8c8d; font-size:12px; margin-bottom:4px;")
         layout.addWidget(hint)
 
-        # 统计 + 导入按钮
+        # 统计 + 导入栏
         top_bar = QHBoxLayout()
+        top_bar.setSpacing(10)
         self.stats_label = QLabel()
-        self.stats_label.setStyleSheet("font-size:12px;color:#2c3e50;font-weight:bold;")
+        self.stats_label.setStyleSheet(
+            "font-size:13px; color:#2c3e50; font-weight:bold;"
+        )
         top_bar.addWidget(self.stats_label, stretch=1)
 
-        # 导入分类选择
         top_bar.addWidget(QLabel("导入分类:"))
         self.import_category_combo = QComboBox()
         for key, label in self._K_CATEGORIES.items():
             self.import_category_combo.addItem(label, key)
-        self.import_category_combo.setCurrentIndex(0)  # 默认"理论知识"
-        self.import_category_combo.setMinimumWidth(90)
+        self.import_category_combo.setCurrentIndex(0)
+        self.import_category_combo.setMinimumWidth(100)
+        self.import_category_combo.setStyleSheet(
+            "QComboBox { padding:4px 8px; border:1px solid #ccc; border-radius:4px; }"
+        )
         top_bar.addWidget(self.import_category_combo)
 
         self.import_btn = QPushButton("导入文档")
-        self.import_btn.setToolTip("从 PDF / TXT 文件中导入知识（教材、论文等）")
+        self.import_btn.setToolTip("从 PDF / TXT 文件中导入知识（支持表格和图片识别）")
         self.import_btn.clicked.connect(self._import_document)
         self.import_btn.setStyleSheet("""
             QPushButton { background-color:#2ecc71; color:white;
-                          padding:6px 16px; border:none; border-radius:4px;
-                          font-weight:bold; }
+                          padding:6px 18px; border:none; border-radius:6px;
+                          font-weight:bold; font-size:13px; }
             QPushButton:hover { background-color:#27ae60; }
         """)
         top_bar.addWidget(self.import_btn)
@@ -948,71 +978,151 @@ class KnowledgeDialog(QDialog):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setVisible(False)
         self.progress_bar.setStyleSheet("""
-            QProgressBar { border:1px solid #ccc; border-radius:4px; height:20px;
-                           text-align:center; font-size:11px; }
-            QProgressBar::chunk { background-color:#2ecc71; border-radius:3px; }
+            QProgressBar { border:1px solid #ccc; border-radius:6px; height:22px;
+                           text-align:center; font-size:11px; background:#f0f0f0; }
+            QProgressBar::chunk { background-color:#2ecc71; border-radius:5px; }
         """)
         layout.addWidget(self.progress_bar)
 
         self.progress_label = QLabel()
-        self.progress_label.setStyleSheet("font-size:11px;color:#666;")
+        self.progress_label.setStyleSheet("font-size:11px; color:#666;")
         self.progress_label.setVisible(False)
         layout.addWidget(self.progress_label)
 
-        # 知识列表
-        layout.addWidget(QLabel("已学习的领域知识："))
+        # ---- 选项卡 ----
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                border:1px solid #ddd; border-radius:6px; background:white;
+            }
+            QTabBar::tab {
+                padding:8px 24px; margin-right:2px;
+                border:1px solid #ddd; border-bottom:none;
+                border-top-left-radius:6px; border-top-right-radius:6px;
+                background:#f5f5f5; color:#555; font-size:13px;
+            }
+            QTabBar::tab:selected {
+                background:white; color:#2c3e50; font-weight:bold;
+                border-bottom:2px solid white; margin-bottom:-1px;
+            }
+            QTabBar::tab:hover:!selected { background:#e8e8e8; }
+        """)
+
+        # ===== Tab 1: 领域知识 =====
+        k_tab = QWidget()
+        k_layout = QVBoxLayout(k_tab)
+        k_layout.setContentsMargins(8, 8, 8, 8)
+        k_layout.setSpacing(6)
+
+        k_splitter = QSplitter(Qt.Vertical)
         self.knowledge_list = QListWidget()
         self.knowledge_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.knowledge_list.setWordWrap(True)
+        self.knowledge_list.currentRowChanged.connect(self._on_knowledge_selected)
         self.knowledge_list.setStyleSheet("""
-            QListWidget { border:1px solid #ccc; border-radius:4px; font-size:12px; }
-            QListWidget::item { padding:5px 8px; border-bottom:1px solid #eee; }
+            QListWidget {
+                border:1px solid #e0e0e0; border-radius:6px;
+                font-size:13px; background:white; outline:none;
+            }
+            QListWidget::item {
+                padding:8px 12px; border-bottom:1px solid #f0f0f0;
+            }
             QListWidget::item:selected { background-color:#d5e8f6; color:#000; }
+            QListWidget::item:hover:!selected { background-color:#f5f9ff; }
         """)
-        layout.addWidget(self.knowledge_list, stretch=1)
+        k_splitter.addWidget(self.knowledge_list)
 
-        # 实验数据列表
-        layout.addWidget(QLabel("用户实验数据（优先使用）："))
-        self.data_list = QListWidget()
-        self.data_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.data_list.setStyleSheet("""
-            QListWidget { border:1px solid #ccc; border-radius:4px; font-size:12px; }
-            QListWidget::item { padding:5px 8px; border-bottom:1px solid #eee; }
-            QListWidget::item:selected { background-color:#fde8e8; color:#000; }
+        self.knowledge_detail = QTextBrowser()
+        self.knowledge_detail.setOpenExternalLinks(False)
+        self.knowledge_detail.setStyleSheet("""
+            QTextBrowser {
+                border:1px solid #e0e0e0; border-radius:6px;
+                padding:10px; font-size:13px; background:#fafbfc;
+            }
         """)
-        layout.addWidget(self.data_list, stretch=1)
-
-        # 按钮
-        btn_layout = QHBoxLayout()
+        k_splitter.addWidget(self.knowledge_detail)
+        k_splitter.setStretchFactor(0, 3)
+        k_splitter.setStretchFactor(1, 2)
+        k_layout.addWidget(k_splitter, stretch=1)
 
         del_k_btn = QPushButton("删除选中知识")
         del_k_btn.clicked.connect(self._delete_knowledge)
         del_k_btn.setStyleSheet("""
             QPushButton { background-color:#e74c3c; color:white;
-                          padding:6px 14px; border:none; border-radius:4px; }
+                          padding:5px 14px; border:none; border-radius:5px;
+                          font-size:12px; }
             QPushButton:hover { background-color:#c0392b; }
         """)
-        btn_layout.addWidget(del_k_btn)
+        k_layout.addWidget(del_k_btn, alignment=Qt.AlignLeft)
+
+        self.tab_widget.addTab(k_tab, "领域知识")
+
+        # ===== Tab 2: 实验数据 =====
+        d_tab = QWidget()
+        d_layout = QVBoxLayout(d_tab)
+        d_layout.setContentsMargins(8, 8, 8, 8)
+        d_layout.setSpacing(6)
+
+        d_splitter = QSplitter(Qt.Vertical)
+        self.data_list = QListWidget()
+        self.data_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.data_list.setWordWrap(True)
+        self.data_list.currentRowChanged.connect(self._on_data_selected)
+        self.data_list.setStyleSheet("""
+            QListWidget {
+                border:1px solid #e0e0e0; border-radius:6px;
+                font-size:13px; background:white; outline:none;
+            }
+            QListWidget::item {
+                padding:8px 12px; border-bottom:1px solid #f0f0f0;
+            }
+            QListWidget::item:selected { background-color:#fde8e8; color:#000; }
+            QListWidget::item:hover:!selected { background-color:#fff8f8; }
+        """)
+        d_splitter.addWidget(self.data_list)
+
+        self.data_detail = QTextBrowser()
+        self.data_detail.setOpenExternalLinks(False)
+        self.data_detail.setStyleSheet("""
+            QTextBrowser {
+                border:1px solid #e0e0e0; border-radius:6px;
+                padding:10px; font-size:13px; background:#fafbfc;
+            }
+        """)
+        d_splitter.addWidget(self.data_detail)
+        d_splitter.setStretchFactor(0, 3)
+        d_splitter.setStretchFactor(1, 2)
+        d_layout.addWidget(d_splitter, stretch=1)
 
         del_d_btn = QPushButton("删除选中数据")
         del_d_btn.clicked.connect(self._delete_data)
         del_d_btn.setStyleSheet("""
             QPushButton { background-color:#e67e22; color:white;
-                          padding:6px 14px; border:none; border-radius:4px; }
+                          padding:5px 14px; border:none; border-radius:5px;
+                          font-size:12px; }
             QPushButton:hover { background-color:#d35400; }
         """)
-        btn_layout.addWidget(del_d_btn)
+        d_layout.addWidget(del_d_btn, alignment=Qt.AlignLeft)
 
-        btn_layout.addStretch()
+        self.tab_widget.addTab(d_tab, "实验数据")
 
+        layout.addWidget(self.tab_widget, stretch=1)
+
+        # 底部关闭按钮
+        btn_bar = QHBoxLayout()
+        btn_bar.addStretch()
         close_btn = QPushButton("关闭")
         close_btn.clicked.connect(self.accept)
         close_btn.setStyleSheet("""
             QPushButton { background-color:#3498db; color:white;
-                          padding:6px 20px; border:none; border-radius:4px; }
+                          padding:7px 28px; border:none; border-radius:6px;
+                          font-size:13px; font-weight:bold; }
             QPushButton:hover { background-color:#2980b9; }
         """)
-        btn_layout.addWidget(close_btn)
-        layout.addLayout(btn_layout)
+        btn_bar.addWidget(close_btn)
+        layout.addLayout(btn_bar)
+
+    # ==================== 数据刷新 ====================
 
     def _refresh_all(self):
         """刷新所有列表"""
@@ -1022,28 +1132,103 @@ class KnowledgeDialog(QDialog):
             f"实验数据: {stats['user_data_count']}"
         )
 
-        # 刷新知识列表
+        # 知识列表
+        self._knowledge_entries = list(self.knowledge_store.get_all_knowledge())
         self.knowledge_list.clear()
-        for entry in self.knowledge_store.get_all_knowledge():
+        self.knowledge_detail.clear()
+        for entry in self._knowledge_entries:
             cat = self._K_CATEGORIES.get(entry.category, entry.category)
-            text = f"[{cat}] {entry.topic}: {entry.content}"
-            if len(text) > 120:
-                text = text[:117] + "..."
+            text = f"[{cat}]  {entry.topic}"
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, entry.id)
             self.knowledge_list.addItem(item)
 
-        # 刷新数据列表
+        # 实验数据列表
+        self._data_entries = list(self.knowledge_store.get_all_user_data())
         self.data_list.clear()
-        for entry in self.knowledge_store.get_all_user_data():
+        self.data_detail.clear()
+        for entry in self._data_entries:
             text = (f"{entry.solvent}中 {entry.value_type}"
                     f"({entry.solute_i}"
-                    f"{','+entry.solute_j if entry.solute_j else ''}) = "
-                    f"{entry.value}  T={entry.temperature}K  "
+                    f"{', ' + entry.solute_j if entry.solute_j else ''}) = "
+                    f"{entry.value}   T={entry.temperature}K   "
                     f"[{entry.reference}]")
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, entry.id)
             self.data_list.addItem(item)
+
+    # ==================== 详情面板 ====================
+
+    def _on_knowledge_selected(self, row: int):
+        """知识条目选中时显示详情"""
+        if row < 0 or row >= len(self._knowledge_entries):
+            self.knowledge_detail.clear()
+            return
+        entry = self._knowledge_entries[row]
+        cat = self._K_CATEGORIES.get(entry.category, entry.category)
+        html = (
+            f"<div style='margin-bottom:8px;'>"
+            f"<span style='background:#3498db;color:white;padding:2px 8px;"
+            f"border-radius:3px;font-size:12px;'>{cat}</span>"
+            f"<span style='color:#999;font-size:12px;margin-left:10px;'>"
+            f"置信度: {entry.confidence:.0%}</span>"
+            f"</div>"
+            f"<div style='font-weight:bold;font-size:14px;color:#2c3e50;"
+            f"margin-bottom:6px;'>{entry.topic}</div>"
+            f"<div style='font-size:12px;color:#888;margin-bottom:8px;'>"
+            f"来源: {entry.source}"
+        )
+        if entry.tags:
+            html += f" &nbsp;|&nbsp; 标签: {entry.tags}"
+        html += "</div><hr style='border:none;border-top:1px solid #eee;'>"
+        content = entry.content.replace('\n', '<br>')
+        html += (
+            f"<div style='font-size:13px;line-height:1.6;color:#333;'>"
+            f"{content}</div>"
+        )
+        self.knowledge_detail.setHtml(html)
+
+    def _on_data_selected(self, row: int):
+        """实验数据选中时显示详情"""
+        if row < 0 or row >= len(self._data_entries):
+            self.data_detail.clear()
+            return
+        entry = self._data_entries[row]
+        html = (
+            "<table style='font-size:13px;color:#333;border-collapse:collapse;"
+            "width:100%;'>"
+            f"<tr><td style='padding:4px 8px;font-weight:bold;width:100px;'>"
+            f"溶剂</td><td style='padding:4px 8px;'>{entry.solvent}</td></tr>"
+            f"<tr><td style='padding:4px 8px;font-weight:bold;'>溶质 i</td>"
+            f"<td style='padding:4px 8px;'>{entry.solute_i}</td></tr>"
+        )
+        if entry.solute_j:
+            html += (
+                f"<tr><td style='padding:4px 8px;font-weight:bold;'>溶质 j</td>"
+                f"<td style='padding:4px 8px;'>{entry.solute_j}</td></tr>"
+            )
+        html += (
+            f"<tr><td style='padding:4px 8px;font-weight:bold;'>数据类型</td>"
+            f"<td style='padding:4px 8px;'>{entry.data_type}</td></tr>"
+            f"<tr><td style='padding:4px 8px;font-weight:bold;'>值类型</td>"
+            f"<td style='padding:4px 8px;'>{entry.value_type}</td></tr>"
+            f"<tr><td style='padding:4px 8px;font-weight:bold;'>数值</td>"
+            f"<td style='padding:4px 8px;font-weight:bold;color:#e74c3c;'>"
+            f"{entry.value}</td></tr>"
+            f"<tr><td style='padding:4px 8px;font-weight:bold;'>温度</td>"
+            f"<td style='padding:4px 8px;'>{entry.temperature} K</td></tr>"
+            f"<tr><td style='padding:4px 8px;font-weight:bold;'>文献来源</td>"
+            f"<td style='padding:4px 8px;'>{entry.reference}</td></tr>"
+        )
+        if entry.note:
+            html += (
+                f"<tr><td style='padding:4px 8px;font-weight:bold;'>备注</td>"
+                f"<td style='padding:4px 8px;'>{entry.note}</td></tr>"
+            )
+        html += "</table>"
+        self.data_detail.setHtml(html)
+
+    # ==================== 删除操作 ====================
 
     def _delete_knowledge(self):
         """删除选中的知识"""
@@ -1077,12 +1262,12 @@ class KnowledgeDialog(QDialog):
         filepath, _ = QFileDialog.getOpenFileName(
             self, "选择教材/文献",
             "",
-            "支持的文件 (*.pdf *.txt *.md);;PDF文件 (*.pdf);;文本文件 (*.txt *.md);;所有文件 (*)"
+            "支持的文件 (*.pdf *.txt *.md);;PDF文件 (*.pdf);;"
+            "文本文件 (*.txt *.md);;所有文件 (*)"
         )
         if not filepath:
             return
 
-        # 检查 PDF 依赖
         if filepath.lower().endswith(".pdf"):
             try:
                 import fitz  # noqa: F401
@@ -1098,14 +1283,12 @@ class KnowledgeDialog(QDialog):
         category = self.import_category_combo.currentData()
         confidence = 0.95
 
-        # 显示进度
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
         self.progress_label.setText("准备导入...")
         self.progress_label.setVisible(True)
         self.import_btn.setEnabled(False)
 
-        # 在后台线程导入
         self._import_worker = DocumentImportWorker(
             filepath, self.knowledge_store, category, confidence
         )
@@ -1138,6 +1321,17 @@ class KnowledgeDialog(QDialog):
             )
             if result.get("pages"):
                 msg += f"\nPDF页数: {result['pages']}"
+            tables = result.get("tables_extracted", 0)
+            images = result.get("images_processed", 0)
+            if tables or images:
+                msg += "\n\n增强识别:"
+                if tables:
+                    msg += f"\n  表格提取: {tables} 个"
+                if images:
+                    msg += f"\n  图片处理: {images} 处"
+                if not result.get("ocr_available", False):
+                    msg += ("\n\n提示: 未检测到 Tesseract-OCR，图片文字未能识别。"
+                            "\n安装 Tesseract 后可识别图中文字内容。")
             QMessageBox.information(self, "导入成功", msg)
             self._refresh_all()
 
