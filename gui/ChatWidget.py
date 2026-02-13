@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
     QLabel, QComboBox, QLineEdit, QScrollArea, QFrame,
     QGroupBox, QSplitter, QMessageBox, QSizePolicy,
     QTextBrowser, QDialog, QListWidget, QListWidgetItem,
-    QAbstractItemView, QDialogButtonBox
+    QAbstractItemView, QDialogButtonBox, QFileDialog, QProgressBar
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QTextCursor, QColor
@@ -797,6 +797,30 @@ class MemoryDialog(QDialog):
             self._refresh_list()
 
 
+class DocumentImportWorker(QThread):
+    """文档导入后台线程"""
+    progress = pyqtSignal(int, int, str)  # (current, total, message)
+    finished = pyqtSignal(dict)            # result dict
+
+    def __init__(self, filepath, knowledge_store, category, confidence):
+        super().__init__()
+        self.filepath = filepath
+        self.knowledge_store = knowledge_store
+        self.category = category
+        self.confidence = confidence
+
+    def run(self):
+        from llm.document_learner import import_document
+        result = import_document(
+            filepath=self.filepath,
+            knowledge_store=self.knowledge_store,
+            category=self.category,
+            confidence=self.confidence,
+            progress_callback=lambda cur, tot, msg: self.progress.emit(cur, tot, msg)
+        )
+        self.finished.emit(result)
+
+
 class KnowledgeDialog(QDialog):
     """知识库管理对话框 — 查看AI学到的领域知识和用户提供的实验数据"""
 
@@ -812,8 +836,9 @@ class KnowledgeDialog(QDialog):
     def __init__(self, knowledge_store, parent=None):
         super().__init__(parent)
         self.knowledge_store = knowledge_store
+        self._import_worker = None
         self.setWindowTitle("知识库管理")
-        self.setMinimumSize(680, 520)
+        self.setMinimumSize(700, 560)
         self._setup_ui()
         self._refresh_all()
 
@@ -822,15 +847,53 @@ class KnowledgeDialog(QDialog):
 
         # 说明
         hint = QLabel("AI助手通过对话不断学习领域知识，并保存用户提供的实验数据。"
-                       "实验数据将在后续计算中优先使用。")
+                       "您也可以导入教材/文献 PDF，让AI从书本中学习。")
         hint.setWordWrap(True)
         hint.setStyleSheet("color:#666;font-size:12px;margin-bottom:6px;")
         layout.addWidget(hint)
 
-        # 统计信息
+        # 统计 + 导入按钮
+        top_bar = QHBoxLayout()
         self.stats_label = QLabel()
         self.stats_label.setStyleSheet("font-size:12px;color:#2c3e50;font-weight:bold;")
-        layout.addWidget(self.stats_label)
+        top_bar.addWidget(self.stats_label, stretch=1)
+
+        # 导入分类选择
+        top_bar.addWidget(QLabel("导入分类:"))
+        self.import_category_combo = QComboBox()
+        for key, label in self._K_CATEGORIES.items():
+            self.import_category_combo.addItem(label, key)
+        self.import_category_combo.setCurrentIndex(0)  # 默认"理论知识"
+        self.import_category_combo.setMinimumWidth(90)
+        top_bar.addWidget(self.import_category_combo)
+
+        self.import_btn = QPushButton("导入文档")
+        self.import_btn.setToolTip("从 PDF / TXT 文件中导入知识（教材、论文等）")
+        self.import_btn.clicked.connect(self._import_document)
+        self.import_btn.setStyleSheet("""
+            QPushButton { background-color:#2ecc71; color:white;
+                          padding:6px 16px; border:none; border-radius:4px;
+                          font-weight:bold; }
+            QPushButton:hover { background-color:#27ae60; }
+        """)
+        top_bar.addWidget(self.import_btn)
+        layout.addLayout(top_bar)
+
+        # 进度条（默认隐藏）
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar { border:1px solid #ccc; border-radius:4px; height:20px;
+                           text-align:center; font-size:11px; }
+            QProgressBar::chunk { background-color:#2ecc71; border-radius:3px; }
+        """)
+        layout.addWidget(self.progress_bar)
+
+        self.progress_label = QLabel()
+        self.progress_label.setStyleSheet("font-size:11px;color:#666;")
+        self.progress_label.setVisible(False)
+        layout.addWidget(self.progress_label)
 
         # 知识列表
         layout.addWidget(QLabel("已学习的领域知识："))
@@ -941,6 +1004,77 @@ class KnowledgeDialog(QDialog):
             for item in selected:
                 did = item.data(Qt.UserRole)
                 self.knowledge_store.delete_user_data(did)
+            self._refresh_all()
+
+    # ==================== 文档导入 ====================
+
+    def _import_document(self):
+        """选择并导入文档"""
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "选择教材/文献",
+            "",
+            "支持的文件 (*.pdf *.txt *.md);;PDF文件 (*.pdf);;文本文件 (*.txt *.md);;所有文件 (*)"
+        )
+        if not filepath:
+            return
+
+        # 检查 PDF 依赖
+        if filepath.lower().endswith(".pdf"):
+            try:
+                import fitz  # noqa: F401
+            except ImportError:
+                QMessageBox.warning(
+                    self, "缺少依赖",
+                    "读取 PDF 需要安装 PyMuPDF 库。\n\n"
+                    "请在终端运行:\n  pip install PyMuPDF\n\n"
+                    "安装后重新打开此对话框即可导入 PDF。"
+                )
+                return
+
+        category = self.import_category_combo.currentData()
+        confidence = 0.95
+
+        # 显示进度
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(True)
+        self.progress_label.setText("准备导入...")
+        self.progress_label.setVisible(True)
+        self.import_btn.setEnabled(False)
+
+        # 在后台线程导入
+        self._import_worker = DocumentImportWorker(
+            filepath, self.knowledge_store, category, confidence
+        )
+        self._import_worker.progress.connect(self._on_import_progress)
+        self._import_worker.finished.connect(self._on_import_finished)
+        self._import_worker.start()
+
+    def _on_import_progress(self, current: int, total: int, message: str):
+        """导入进度回调"""
+        self.progress_bar.setValue(current)
+        self.progress_label.setText(message)
+
+    def _on_import_finished(self, result: dict):
+        """导入完成回调"""
+        self.progress_bar.setVisible(False)
+        self.progress_label.setVisible(False)
+        self.import_btn.setEnabled(True)
+        self._import_worker = None
+
+        if result.get("status") == "error":
+            QMessageBox.warning(self, "导入失败", result.get("message", "未知错误"))
+        else:
+            msg = (
+                f"文档导入完成！\n\n"
+                f"来源: {result.get('source', '?')}\n"
+                f"总段落数: {result.get('total_chunks', 0)}\n"
+                f"成功导入: {result.get('imported', 0)} 条\n"
+                f"跳过（相关度低）: {result.get('skipped_low_relevance', 0)} 条\n"
+                f"跳过（已存在）: {result.get('skipped_duplicate', 0)} 条"
+            )
+            if result.get("pages"):
+                msg += f"\nPDF页数: {result['pages']}"
+            QMessageBox.information(self, "导入成功", msg)
             self._refresh_all()
 
 
