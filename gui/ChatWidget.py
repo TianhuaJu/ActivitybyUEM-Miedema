@@ -797,6 +797,153 @@ class MemoryDialog(QDialog):
             self._refresh_list()
 
 
+class KnowledgeDialog(QDialog):
+    """知识库管理对话框 — 查看AI学到的领域知识和用户提供的实验数据"""
+
+    _K_CATEGORIES = {
+        "theory": "理论知识",
+        "formula": "公式模型",
+        "experimental": "实验规律",
+        "experience": "计算经验",
+        "correction": "数据修正",
+        "general": "其他",
+    }
+
+    def __init__(self, knowledge_store, parent=None):
+        super().__init__(parent)
+        self.knowledge_store = knowledge_store
+        self.setWindowTitle("知识库管理")
+        self.setMinimumSize(680, 520)
+        self._setup_ui()
+        self._refresh_all()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        # 说明
+        hint = QLabel("AI助手通过对话不断学习领域知识，并保存用户提供的实验数据。"
+                       "实验数据将在后续计算中优先使用。")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color:#666;font-size:12px;margin-bottom:6px;")
+        layout.addWidget(hint)
+
+        # 统计信息
+        self.stats_label = QLabel()
+        self.stats_label.setStyleSheet("font-size:12px;color:#2c3e50;font-weight:bold;")
+        layout.addWidget(self.stats_label)
+
+        # 知识列表
+        layout.addWidget(QLabel("已学习的领域知识："))
+        self.knowledge_list = QListWidget()
+        self.knowledge_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.knowledge_list.setStyleSheet("""
+            QListWidget { border:1px solid #ccc; border-radius:4px; font-size:12px; }
+            QListWidget::item { padding:5px 8px; border-bottom:1px solid #eee; }
+            QListWidget::item:selected { background-color:#d5e8f6; color:#000; }
+        """)
+        layout.addWidget(self.knowledge_list, stretch=1)
+
+        # 实验数据列表
+        layout.addWidget(QLabel("用户实验数据（优先使用）："))
+        self.data_list = QListWidget()
+        self.data_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.data_list.setStyleSheet("""
+            QListWidget { border:1px solid #ccc; border-radius:4px; font-size:12px; }
+            QListWidget::item { padding:5px 8px; border-bottom:1px solid #eee; }
+            QListWidget::item:selected { background-color:#fde8e8; color:#000; }
+        """)
+        layout.addWidget(self.data_list, stretch=1)
+
+        # 按钮
+        btn_layout = QHBoxLayout()
+
+        del_k_btn = QPushButton("删除选中知识")
+        del_k_btn.clicked.connect(self._delete_knowledge)
+        del_k_btn.setStyleSheet("""
+            QPushButton { background-color:#e74c3c; color:white;
+                          padding:6px 14px; border:none; border-radius:4px; }
+            QPushButton:hover { background-color:#c0392b; }
+        """)
+        btn_layout.addWidget(del_k_btn)
+
+        del_d_btn = QPushButton("删除选中数据")
+        del_d_btn.clicked.connect(self._delete_data)
+        del_d_btn.setStyleSheet("""
+            QPushButton { background-color:#e67e22; color:white;
+                          padding:6px 14px; border:none; border-radius:4px; }
+            QPushButton:hover { background-color:#d35400; }
+        """)
+        btn_layout.addWidget(del_d_btn)
+
+        btn_layout.addStretch()
+
+        close_btn = QPushButton("关闭")
+        close_btn.clicked.connect(self.accept)
+        close_btn.setStyleSheet("""
+            QPushButton { background-color:#3498db; color:white;
+                          padding:6px 20px; border:none; border-radius:4px; }
+            QPushButton:hover { background-color:#2980b9; }
+        """)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+    def _refresh_all(self):
+        """刷新所有列表"""
+        stats = self.knowledge_store.get_stats()
+        self.stats_label.setText(
+            f"知识条目: {stats['knowledge_count']}   |   "
+            f"实验数据: {stats['user_data_count']}"
+        )
+
+        # 刷新知识列表
+        self.knowledge_list.clear()
+        for entry in self.knowledge_store.get_all_knowledge():
+            cat = self._K_CATEGORIES.get(entry.category, entry.category)
+            text = f"[{cat}] {entry.topic}: {entry.content}"
+            if len(text) > 120:
+                text = text[:117] + "..."
+            item = QListWidgetItem(text)
+            item.setData(Qt.UserRole, entry.id)
+            self.knowledge_list.addItem(item)
+
+        # 刷新数据列表
+        self.data_list.clear()
+        for entry in self.knowledge_store.get_all_user_data():
+            text = (f"{entry.solvent}中 {entry.value_type}"
+                    f"({entry.solute_i}"
+                    f"{','+entry.solute_j if entry.solute_j else ''}) = "
+                    f"{entry.value}  T={entry.temperature}K  "
+                    f"[{entry.reference}]")
+            item = QListWidgetItem(text)
+            item.setData(Qt.UserRole, entry.id)
+            self.data_list.addItem(item)
+
+    def _delete_knowledge(self):
+        """删除选中的知识"""
+        selected = self.knowledge_list.selectedItems()
+        if not selected:
+            return
+        for item in selected:
+            kid = item.data(Qt.UserRole)
+            self.knowledge_store.delete_knowledge(kid)
+        self._refresh_all()
+
+    def _delete_data(self):
+        """删除选中的实验数据"""
+        selected = self.data_list.selectedItems()
+        if not selected:
+            return
+        reply = QMessageBox.question(
+            self, "确认", "删除后该数据将不再覆盖默认数据库值。确定删除？",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            for item in selected:
+                did = item.data(Qt.UserRole)
+                self.knowledge_store.delete_user_data(did)
+            self._refresh_all()
+
+
 class ChatWidget(QWidget):
     """对话式热力学计算界面"""
 
@@ -921,6 +1068,22 @@ class ChatWidget(QWidget):
             QPushButton:hover { background-color: #7d3c98; }
         """)
         layout.addWidget(self.memory_btn)
+
+        # 知识库管理按钮
+        self.knowledge_btn = QPushButton("知识库")
+        self.knowledge_btn.setToolTip("查看AI学到的领域知识和用户提供的实验数据")
+        self.knowledge_btn.clicked.connect(self._open_knowledge_dialog)
+        self.knowledge_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #16a085;
+                color: white;
+                padding: 6px 14px;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #138d75; }
+        """)
+        layout.addWidget(self.knowledge_btn)
 
         layout.addStretch()
 
@@ -1195,11 +1358,15 @@ class ChatWidget(QWidget):
             # 清空当前显示，准备恢复历史
             self._clear_chat_display()
 
-            # 显示连接和记忆状态
+            # 显示连接、记忆和知识库状态
             mem_count = len(self.agent.memory.get_all())
+            k_stats = self.agent.knowledge.get_stats()
             conn_msg = f"已成功连接到 {provider} ({model})"
             if mem_count > 0:
                 conn_msg += f"  |  已加载 {mem_count} 条记忆"
+            if k_stats["knowledge_count"] > 0 or k_stats["user_data_count"] > 0:
+                conn_msg += (f"  |  知识库: {k_stats['knowledge_count']} 条知识, "
+                             f"{k_stats['user_data_count']} 条实验数据")
             self._add_system_message(conn_msg)
 
             # 恢复上次对话历史到GUI
@@ -1232,6 +1399,21 @@ class ChatWidget(QWidget):
             mem_count = len(store.get_all())
             if mem_count > 0:
                 self._add_system_message(f"记忆已更新，当前共 {mem_count} 条")
+
+    def _open_knowledge_dialog(self):
+        """打开知识库管理对话框"""
+        from llm.knowledge import KnowledgeStore
+        store = self.agent.knowledge if self.agent else KnowledgeStore()
+        dlg = KnowledgeDialog(store, parent=self)
+        dlg.exec_()
+        if self.agent:
+            stats = store.get_stats()
+            total = stats["knowledge_count"] + stats["user_data_count"]
+            if total > 0:
+                self._add_system_message(
+                    f"知识库已更新: {stats['knowledge_count']} 条知识, "
+                    f"{stats['user_data_count']} 条实验数据"
+                )
 
     def _send_message(self):
         """发送消息"""

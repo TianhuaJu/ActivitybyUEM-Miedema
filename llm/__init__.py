@@ -47,6 +47,8 @@ from llm.tools import (
     TOOL_DESCRIPTIONS
 )
 
+from llm.knowledge import KnowledgeStore
+
 from llm.chat_agent import (
     ChatAgent,
     ChatSession,
@@ -74,6 +76,9 @@ __all__ = [
     "ThermodynamicTools",
     "TOOL_SCHEMAS",
     "TOOL_DESCRIPTIONS",
+
+    # Knowledge
+    "KnowledgeStore",
 
     # Agent
     "ChatAgent",

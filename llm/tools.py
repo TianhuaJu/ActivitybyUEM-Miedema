@@ -631,6 +631,115 @@ TOOL_SCHEMAS = {
             }
         },
         "required": ["content"]
+    },
+
+    # === 知识学习工具 ===
+    "learn_knowledge": {
+        "type": "object",
+        "properties": {
+            "topic": {
+                "type": "string",
+                "description": "知识主题，简短概括（如'Fe-C体系活度系数温度依赖性'）"
+            },
+            "content": {
+                "type": "string",
+                "description": "知识内容，详细描述"
+            },
+            "category": {
+                "type": "string",
+                "description": "知识分类",
+                "enum": ["theory", "formula", "experimental", "experience", "correction", "general"],
+                "default": "general"
+            },
+            "confidence": {
+                "type": "number",
+                "description": "置信度(0-1)，实验数据=1.0，经验规律=0.8，推测=0.5",
+                "default": 0.8
+            },
+            "tags": {
+                "type": "string",
+                "description": "标签，逗号分隔（如'Fe,C,活度,温度'）",
+                "default": ""
+            }
+        },
+        "required": ["topic", "content"]
+    },
+    "search_knowledge": {
+        "type": "object",
+        "properties": {
+            "keyword": {
+                "type": "string",
+                "description": "搜索关键词（搜索主题、内容和标签）",
+                "default": ""
+            },
+            "category": {
+                "type": "string",
+                "description": "按分类过滤（可选）",
+                "enum": ["theory", "formula", "experimental", "experience", "correction", "general"],
+                "default": ""
+            }
+        },
+        "required": []
+    },
+
+    # === 实验数据更新工具 ===
+    "update_experimental_value": {
+        "type": "object",
+        "properties": {
+            "data_type": {
+                "type": "string",
+                "description": "数据类型",
+                "enum": ["first_order", "lnY0", "second_order", "enthalpy"]
+            },
+            "solvent": {
+                "type": "string",
+                "description": "基体（溶剂）元素符号，如'Fe'"
+            },
+            "solute_i": {
+                "type": "string",
+                "description": "溶质i元素符号"
+            },
+            "solute_j": {
+                "type": "string",
+                "description": "溶质j元素符号（一阶系数必填，lnY0可不填）",
+                "default": ""
+            },
+            "value": {
+                "type": "number",
+                "description": "实验数值"
+            },
+            "value_type": {
+                "type": "string",
+                "description": "值的类型：eji(质量分数一阶), sji(摩尔分数一阶), lnYi0(无限稀释活度系数对数), Yi0(无限稀释活度系数), ri_ij/pi_ij(二阶系数)",
+                "enum": ["eji", "sji", "lnYi0", "Yi0", "ri_ij", "pi_ij", "ri_jk", "pi_jk"]
+            },
+            "temperature": {
+                "type": "string",
+                "description": "温度(K)或温度公式，如'1873'或'-126300/T+39.0'"
+            },
+            "reference": {
+                "type": "string",
+                "description": "数据来源/文献引用",
+                "default": "用户提供"
+            }
+        },
+        "required": ["data_type", "solvent", "solute_i", "value", "value_type", "temperature"]
+    },
+    "list_user_data": {
+        "type": "object",
+        "properties": {
+            "solvent": {
+                "type": "string",
+                "description": "按基体元素过滤（可选）",
+                "default": ""
+            },
+            "data_type": {
+                "type": "string",
+                "description": "按数据类型过滤（可选）",
+                "default": ""
+            }
+        },
+        "required": []
     }
 }
 
@@ -654,18 +763,23 @@ TOOL_DESCRIPTIONS = {
     "screen_elements_liquidus_effect": "批量筛选多种元素对合金液相线温度的影响。输入溶剂和候选元素列表，一次性计算所有元素在指定添加量下对液相线温度的降低/升高效果，返回按影响大小排序的结果。用于合金设计中的元素筛选。",
     "save_memory": "保存一条重要信息到长期记忆。当用户提到偏好、常用合金体系、计算习惯等值得记住的信息时，主动调用此工具保存。分类: preference(偏好)、alloy_system(合金体系)、calculation(计算经验)、general(其他)。",
     "recall_memories": "回忆已保存的记忆。可按关键词搜索，不填关键词则返回所有记忆。当用户问'你还记得吗'、'之前说过'等时调用。",
-    "delete_memory": "删除一条已保存的记忆。当用户要求忘记某信息时调用。"
+    "delete_memory": "删除一条已保存的记忆。当用户要求忘记某信息时调用。",
+    "learn_knowledge": "从对话中学习并保存领域知识。当对话中出现有价值的材料科学、热力学、冶金学知识（理论、公式、实验规律、计算经验等）时，主动调用此工具保存。分类：theory(理论)、formula(公式)、experimental(实验数据规律)、experience(计算经验)、correction(数据修正)、general(其他)。",
+    "search_knowledge": "搜索已学习的领域知识。可按关键词和分类检索。当需要参考之前学到的知识时调用。",
+    "update_experimental_value": "保存或更新用户提供的实验数据到用户数据库。当用户告诉你一个新的实验测量值（如活度相互作用系数、活度系数等）时，主动调用此工具保存。保存后该值将在后续计算中优先使用。支持一阶系数(first_order)、无限稀释活度系数(lnY0)、二阶系数(second_order)、焓值(enthalpy)。",
+    "list_user_data": "列出用户已保存的所有实验数据。可按基体元素和数据类型过滤。"
 }
 
 
 class ThermodynamicTools:
     """热力学计算工具集"""
 
-    def __init__(self, memory_store=None):
+    def __init__(self, memory_store=None, knowledge_store=None):
         self._thermo_calc = None
         self._precip_calc = None
         self._binary_model = None
         self._memory_store = memory_store
+        self._knowledge_store = knowledge_store
 
     @property
     def thermo_calc(self):
@@ -1401,6 +1515,69 @@ class ThermodynamicTools:
         msg = self._memory_store.remove(content)
         return {"status": "success", "message": msg}
 
+    # ==================== 知识学习工具 ====================
+
+    def learn_knowledge(self, topic: str, content: str, category: str = "general",
+                        confidence: float = 0.8, tags: str = "") -> Dict[str, Any]:
+        """学习并保存领域知识"""
+        if self._knowledge_store is None:
+            return {"status": "error", "message": "知识学习功能未启用"}
+        result = self._knowledge_store.add_knowledge(
+            topic=topic, content=content, category=category,
+            source="对话学习", confidence=confidence, tags=tags
+        )
+        return result
+
+    def search_knowledge(self, keyword: str = "", category: str = "") -> Dict[str, Any]:
+        """搜索已学习的知识"""
+        if self._knowledge_store is None:
+            return {"status": "error", "message": "知识学习功能未启用"}
+        entries = self._knowledge_store.search_knowledge(keyword, category)
+        items = []
+        for e in entries:
+            items.append({
+                "id": e.id, "topic": e.topic, "content": e.content,
+                "category": e.category, "confidence": e.confidence,
+                "tags": e.tags
+            })
+            self._knowledge_store.increment_access(e.id)
+        return {"status": "success", "count": len(items), "entries": items}
+
+    def update_experimental_value(self, data_type: str, solvent: str,
+                                  solute_i: str, value: float,
+                                  value_type: str, temperature: str,
+                                  solute_j: str = "",
+                                  reference: str = "用户提供") -> Dict[str, Any]:
+        """保存或更新用户提供的实验数据"""
+        if self._knowledge_store is None:
+            return {"status": "error", "message": "知识学习功能未启用"}
+        result = self._knowledge_store.add_user_data(
+            data_type=data_type, solvent=solvent,
+            solute_i=solute_i, solute_j=solute_j,
+            value=value, value_type=value_type,
+            temperature=temperature, reference=reference
+        )
+        return result
+
+    def list_user_data(self, solvent: str = "",
+                       data_type: str = "") -> Dict[str, Any]:
+        """列出用户保存的实验数据"""
+        if self._knowledge_store is None:
+            return {"status": "error", "message": "知识学习功能未启用"}
+        entries = self._knowledge_store.query_user_data(
+            data_type=data_type, solvent=solvent
+        )
+        items = []
+        for e in entries:
+            items.append({
+                "id": e.id, "data_type": e.data_type,
+                "solvent": e.solvent, "solute_i": e.solute_i,
+                "solute_j": e.solute_j, "value": e.value,
+                "value_type": e.value_type, "temperature": e.temperature,
+                "reference": e.reference
+            })
+        return {"status": "success", "count": len(items), "data": items}
+
     def _get_all_tool_methods(self) -> Dict[str, Any]:
         """获取所有工具方法映射"""
         return {
@@ -1424,6 +1601,10 @@ class ThermodynamicTools:
             "save_memory": self.save_memory,
             "recall_memories": self.recall_memories,
             "delete_memory": self.delete_memory,
+            "learn_knowledge": self.learn_knowledge,
+            "search_knowledge": self.search_knowledge,
+            "update_experimental_value": self.update_experimental_value,
+            "list_user_data": self.list_user_data,
         }
 
     def get_tool_definitions(self) -> List[ToolDefinition]:
@@ -1476,6 +1657,20 @@ class ThermodynamicTools:
         # candidate_elements: 可能传成逗号分隔的字符串
         if "candidate_elements" in args and isinstance(args["candidate_elements"], str):
             args["candidate_elements"] = [e.strip() for e in args["candidate_elements"].split(",") if e.strip()]
+
+        # value: 可能传成字符串
+        if "value" in args and isinstance(args["value"], str):
+            try:
+                args["value"] = float(args["value"])
+            except ValueError:
+                pass
+
+        # confidence: 可能传成字符串
+        if "confidence" in args and isinstance(args["confidence"], str):
+            try:
+                args["confidence"] = float(args["confidence"])
+            except ValueError:
+                pass
 
         return args
 

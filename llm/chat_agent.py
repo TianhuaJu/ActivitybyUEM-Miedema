@@ -22,6 +22,7 @@ from llm.llm_backend import (
 )
 from llm.tools import ThermodynamicTools
 from llm.memory import MemoryStore
+from llm.knowledge import KnowledgeStore
 
 
 SYSTEM_PROMPT = """你是合金热力学计算软件的AI助手。你的唯一职责是：接收用户的计算需求，调用工具执行计算，返回结果。
@@ -175,6 +176,40 @@ SYSTEM_PROMPT = """你是合金热力学计算软件的AI助手。你的唯一�
 - 用户问"你记得吗"/"之前说过"时，调用recall_memories查询
 - 用户要求"忘记"/"删除记忆"时，调用delete_memory
 
+【知识学习（进化能力）】
+- learn_knowledge → 学习并保存领域知识 (参数: topic, content, category, confidence, tags)
+- search_knowledge → 搜索已学习的知识 (参数: keyword, category)
+
+知识学习规则（非常重要）：
+你具备进化能力，能够通过对话不断积累材料科学、冶金学、热力学领域的知识，变得越来越聪明。
+- 当对话中出现有价值的领域知识时，主动调用 learn_knowledge 保存：
+  · 用户分享的实验发现或规律（如"高锰钢中Mn含量超过15%时活度系数偏差增大"）
+  · 特定合金体系的计算经验（如"Fe-Cr-Ni体系用Elliott模型更准确"）
+  · 理论公式的适用条件和局限性
+  · 数据修正信息（如"某文献的ε值在高温下偏大"）
+  · 用户讲述的冶金/材料领域专业知识
+- 分类: theory(理论)、formula(公式)、experimental(实验规律)、experience(计算经验)、correction(数据修正)、general(其他)
+- 置信度: 实验数据=1.0、教科书知识=0.95、经验规律=0.8、推测=0.5
+- 标签: 用逗号分隔的关键词，包含涉及的元素、体系、概念（如"Fe,Cr,Ni,不锈钢,活度"）
+- 示例：用户说"我们实验发现Fe-C体系在1600°C时ε_C^C的值比数据库的偏大约10%"
+  → learn_knowledge("Fe-C体系ε_C^C高温修正", "在1873K时Fe-C体系ε_C^C实验值比数据库值偏大约10%", "correction", 0.9, "Fe,C,相互作用系数,高温")
+
+【实验数据更新】
+- update_experimental_value → 保存用户提供的实验数据 (参数: data_type, solvent, solute_i, solute_j, value, value_type, temperature, reference)
+- list_user_data → 列出已保存的实验数据 (参数: solvent, data_type)
+
+实验数据更新规则（非常重要）：
+当用户告诉你一个新的实验测量值时，你必须主动调用 update_experimental_value 保存：
+- 识别关键词："实验值"/"测量值"/"我们测到"/"实际值是"/"修正为"/"应该是"/"新数据"
+- 保存后，该值将自动覆盖默认数据库中的对应值，后续计算将优先使用用户数据
+- data_type: first_order(一阶系数), lnY0(无限稀释活度系数), second_order(二阶系数), enthalpy(焓值)
+- value_type: eji/sji(一阶质量/摩尔分数), lnYi0/Yi0(无限稀释), ri_ij/pi_ij/ri_jk/pi_jk(二阶)
+- 示例：用户说"Fe中Si对C的一阶活度相互作用系数在1873K是0.08"
+  → update_experimental_value("first_order", "Fe", "C", "Si", 0.08, "eji", "1873", "用户实验")
+- 示例：用户说"1873K下Fe中Al的无限稀释活度系数ln(γ°)为-3.5"
+  → update_experimental_value("lnY0", "Fe", "Al", "", -3.5, "lnYi0", "1873", "用户提供")
+- 保存后告知用户：数据已保存，后续计算将使用此值
+
 关键词→工具映射：
 - "活度相互作用系数"/"ε"/"epsilon"/"一阶" → get_interaction_coefficient
 - "二阶"/"ρ"/"rho" → get_second_order_interaction_coefficient
@@ -304,19 +339,28 @@ class ChatAgent:
         """
         self.backend = create_backend(provider, api_key, model, base_url=base_url)
         self.memory = MemoryStore()
-        self.tools = ThermodynamicTools(memory_store=self.memory)
+        self.knowledge = KnowledgeStore()
+        self.tools = ThermodynamicTools(
+            memory_store=self.memory, knowledge_store=self.knowledge
+        )
         self.session = ChatSession()
         self.max_tool_iterations = max_tool_iterations
         self.on_tool_call = on_tool_call
         self.on_tool_result = on_tool_result
         self.on_response = on_response
 
-        # 构建系统消息：基础提示 + 已有记忆 + 最近对话摘要
+        # 构建系统消息：基础提示 + 已有记忆 + 知识库 + 用户数据 + 最近对话摘要
         prompt = system_prompt or SYSTEM_PROMPT
         memory_context = self.memory.format_for_prompt()
+        knowledge_context = self.knowledge.format_knowledge_for_prompt()
+        user_data_context = self.knowledge.format_user_data_for_prompt()
         history_context = self.memory.get_recent_summary(max_sessions=3)
         if memory_context:
             prompt += "\n" + memory_context
+        if knowledge_context:
+            prompt += "\n" + knowledge_context
+        if user_data_context:
+            prompt += "\n" + user_data_context
         if history_context:
             prompt += "\n" + history_context
         self.session.add_message("system", prompt)
@@ -466,6 +510,10 @@ class ChatAgent:
         "get_infinite_dilution_activity_coefficient": "无限稀释活度系数",
         "get_element_properties": "元素性质",
         "screen_elements_liquidus_effect": "元素筛选",
+        "learn_knowledge": "知识学习",
+        "search_knowledge": "知识检索",
+        "update_experimental_value": "实验数据更新",
+        "list_user_data": "用户数据查询",
     }
 
     # 需要隐藏的内部字段（不展示给用户）
