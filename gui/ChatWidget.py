@@ -295,22 +295,24 @@ def format_message_html(text):
     # 先处理花括号形式: X_{abc} → X<sub>abc</sub>, X^{abc} → X<sup>abc</sup>
     text = re.sub(r'_\{([^}]+)\}', r'<sub>\1</sub>', text)
     text = re.sub(r'\^\{([^}]+)\}', r'<sup>\1</sup>', text)
-    # 单字符形式: 仅当前面是希腊字母、单字母变量、或闭标签时才触发
+    # 非花括号形式的上下标：支持元素符号（1-2字符如Zn、Mg）、数字序列、希腊字母
     # 不匹配英文单词内的下划线（如 liquidus_temperature）
-    # 希腊字母 + _x → 下标（如 ε_i, γ_0）
     _greek = 'αβγδεζηθικλμνξπρστυφχψωΓΔΘΛΞΠΣΦΨΩ'
+    _sub_atom = r'[A-Z][a-z]?|[a-z]|[0-9]+|[' + _greek + r']'
+    _sup_atom = r'[A-Z][a-z]?|[a-z]|[0-9]+|[' + _greek + r'²³⁰¹⁴⁵⁶⁷⁸⁹]'
+    # 希腊字母或闭标签 + _x / ^x（如 ε_Zn, γ_Zn, ε_Zn^Mg）
     text = re.sub(
-        r'(?<=[' + _greek + r'>])_([a-zA-Z0-9' + _greek + r'])',
+        r'(?<=[' + _greek + r'>])_(' + _sub_atom + r')',
         r'<sub>\1</sub>', text)
     text = re.sub(
-        r'(?<=[' + _greek + r'>])\^([a-zA-Z0-9' + _greek + r'²³⁰¹⁴⁵⁶⁷⁸⁹])',
+        r'(?<=[' + _greek + r'>])\^(' + _sup_atom + r')',
         r'<sup>\1</sup>', text)
-    # 单字母变量 + _x（仅当该单字母前面不是字母时，排除 word_word 情况）
+    # 单字母变量 + _x / ^x（仅当该单字母前面不是字母时，排除 word_word 情况）
     text = re.sub(
-        r'(?<![a-zA-Z])([a-zA-Z])_([a-zA-Z0-9' + _greek + r'])',
+        r'(?<![a-zA-Z])([a-zA-Z])_(' + _sub_atom + r')',
         r'\1<sub>\2</sub>', text)
     text = re.sub(
-        r'(?<![a-zA-Z])([a-zA-Z])\^([a-zA-Z0-9' + _greek + r'²³⁰¹⁴⁵⁶⁷⁸⁹])',
+        r'(?<![a-zA-Z])([a-zA-Z])\^(' + _sup_atom + r')',
         r'\1<sup>\2</sup>', text)
 
     # === 第2步: 处理 Markdown 表格（需在换行转换前完成） ===
