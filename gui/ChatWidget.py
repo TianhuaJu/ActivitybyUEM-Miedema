@@ -898,7 +898,7 @@ class DocumentImportWorker(QThread):
 
 
 class KnowledgeDialog(QDialog):
-    """补血站（知识库）管理对话框 — 查看AI学到的领域知识和用户提供的实验数据"""
+    """知识库管理对话框 — 查看AI学到的领域知识和用户提供的实验数据"""
 
     _K_CATEGORIES = {
         "theory": "理论知识",
@@ -916,7 +916,7 @@ class KnowledgeDialog(QDialog):
         self._import_worker = None
         self._knowledge_entries = []
         self._data_entries = []
-        self.setWindowTitle("补血站")
+        self.setWindowTitle("知识库管理")
         self.setMinimumSize(780, 520)
         # 自适应屏幕尺寸
         try:
@@ -938,7 +938,7 @@ class KnowledgeDialog(QDialog):
         layout.setSpacing(8)
 
         # 标题
-        title = QLabel("补血站")
+        title = QLabel("知识库管理")
         title.setStyleSheet(
             "font-size:18px; font-weight:bold; color:#2c3e50; margin-bottom:2px;"
         )
@@ -953,37 +953,62 @@ class KnowledgeDialog(QDialog):
         hint.setStyleSheet("color:#7f8c8d; font-size:12px; margin-bottom:4px;")
         layout.addWidget(hint)
 
-        # 统计 + 导入栏
-        top_bar = QHBoxLayout()
-        top_bar.setSpacing(10)
+        # 统计栏
+        stats_bar = QHBoxLayout()
         self.stats_label = QLabel()
         self.stats_label.setStyleSheet(
             "font-size:13px; color:#2c3e50; font-weight:bold;"
         )
-        top_bar.addWidget(self.stats_label, stretch=1)
+        stats_bar.addWidget(self.stats_label, stretch=1)
+        layout.addLayout(stats_bar)
 
-        top_bar.addWidget(QLabel("导入分类:"))
+        # 文档上传 + 学习栏
+        import_bar = QHBoxLayout()
+        import_bar.setSpacing(8)
+
+        self.import_btn = QPushButton("上传文档")
+        self.import_btn.setToolTip("选择 PDF / TXT 教材或文献")
+        self.import_btn.clicked.connect(self._select_document)
+        self.import_btn.setStyleSheet("""
+            QPushButton { background-color:#3498db; color:white;
+                          padding:5px 14px; border:none; border-radius:5px;
+                          font-size:13px; }
+            QPushButton:hover { background-color:#2980b9; }
+        """)
+        import_bar.addWidget(self.import_btn)
+
+        self.file_label = QLabel("未选择文件")
+        self.file_label.setStyleSheet(
+            "color:#999; font-size:12px; padding:0 4px;"
+        )
+        self.file_label.setWordWrap(False)
+        import_bar.addWidget(self.file_label, stretch=1)
+
+        import_bar.addWidget(QLabel("分类:"))
         self.import_category_combo = QComboBox()
         for key, label in self._K_CATEGORIES.items():
             self.import_category_combo.addItem(label, key)
         self.import_category_combo.setCurrentIndex(0)
-        self.import_category_combo.setMinimumWidth(100)
+        self.import_category_combo.setMinimumWidth(90)
         self.import_category_combo.setStyleSheet(
-            "QComboBox { padding:4px 8px; border:1px solid #ccc; border-radius:4px; }"
+            "QComboBox { padding:3px 6px; border:1px solid #ccc; border-radius:4px; }"
         )
-        top_bar.addWidget(self.import_category_combo)
+        import_bar.addWidget(self.import_category_combo)
 
-        self.import_btn = QPushButton("导入文档")
-        self.import_btn.setToolTip("从 PDF / TXT 文件中导入知识（支持表格和图片识别）")
-        self.import_btn.clicked.connect(self._import_document)
-        self.import_btn.setStyleSheet("""
+        self.learn_btn = QPushButton("学习")
+        self.learn_btn.setToolTip("开始从上传的文档中学习知识（含表格和图片AI识别）")
+        self.learn_btn.setEnabled(False)
+        self.learn_btn.clicked.connect(self._start_learning)
+        self.learn_btn.setStyleSheet("""
             QPushButton { background-color:#2ecc71; color:white;
-                          padding:6px 18px; border:none; border-radius:6px;
+                          padding:5px 16px; border:none; border-radius:5px;
                           font-weight:bold; font-size:13px; }
             QPushButton:hover { background-color:#27ae60; }
+            QPushButton:disabled { background-color:#bdc3c7; color:#fff; }
         """)
-        top_bar.addWidget(self.import_btn)
-        layout.addLayout(top_bar)
+        import_bar.addWidget(self.learn_btn)
+
+        layout.addLayout(import_bar)
 
         # 进度条（默认隐藏）
         self.progress_bar = QProgressBar()
@@ -1269,8 +1294,8 @@ class KnowledgeDialog(QDialog):
 
     # ==================== 文档导入 ====================
 
-    def _import_document(self):
-        """选择并导入文档"""
+    def _select_document(self):
+        """第一步：选择文档文件"""
         filepath, _ = QFileDialog.getOpenFileName(
             self, "选择教材/文献",
             "",
@@ -1292,17 +1317,31 @@ class KnowledgeDialog(QDialog):
                 )
                 return
 
+        import os
+        self._pending_filepath = filepath
+        filename = os.path.basename(filepath)
+        self.file_label.setText(filename)
+        self.file_label.setStyleSheet("color:#2c3e50; font-size:12px; padding:0 4px;")
+        self.file_label.setToolTip(filepath)
+        self.learn_btn.setEnabled(True)
+
+    def _start_learning(self):
+        """第二步：点击学习，开始从文档提取知识"""
+        if not hasattr(self, '_pending_filepath') or not self._pending_filepath:
+            return
+
         category = self.import_category_combo.currentData()
         confidence = 0.95
 
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
-        self.progress_label.setText("准备导入...")
+        self.progress_label.setText("准备学习...")
         self.progress_label.setVisible(True)
+        self.learn_btn.setEnabled(False)
         self.import_btn.setEnabled(False)
 
         self._import_worker = DocumentImportWorker(
-            filepath, self.knowledge_store, category, confidence,
+            self._pending_filepath, self.knowledge_store, category, confidence,
             llm_config=self.llm_config
         )
         self._import_worker.progress.connect(self._on_import_progress)
@@ -1319,6 +1358,11 @@ class KnowledgeDialog(QDialog):
         self.progress_bar.setVisible(False)
         self.progress_label.setVisible(False)
         self.import_btn.setEnabled(True)
+        self.learn_btn.setEnabled(False)
+        self._pending_filepath = None
+        self.file_label.setText("未选择文件")
+        self.file_label.setStyleSheet("color:#999; font-size:12px; padding:0 4px;")
+        self.file_label.setToolTip("")
         self._import_worker = None
 
         if result.get("status") == "error":
@@ -1443,6 +1487,26 @@ class ChatWidget(QWidget):
         self.api_key_label.setVisible(False)
         self.api_key_input.setVisible(False)
 
+        # 连接按钮（居中位置）
+        self.connect_btn = QPushButton("连接")
+        self.connect_btn.clicked.connect(self._connect_llm)
+        self.connect_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db; color: white;
+                padding: 5px 14px; border: none; border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #2980b9; }
+        """)
+        row1.addWidget(self.connect_btn)
+
+        # 状态指示
+        self.status_label = QLabel("未连接")
+        self.status_label.setStyleSheet("color: #e74c3c; font-weight: bold; font-size: 12px;")
+        row1.addWidget(self.status_label)
+
+        row1.addStretch()
+
         # 记忆管理按钮
         self.memory_btn = QPushButton("记忆管理")
         self.memory_btn.setToolTip("查看和管理AI助手的持久记忆（计算偏好、常用体系等）")
@@ -1456,8 +1520,8 @@ class ChatWidget(QWidget):
         """)
         row1.addWidget(self.memory_btn)
 
-        # 补血站按钮（知识库）
-        self.knowledge_btn = QPushButton("补血站")
+        # 知识库管理按钮
+        self.knowledge_btn = QPushButton("知识库管理")
         self.knowledge_btn.setToolTip("查看AI学到的领域知识和用户提供的实验数据")
         self.knowledge_btn.clicked.connect(self._open_knowledge_dialog)
         self.knowledge_btn.setStyleSheet("""
@@ -1470,32 +1534,6 @@ class ChatWidget(QWidget):
         row1.addWidget(self.knowledge_btn)
 
         outer.addLayout(row1)
-
-        # ---- 第二行：连接 / 状态 ----
-        row2 = QHBoxLayout()
-        row2.setSpacing(8)
-
-        # 连接按钮
-        self.connect_btn = QPushButton("连接")
-        self.connect_btn.clicked.connect(self._connect_llm)
-        self.connect_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db; color: white;
-                padding: 6px 18px; border: none; border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #2980b9; }
-        """)
-        row2.addWidget(self.connect_btn)
-
-        # 状态指示
-        self.status_label = QLabel("未连接")
-        self.status_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
-        row2.addWidget(self.status_label)
-
-        row2.addStretch()
-
-        outer.addLayout(row2)
 
         return group
 
@@ -1550,34 +1588,35 @@ class ChatWidget(QWidget):
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 4, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
 
-        # 输入框（紧凑高度）
+        # 输入框
         self.input_text = QTextEdit()
         self.input_text.setPlaceholderText("输入您的问题... (Ctrl+Enter 发送)")
-        self.input_text.setFixedHeight(48)
+        self.input_text.setFixedHeight(44)
         self.input_text.setStyleSheet("""
             QTextEdit {
                 border: 2px solid #ddd;
-                border-radius: 8px;
-                padding: 4px 10px;
+                border-radius: 6px;
+                padding: 4px 8px;
                 font-size: 14px;
             }
             QTextEdit:focus {
                 border-color: #3498db;
             }
         """)
-        layout.addWidget(self.input_text, stretch=1)
+        self.input_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        layout.addWidget(self.input_text)
 
-        # 发送按钮
+        # 发送按钮（固定宽度，不会被压缩）
         self.send_btn = QPushButton("发送")
         self.send_btn.clicked.connect(self._send_message)
         self.send_btn.setEnabled(False)
-        self.send_btn.setFixedSize(64, 48)
+        self.send_btn.setFixedSize(56, 44)
         self.send_btn.setStyleSheet("""
             QPushButton {
                 background-color: #27ae60; color: white;
-                border: none; border-radius: 8px;
+                border: none; border-radius: 6px;
                 font-weight: bold; font-size: 14px;
             }
             QPushButton:hover { background-color: #219a52; }
@@ -1588,12 +1627,12 @@ class ChatWidget(QWidget):
         # 清空按钮
         self.clear_btn = QPushButton("清空")
         self.clear_btn.clicked.connect(self._clear_chat)
-        self.clear_btn.setFixedSize(48, 48)
+        self.clear_btn.setFixedSize(44, 44)
         self.clear_btn.setStyleSheet("""
             QPushButton {
                 background-color: #95a5a6; color: white;
-                border: none; border-radius: 8px;
-                font-size: 13px;
+                border: none; border-radius: 6px;
+                font-size: 12px;
             }
             QPushButton:hover { background-color: #7f8c8d; }
         """)
@@ -1759,7 +1798,7 @@ class ChatWidget(QWidget):
             if mem_count > 0:
                 conn_msg += f"  |  已加载 {mem_count} 条记忆"
             if k_stats["knowledge_count"] > 0 or k_stats["user_data_count"] > 0:
-                conn_msg += (f"  |  补血站: {k_stats['knowledge_count']} 条知识, "
+                conn_msg += (f"  |  知识库: {k_stats['knowledge_count']} 条知识, "
                              f"{k_stats['user_data_count']} 条实验数据")
             self._add_system_message(conn_msg)
 
@@ -1816,7 +1855,7 @@ class ChatWidget(QWidget):
             total = stats["knowledge_count"] + stats["user_data_count"]
             if total > 0:
                 self._add_system_message(
-                    f"补血站已更新: {stats['knowledge_count']} 条知识, "
+                    f"知识库已更新: {stats['knowledge_count']} 条知识, "
                     f"{stats['user_data_count']} 条实验数据"
                 )
 
