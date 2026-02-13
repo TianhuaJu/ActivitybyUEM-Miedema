@@ -57,8 +57,13 @@ class AlloyThermolCalProGUI(QMainWindow):
 	def __init__ (self):
 		super().__init__()
 		self.setWindowTitle("AlloyThermolCal Pro - 合金热力学计算专业版")
-		self.resize(1400, 1000)
-		self.setMinimumSize(1000, 1200)
+		self.setMinimumSize(900, 600)
+
+		# 根据屏幕大小自适应初始窗口尺寸
+		screen = QGuiApplication.primaryScreen().availableGeometry()
+		w = min(1400, int(screen.width() * 0.82))
+		h = min(900, int(screen.height() * 0.82))
+		self.resize(w, h)
 		
 		# 窗口居中
 		self.center_window()

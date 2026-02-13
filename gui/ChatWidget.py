@@ -1344,17 +1344,16 @@ class ChatWidget(QWidget):
         layout.setContentsMargins(0, 4, 0, 0)
         layout.setSpacing(8)
 
-        # 输入框
+        # 输入框（紧凑高度）
         self.input_text = QTextEdit()
         self.input_text.setPlaceholderText("输入您的问题... (Ctrl+Enter 发送)")
-        self.input_text.setMinimumHeight(70)
-        self.input_text.setMaximumHeight(120)
+        self.input_text.setFixedHeight(56)
         self.input_text.setStyleSheet("""
             QTextEdit {
                 border: 2px solid #ddd;
                 border-radius: 8px;
-                padding: 8px 10px;
-                font-size: 15px;
+                padding: 6px 10px;
+                font-size: 14px;
             }
             QTextEdit:focus {
                 border-color: #3498db;
@@ -1362,42 +1361,35 @@ class ChatWidget(QWidget):
         """)
         layout.addWidget(self.input_text, stretch=1)
 
-        # 按钮容器（固定宽度，上下排列）
-        btn_layout = QVBoxLayout()
-        btn_layout.setSpacing(4)
-        btn_layout.setContentsMargins(0, 0, 0, 0)
-
         # 发送按钮
         self.send_btn = QPushButton("发送")
         self.send_btn.clicked.connect(self._send_message)
         self.send_btn.setEnabled(False)
-        self.send_btn.setFixedWidth(64)
+        self.send_btn.setFixedSize(80, 56)
         self.send_btn.setStyleSheet("""
             QPushButton {
                 background-color: #27ae60; color: white;
-                padding: 8px 0px; border: none; border-radius: 4px;
-                font-weight: bold; font-size: 14px;
+                border: none; border-radius: 8px;
+                font-weight: bold; font-size: 15px;
             }
             QPushButton:hover { background-color: #219a52; }
             QPushButton:disabled { background-color: #bdc3c7; }
         """)
-        btn_layout.addWidget(self.send_btn)
+        layout.addWidget(self.send_btn)
 
         # 清空按钮
         self.clear_btn = QPushButton("清空")
         self.clear_btn.clicked.connect(self._clear_chat)
-        self.clear_btn.setFixedWidth(64)
+        self.clear_btn.setFixedSize(52, 56)
         self.clear_btn.setStyleSheet("""
             QPushButton {
                 background-color: #95a5a6; color: white;
-                padding: 6px 0px; border: none; border-radius: 4px;
+                border: none; border-radius: 8px;
+                font-size: 13px;
             }
             QPushButton:hover { background-color: #7f8c8d; }
         """)
-        btn_layout.addWidget(self.clear_btn)
-
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
+        layout.addWidget(self.clear_btn)
 
         return widget
 
@@ -1629,17 +1621,11 @@ class ChatWidget(QWidget):
         self.send_btn.setText("取消")
         self.send_btn.setStyleSheet("""
             QPushButton {
-                background-color: #e74c3c;
-                color: white;
-                padding: 10px 25px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 14px;
+                background-color: #e74c3c; color: white;
+                border: none; border-radius: 8px;
+                font-weight: bold; font-size: 15px;
             }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
+            QPushButton:hover { background-color: #c0392b; }
         """)
         self.send_btn.disconnect()
         self.send_btn.clicked.connect(self._cancel_request)
@@ -1818,20 +1804,12 @@ class ChatWidget(QWidget):
         self.send_btn.setText("发送")
         self.send_btn.setStyleSheet("""
             QPushButton {
-                background-color: #27ae60;
-                color: white;
-                padding: 10px 25px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 14px;
+                background-color: #27ae60; color: white;
+                border: none; border-radius: 8px;
+                font-weight: bold; font-size: 15px;
             }
-            QPushButton:hover {
-                background-color: #219a52;
-            }
-            QPushButton:disabled {
-                background-color: #bdc3c7;
-            }
+            QPushButton:hover { background-color: #219a52; }
+            QPushButton:disabled { background-color: #bdc3c7; }
         """)
 
     def _clear_chat_display(self):
