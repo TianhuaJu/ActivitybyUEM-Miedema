@@ -898,7 +898,7 @@ class DocumentImportWorker(QThread):
 
 
 class KnowledgeDialog(QDialog):
-    """知识库管理对话框 — 查看AI学到的领域知识和用户提供的实验数据"""
+    """补血站（知识库）管理对话框 — 查看AI学到的领域知识和用户提供的实验数据"""
 
     _K_CATEGORIES = {
         "theory": "理论知识",
@@ -916,7 +916,7 @@ class KnowledgeDialog(QDialog):
         self._import_worker = None
         self._knowledge_entries = []
         self._data_entries = []
-        self.setWindowTitle("知识库管理")
+        self.setWindowTitle("补血站")
         self.setMinimumSize(780, 520)
         # 自适应屏幕尺寸
         try:
@@ -938,7 +938,7 @@ class KnowledgeDialog(QDialog):
         layout.setSpacing(8)
 
         # 标题
-        title = QLabel("知识库管理")
+        title = QLabel("补血站")
         title.setStyleSheet(
             "font-size:18px; font-weight:bold; color:#2c3e50; margin-bottom:2px;"
         )
@@ -1443,10 +1443,35 @@ class ChatWidget(QWidget):
         self.api_key_label.setVisible(False)
         self.api_key_input.setVisible(False)
 
-        row1.addStretch()
+        # 记忆管理按钮
+        self.memory_btn = QPushButton("记忆管理")
+        self.memory_btn.setToolTip("查看和管理AI助手的持久记忆（计算偏好、常用体系等）")
+        self.memory_btn.clicked.connect(self._open_memory_dialog)
+        self.memory_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #8e44ad; color: white;
+                padding: 5px 10px; border: none; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #7d3c98; }
+        """)
+        row1.addWidget(self.memory_btn)
+
+        # 补血站按钮（知识库）
+        self.knowledge_btn = QPushButton("补血站")
+        self.knowledge_btn.setToolTip("查看AI学到的领域知识和用户提供的实验数据")
+        self.knowledge_btn.clicked.connect(self._open_knowledge_dialog)
+        self.knowledge_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #16a085; color: white;
+                padding: 5px 10px; border: none; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #138d75; }
+        """)
+        row1.addWidget(self.knowledge_btn)
+
         outer.addLayout(row1)
 
-        # ---- 第二行：连接 / 状态 / 工具按钮 ----
+        # ---- 第二行：连接 / 状态 ----
         row2 = QHBoxLayout()
         row2.setSpacing(8)
 
@@ -1469,32 +1494,6 @@ class ChatWidget(QWidget):
         row2.addWidget(self.status_label)
 
         row2.addStretch()
-
-        # 记忆管理按钮
-        self.memory_btn = QPushButton("记忆管理")
-        self.memory_btn.setToolTip("查看和管理AI助手的持久记忆（计算偏好、常用体系等）")
-        self.memory_btn.clicked.connect(self._open_memory_dialog)
-        self.memory_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #8e44ad; color: white;
-                padding: 5px 12px; border: none; border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #7d3c98; }
-        """)
-        row2.addWidget(self.memory_btn)
-
-        # 知识库管理按钮
-        self.knowledge_btn = QPushButton("知识库")
-        self.knowledge_btn.setToolTip("查看AI学到的领域知识和用户提供的实验数据")
-        self.knowledge_btn.clicked.connect(self._open_knowledge_dialog)
-        self.knowledge_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #16a085; color: white;
-                padding: 5px 12px; border: none; border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #138d75; }
-        """)
-        row2.addWidget(self.knowledge_btn)
 
         outer.addLayout(row2)
 
@@ -1556,12 +1555,12 @@ class ChatWidget(QWidget):
         # 输入框（紧凑高度）
         self.input_text = QTextEdit()
         self.input_text.setPlaceholderText("输入您的问题... (Ctrl+Enter 发送)")
-        self.input_text.setFixedHeight(56)
+        self.input_text.setFixedHeight(48)
         self.input_text.setStyleSheet("""
             QTextEdit {
                 border: 2px solid #ddd;
                 border-radius: 8px;
-                padding: 6px 10px;
+                padding: 4px 10px;
                 font-size: 14px;
             }
             QTextEdit:focus {
@@ -1574,12 +1573,12 @@ class ChatWidget(QWidget):
         self.send_btn = QPushButton("发送")
         self.send_btn.clicked.connect(self._send_message)
         self.send_btn.setEnabled(False)
-        self.send_btn.setFixedSize(80, 56)
+        self.send_btn.setFixedSize(64, 48)
         self.send_btn.setStyleSheet("""
             QPushButton {
                 background-color: #27ae60; color: white;
                 border: none; border-radius: 8px;
-                font-weight: bold; font-size: 15px;
+                font-weight: bold; font-size: 14px;
             }
             QPushButton:hover { background-color: #219a52; }
             QPushButton:disabled { background-color: #bdc3c7; }
@@ -1589,7 +1588,7 @@ class ChatWidget(QWidget):
         # 清空按钮
         self.clear_btn = QPushButton("清空")
         self.clear_btn.clicked.connect(self._clear_chat)
-        self.clear_btn.setFixedSize(52, 56)
+        self.clear_btn.setFixedSize(48, 48)
         self.clear_btn.setStyleSheet("""
             QPushButton {
                 background-color: #95a5a6; color: white;
@@ -1760,7 +1759,7 @@ class ChatWidget(QWidget):
             if mem_count > 0:
                 conn_msg += f"  |  已加载 {mem_count} 条记忆"
             if k_stats["knowledge_count"] > 0 or k_stats["user_data_count"] > 0:
-                conn_msg += (f"  |  知识库: {k_stats['knowledge_count']} 条知识, "
+                conn_msg += (f"  |  补血站: {k_stats['knowledge_count']} 条知识, "
                              f"{k_stats['user_data_count']} 条实验数据")
             self._add_system_message(conn_msg)
 
@@ -1817,7 +1816,7 @@ class ChatWidget(QWidget):
             total = stats["knowledge_count"] + stats["user_data_count"]
             if total > 0:
                 self._add_system_message(
-                    f"知识库已更新: {stats['knowledge_count']} 条知识, "
+                    f"补血站已更新: {stats['knowledge_count']} 条知识, "
                     f"{stats['user_data_count']} 条实验数据"
                 )
 
@@ -1843,7 +1842,7 @@ class ChatWidget(QWidget):
             QPushButton {
                 background-color: #e74c3c; color: white;
                 border: none; border-radius: 8px;
-                font-weight: bold; font-size: 15px;
+                font-weight: bold; font-size: 14px;
             }
             QPushButton:hover { background-color: #c0392b; }
         """)
@@ -2026,7 +2025,7 @@ class ChatWidget(QWidget):
             QPushButton {
                 background-color: #27ae60; color: white;
                 border: none; border-radius: 8px;
-                font-weight: bold; font-size: 15px;
+                font-weight: bold; font-size: 14px;
             }
             QPushButton:hover { background-color: #219a52; }
             QPushButton:disabled { background-color: #bdc3c7; }
