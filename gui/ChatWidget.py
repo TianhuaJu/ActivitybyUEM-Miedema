@@ -27,6 +27,30 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 
+# ============= Ollama模型工具调用能力白名单 =============
+# 已知支持工具调用的模型家族前缀（不区分大小写）
+_TOOL_CAPABLE_PREFIXES = (
+    "qwen",
+    "llama3.1", "llama3.2", "llama3.3", "llama-3.1", "llama-3.2", "llama-3.3",
+    "mistral", "mixtral",
+    "command-r",
+    "firefunction",
+    "nemotron",
+    "granite",
+    "phi4",
+    "deepseek-v2", "deepseek-v3",
+    "glm4", "glm-4",
+    "internlm",
+    "hermes3",
+)
+
+
+def _is_tool_capable(model_name: str) -> bool:
+    """检查Ollama模型是否支持工具调用"""
+    name = model_name.lower().split(":")[0]
+    return any(name.startswith(p.lower()) for p in _TOOL_CAPABLE_PREFIXES)
+
+
 # ============= LaTeX + Markdown → HTML 渲染 =============
 
 _LATEX_GREEK = {
@@ -1069,6 +1093,7 @@ class ChatWidget(QWidget):
             base = self._get_ollama_base()
             self.model_combo.addItems(["qwen3:8b", "qwen3:4b", "llama3.2:3b", "mistral:7b"])
             self._add_system_message(f"无法连接 {base}，使用默认模型列表")
+        self._mark_non_tool_models()
 
     def _update_model_list(self, provider: str):
         """更新模型列表（ollama自动检测本地已安装模型）"""
@@ -1078,9 +1103,10 @@ class ChatWidget(QWidget):
             models = self._fetch_ollama_models()
             if models:
                 self.model_combo.addItems(models)
-                return
-            # ollama未运行时的回退列表
-            self.model_combo.addItems(["qwen3:8b", "qwen3:4b", "llama3.2:3b", "mistral:7b"])
+            else:
+                # ollama未运行时的回退列表
+                self.model_combo.addItems(["qwen3:8b", "qwen3:4b", "llama3.2:3b", "mistral:7b"])
+            self._mark_non_tool_models()
             return
 
         model_lists = {
@@ -1094,10 +1120,37 @@ class ChatWidget(QWidget):
 
         self.model_combo.addItems(model_lists.get(provider, []))
 
+    def _mark_non_tool_models(self):
+        """标记不支持工具调用的Ollama模型为禁用状态"""
+        first_capable = -1
+        for i in range(self.model_combo.count()):
+            name = self.model_combo.itemText(i)
+            if _is_tool_capable(name):
+                if first_capable == -1:
+                    first_capable = i
+            else:
+                # 追加提示文字并禁用该项
+                self.model_combo.setItemText(i, f"{name}  (不支持工具调用)")
+                item = self.model_combo.model().item(i)
+                if item:
+                    item.setEnabled(False)
+        # 自动选中第一个支持工具调用的模型
+        if first_capable >= 0:
+            self.model_combo.setCurrentIndex(first_capable)
+
     def _connect_llm(self):
         """连接LLM后端"""
+        # 保存旧会话
+        if self.agent:
+            try:
+                self.agent.save_session()
+            except Exception:
+                pass
+
         provider = self.provider_combo.currentText()
         model = self.model_combo.currentText()
+        # 清理模型名中的能力标注后缀
+        model = re.sub(r'\s*\(不支持工具调用\)\s*$', '', model)
         api_key = self.api_key_input.text().strip() or None
 
         # 构建自定义base_url（仅ollama使用服务器地址输入框）
@@ -1131,12 +1184,28 @@ class ChatWidget(QWidget):
             self.send_btn.setEnabled(True)
             self.connect_btn.setText("重新连接")
 
-            # 显示记忆状态
+            # 清空当前显示，准备恢复历史
+            self._clear_chat_display()
+
+            # 显示连接和记忆状态
             mem_count = len(self.agent.memory.get_all())
             conn_msg = f"已成功连接到 {provider} ({model})"
             if mem_count > 0:
                 conn_msg += f"  |  已加载 {mem_count} 条记忆"
             self._add_system_message(conn_msg)
+
+            # 恢复上次对话历史到GUI
+            restored_msgs = self.agent.get_restored_messages()
+            if restored_msgs:
+                self._add_system_message(
+                    f"-- 已恢复上次对话历史 ({len(restored_msgs)} 条消息) --"
+                )
+                for msg in restored_msgs:
+                    if msg["role"] == "user":
+                        self._add_user_message(msg["content"])
+                    else:
+                        self._add_assistant_message(msg["content"])
+                self._add_system_message("-- 历史对话结束，请继续提问 --")
 
         except Exception as e:
             self.agent = None
@@ -1381,13 +1450,16 @@ class ChatWidget(QWidget):
             }
         """)
 
-    def _clear_chat(self):
-        """清空对话"""
-        # 清空消息
+    def _clear_chat_display(self):
+        """清空对话区域显示（不重置代理）"""
         while self.messages_layout.count():
             item = self.messages_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+
+    def _clear_chat(self):
+        """清空对话"""
+        self._clear_chat_display()
 
         # 重置代理
         if self.agent:

@@ -273,7 +273,8 @@ class ChatAgent:
         max_tool_iterations: int = 10,
         on_tool_call: Callable[[str, Dict], None] = None,
         on_tool_result: Callable[[str, str], None] = None,
-        on_response: Callable[[str], None] = None
+        on_response: Callable[[str], None] = None,
+        restore_history: bool = True
     ):
         """
         初始化对话代理
@@ -298,6 +299,8 @@ class ChatAgent:
             工具结果回调 fn(tool_name, result_json)
         on_response : callable, optional
             响应回调 fn(content)
+        restore_history : bool
+            是否恢复上次对话历史到当前会话（默认True）
         """
         self.backend = create_backend(provider, api_key, model, base_url=base_url)
         self.memory = MemoryStore()
@@ -318,6 +321,11 @@ class ChatAgent:
             prompt += "\n" + history_context
         self.session.add_message("system", prompt)
 
+        # 恢复上一次对话历史
+        self._restored_messages: List[Dict[str, str]] = []
+        if restore_history:
+            self._restore_last_session()
+
     def get_available_providers(self) -> List[str]:
         """获取可用的LLM提供商列表"""
         return list(BACKEND_CONFIGS.keys())
@@ -329,6 +337,24 @@ class ChatAgent:
     def get_available_models(self) -> List[str]:
         """获取当前后端的可用模型列表"""
         return self.backend.get_available_models()
+
+    def _restore_last_session(self):
+        """恢复上一次对话的历史消息到当前会话（仅user和assistant消息）"""
+        previous = self.memory.load_latest_session()
+        if not previous:
+            return
+        restored = []
+        for msg in previous:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role in ("user", "assistant") and content.strip():
+                self.session.add_message(role, content)
+                restored.append({"role": role, "content": content})
+        self._restored_messages = restored
+
+    def get_restored_messages(self) -> List[Dict[str, str]]:
+        """获取本次恢复的历史消息列表"""
+        return self._restored_messages
 
     def chat(self, user_message: str) -> str:
         """
