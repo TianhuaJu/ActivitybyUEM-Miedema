@@ -1407,8 +1407,8 @@ class ChatWidget(QWidget):
     def setup_ui(self):
         """设置界面"""
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(6)
-        main_layout.setContentsMargins(6, 6, 6, 6)
+        main_layout.setSpacing(4)
+        main_layout.setContentsMargins(6, 4, 6, 4)
 
         # 顶部：LLM配置区域
         config_group = self._create_config_group()
@@ -1423,117 +1423,139 @@ class ChatWidget(QWidget):
         main_layout.addWidget(input_area)
 
     def _create_config_group(self) -> QGroupBox:
-        """创建LLM配置组（两行布局，避免窗口窄时遮挡）"""
+        """创建LLM配置组（两行紧凑布局）"""
         group = QGroupBox("LLM 配置")
+        group.setStyleSheet("""
+            QGroupBox {
+                font-size: 12px; font-weight: bold; color: #555;
+                border: 1px solid #ddd; border-radius: 4px;
+                margin-top: 6px; padding-top: 4px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 8px; padding: 0 4px;
+            }
+        """)
         outer = QVBoxLayout(group)
-        outer.setSpacing(6)
-        outer.setContentsMargins(8, 12, 8, 8)
+        outer.setSpacing(4)
+        outer.setContentsMargins(6, 14, 6, 4)
 
-        # ---- 第一行：连接设置 ----
+        # ---- 第一行：提供商 / 地址 / 模型 / 刷新 / API Key ----
         row1 = QHBoxLayout()
-        row1.setSpacing(6)
+        row1.setSpacing(4)
 
-        # 提供商选择
-        row1.addWidget(QLabel("提供商:"))
+        lbl_style = "font-size:12px; color:#555; font-weight:normal;"
+
+        lbl = QLabel("提供商:")
+        lbl.setStyleSheet(lbl_style)
+        row1.addWidget(lbl)
         self.provider_combo = QComboBox()
         self.provider_combo.addItems([
             "ollama", "openai", "claude", "gemini", "deepseek", "kimichat"
         ])
         self.provider_combo.setCurrentText("ollama")
         self.provider_combo.currentTextChanged.connect(self._on_provider_changed)
-        self.provider_combo.setMinimumWidth(90)
+        self.provider_combo.setMinimumWidth(80)
+        self.provider_combo.setStyleSheet("font-size:12px; padding:2px 4px;")
         row1.addWidget(self.provider_combo)
 
-        # 服务器地址（局域网Ollama等场景）
         self.server_label = QLabel("地址:")
+        self.server_label.setStyleSheet(lbl_style)
         row1.addWidget(self.server_label)
         self.server_input = QLineEdit()
         self.server_input.setPlaceholderText("localhost:11434")
-        self.server_input.setMinimumWidth(130)
-        self.server_input.setMaximumWidth(180)
-        row1.addWidget(self.server_input)
+        self.server_input.setMinimumWidth(120)
+        self.server_input.setStyleSheet("font-size:12px; padding:2px 4px;")
+        row1.addWidget(self.server_input, stretch=1)
 
-        # 模型选择
-        row1.addWidget(QLabel("模型:"))
+        lbl2 = QLabel("模型:")
+        lbl2.setStyleSheet(lbl_style)
+        row1.addWidget(lbl2)
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)
-        self.model_combo.setMinimumWidth(160)
+        self.model_combo.setMinimumWidth(140)
+        self.model_combo.setStyleSheet("font-size:12px; padding:2px 4px;")
         self._update_model_list("ollama")
-        row1.addWidget(self.model_combo)
+        row1.addWidget(self.model_combo, stretch=1)
 
-        # 刷新模型按钮
         self.refresh_btn = QPushButton("刷新")
         self.refresh_btn.setToolTip("从服务器获取可用模型列表")
         self.refresh_btn.clicked.connect(self._refresh_models)
-        self.refresh_btn.setFixedWidth(48)
+        self.refresh_btn.setFixedHeight(24)
         self.refresh_btn.setStyleSheet("""
             QPushButton {
-                background-color: #95a5a6; color: white;
-                padding: 5px 0px; border: none; border-radius: 4px;
+                background-color: #95a5a6; color: white; font-size:12px;
+                padding: 2px 8px; border: none; border-radius: 3px;
             }
             QPushButton:hover { background-color: #7f8c8d; }
         """)
         row1.addWidget(self.refresh_btn)
 
-        # API Key 输入（仅非本地模型时显示）
-        self.api_key_label = QLabel("API Key:")
+        # API Key（仅非本地模型时显示）
+        self.api_key_label = QLabel("Key:")
+        self.api_key_label.setStyleSheet(lbl_style)
         row1.addWidget(self.api_key_label)
         self.api_key_input = QLineEdit()
         self.api_key_input.setEchoMode(QLineEdit.Password)
-        self.api_key_input.setPlaceholderText("请输入API Key")
-        self.api_key_input.setMinimumWidth(140)
+        self.api_key_input.setPlaceholderText("API Key")
+        self.api_key_input.setMinimumWidth(100)
+        self.api_key_input.setStyleSheet("font-size:12px; padding:2px 4px;")
         row1.addWidget(self.api_key_input)
-        # 默认ollama时隐藏API Key
         self.api_key_label.setVisible(False)
         self.api_key_input.setVisible(False)
 
-        # 连接按钮（居中位置）
+        outer.addLayout(row1)
+
+        # ---- 第二行：连接 / 状态 / 记忆管理 / 知识库管理 ----
+        row2 = QHBoxLayout()
+        row2.setSpacing(4)
+
         self.connect_btn = QPushButton("连接")
         self.connect_btn.clicked.connect(self._connect_llm)
+        self.connect_btn.setFixedHeight(24)
         self.connect_btn.setStyleSheet("""
             QPushButton {
-                background-color: #3498db; color: white;
-                padding: 5px 14px; border: none; border-radius: 4px;
+                background-color: #3498db; color: white; font-size:12px;
+                padding: 2px 14px; border: none; border-radius: 3px;
                 font-weight: bold;
             }
             QPushButton:hover { background-color: #2980b9; }
         """)
-        row1.addWidget(self.connect_btn)
+        row2.addWidget(self.connect_btn)
 
-        # 状态指示
         self.status_label = QLabel("未连接")
         self.status_label.setStyleSheet("color: #e74c3c; font-weight: bold; font-size: 12px;")
-        row1.addWidget(self.status_label)
+        row2.addWidget(self.status_label)
 
-        row1.addStretch()
+        row2.addStretch()
 
-        # 记忆管理按钮
         self.memory_btn = QPushButton("记忆管理")
         self.memory_btn.setToolTip("查看和管理AI助手的持久记忆（计算偏好、常用体系等）")
         self.memory_btn.clicked.connect(self._open_memory_dialog)
+        self.memory_btn.setFixedHeight(24)
         self.memory_btn.setStyleSheet("""
             QPushButton {
-                background-color: #8e44ad; color: white;
-                padding: 5px 10px; border: none; border-radius: 4px;
+                background-color: #8e44ad; color: white; font-size:12px;
+                padding: 2px 10px; border: none; border-radius: 3px;
             }
             QPushButton:hover { background-color: #7d3c98; }
         """)
-        row1.addWidget(self.memory_btn)
+        row2.addWidget(self.memory_btn)
 
-        # 知识库管理按钮
         self.knowledge_btn = QPushButton("知识库管理")
         self.knowledge_btn.setToolTip("查看AI学到的领域知识和用户提供的实验数据")
         self.knowledge_btn.clicked.connect(self._open_knowledge_dialog)
+        self.knowledge_btn.setFixedHeight(24)
         self.knowledge_btn.setStyleSheet("""
             QPushButton {
-                background-color: #16a085; color: white;
-                padding: 5px 10px; border: none; border-radius: 4px;
+                background-color: #16a085; color: white; font-size:12px;
+                padding: 2px 10px; border: none; border-radius: 3px;
             }
             QPushButton:hover { background-color: #138d75; }
         """)
-        row1.addWidget(self.knowledge_btn)
+        row2.addWidget(self.knowledge_btn)
 
-        outer.addLayout(row1)
+        outer.addLayout(row2)
 
         return group
 
@@ -1587,19 +1609,19 @@ class ChatWidget(QWidget):
         """创建输入区域"""
         widget = QWidget()
         layout = QHBoxLayout(widget)
-        layout.setContentsMargins(0, 4, 0, 0)
-        layout.setSpacing(6)
+        layout.setContentsMargins(0, 2, 0, 0)
+        layout.setSpacing(4)
 
         # 输入框
         self.input_text = QTextEdit()
         self.input_text.setPlaceholderText("输入您的问题... (Ctrl+Enter 发送)")
-        self.input_text.setFixedHeight(44)
+        self.input_text.setFixedHeight(36)
         self.input_text.setStyleSheet("""
             QTextEdit {
-                border: 2px solid #ddd;
-                border-radius: 6px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
                 padding: 4px 8px;
-                font-size: 14px;
+                font-size: 13px;
             }
             QTextEdit:focus {
                 border-color: #3498db;
@@ -1608,16 +1630,16 @@ class ChatWidget(QWidget):
         self.input_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(self.input_text)
 
-        # 发送按钮（固定宽度，不会被压缩）
+        # 发送按钮
         self.send_btn = QPushButton("发送")
         self.send_btn.clicked.connect(self._send_message)
         self.send_btn.setEnabled(False)
-        self.send_btn.setFixedSize(56, 44)
+        self.send_btn.setFixedSize(50, 36)
         self.send_btn.setStyleSheet("""
             QPushButton {
                 background-color: #27ae60; color: white;
-                border: none; border-radius: 6px;
-                font-weight: bold; font-size: 14px;
+                border: none; border-radius: 4px;
+                font-weight: bold; font-size: 13px;
             }
             QPushButton:hover { background-color: #219a52; }
             QPushButton:disabled { background-color: #bdc3c7; }
@@ -1627,11 +1649,11 @@ class ChatWidget(QWidget):
         # 清空按钮
         self.clear_btn = QPushButton("清空")
         self.clear_btn.clicked.connect(self._clear_chat)
-        self.clear_btn.setFixedSize(44, 44)
+        self.clear_btn.setFixedSize(42, 36)
         self.clear_btn.setStyleSheet("""
             QPushButton {
                 background-color: #95a5a6; color: white;
-                border: none; border-radius: 6px;
+                border: none; border-radius: 4px;
                 font-size: 12px;
             }
             QPushButton:hover { background-color: #7f8c8d; }
@@ -1880,8 +1902,8 @@ class ChatWidget(QWidget):
         self.send_btn.setStyleSheet("""
             QPushButton {
                 background-color: #e74c3c; color: white;
-                border: none; border-radius: 8px;
-                font-weight: bold; font-size: 14px;
+                border: none; border-radius: 4px;
+                font-weight: bold; font-size: 13px;
             }
             QPushButton:hover { background-color: #c0392b; }
         """)
@@ -2063,8 +2085,8 @@ class ChatWidget(QWidget):
         self.send_btn.setStyleSheet("""
             QPushButton {
                 background-color: #27ae60; color: white;
-                border: none; border-radius: 8px;
-                font-weight: bold; font-size: 14px;
+                border: none; border-radius: 4px;
+                font-weight: bold; font-size: 13px;
             }
             QPushButton:hover { background-color: #219a52; }
             QPushButton:disabled { background-color: #bdc3c7; }
