@@ -869,13 +869,17 @@ class ChatWidget(QWidget):
         """)
         layout.addWidget(self.refresh_btn)
 
-        # API Key 输入
-        layout.addWidget(QLabel("API Key:"))
+        # API Key 输入（仅非本地模型时显示）
+        self.api_key_label = QLabel("API Key:")
+        layout.addWidget(self.api_key_label)
         self.api_key_input = QLineEdit()
         self.api_key_input.setEchoMode(QLineEdit.Password)
-        self.api_key_input.setPlaceholderText("本地模型无需填写")
+        self.api_key_input.setPlaceholderText("请输入API Key")
         self.api_key_input.setMinimumWidth(200)
         layout.addWidget(self.api_key_input)
+        # 默认ollama时隐藏API Key
+        self.api_key_label.setVisible(False)
+        self.api_key_input.setVisible(False)
 
         # 连接按钮
         self.connect_btn = QPushButton("连接")
@@ -1042,16 +1046,18 @@ class ChatWidget(QWidget):
         """提供商变更处理"""
         self._update_model_list(provider)
 
-        # 仅ollama显示服务器地址和刷新按钮
         is_ollama = (provider == "ollama")
+
+        # 仅ollama显示服务器地址和刷新按钮
         self.server_label.setVisible(is_ollama)
         self.server_input.setVisible(is_ollama)
         self.refresh_btn.setVisible(is_ollama)
 
-        # 更新API Key提示
-        if provider == "ollama":
-            self.api_key_input.setPlaceholderText("本地模型无需填写")
-        else:
+        # 仅非ollama显示API Key
+        self.api_key_label.setVisible(not is_ollama)
+        self.api_key_input.setVisible(not is_ollama)
+
+        if not is_ollama:
             placeholders = {
                 "openai": "sk-...",
                 "claude": "sk-ant-...",
