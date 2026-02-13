@@ -387,6 +387,44 @@ class ChatWorker(QThread):
             self.error_occurred.emit(str(e))
 
 
+# 右键菜单样式（浅色主题，与气泡风格统一）
+_CONTEXT_MENU_STYLE = """
+    QMenu {
+        background-color: #ffffff;
+        border: 1px solid #c0c0c0;
+        border-radius: 6px;
+        padding: 4px 0px;
+    }
+    QMenu::item {
+        padding: 6px 28px 6px 12px;
+        color: #2c3e50;
+        font-size: 13px;
+    }
+    QMenu::item:selected {
+        background-color: #e8f4f8;
+        color: #1a5276;
+    }
+    QMenu::item:disabled {
+        color: #aaaaaa;
+    }
+    QMenu::separator {
+        height: 1px;
+        background: #e0e0e0;
+        margin: 3px 8px;
+    }
+"""
+
+
+class StyledTextBrowser(QTextBrowser):
+    """支持浅色右键菜单的 QTextBrowser"""
+
+    def contextMenuEvent(self, event):
+        menu = self.createStandardContextMenu()
+        menu.setStyleSheet(_CONTEXT_MENU_STYLE)
+        menu.exec_(event.globalPos())
+        menu.deleteLater()
+
+
 class MessageBubble(QFrame):
     """消息气泡组件"""
 
@@ -411,14 +449,20 @@ class MessageBubble(QFrame):
             content_label = QLabel()
             content_label.setText(text)
             content_label.setWordWrap(True)
-            content_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            content_label.setTextInteractionFlags(
+                Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+            )
+            content_label.setContextMenuPolicy(Qt.CustomContextMenu)
+            content_label.customContextMenuRequested.connect(
+                lambda pos, lbl=content_label: self._show_label_context_menu(lbl, pos)
+            )
             content_label.setStyleSheet("""
                 background: transparent;
                 font-size: 16px;
                 padding: 5px;
             """)
         else:
-            content_label = QTextBrowser()
+            content_label = StyledTextBrowser()
             content_label.setOpenExternalLinks(False)
             content_label.setHtml(format_message_html(text))
             content_label.setStyleSheet("""
@@ -457,6 +501,26 @@ class MessageBubble(QFrame):
                 margin: 5px;
             }}
         """)
+
+    @staticmethod
+    def _show_label_context_menu(label: QLabel, pos):
+        """为 QLabel 显示浅色风格的右键菜单"""
+        from PyQt5.QtWidgets import QMenu, QApplication
+        menu = QMenu(label)
+        menu.setStyleSheet(_CONTEXT_MENU_STYLE)
+
+        copy_action = menu.addAction("复制")
+        copy_action.setEnabled(label.hasSelectedText())
+        select_all_action = menu.addAction("全选")
+
+        action = menu.exec_(label.mapToGlobal(pos))
+        if action == copy_action:
+            QApplication.clipboard().setText(label.selectedText())
+        elif action == select_all_action:
+            # QLabel 没有 selectAll()，通过 setSelection 实现
+            cursor = label.cursorForPosition(pos)
+            label.setSelection(0, len(label.text()))
+        menu.deleteLater()
 
 
 class ToolCallBubble(QFrame):
