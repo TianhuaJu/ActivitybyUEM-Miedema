@@ -48,6 +48,7 @@ from llm.tools import (
 )
 
 from llm.knowledge import KnowledgeStore
+from llm.vision_recognition import VisionRecognizer
 
 from llm.chat_agent import (
     ChatAgent,
@@ -77,8 +78,9 @@ __all__ = [
     "TOOL_SCHEMAS",
     "TOOL_DESCRIPTIONS",
 
-    # Knowledge
+    # Knowledge & Vision
     "KnowledgeStore",
+    "VisionRecognizer",
 
     # Agent
     "ChatAgent",

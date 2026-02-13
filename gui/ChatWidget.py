@@ -867,21 +867,32 @@ class DocumentImportWorker(QThread):
     progress = pyqtSignal(int, int, str)  # (current, total, message)
     finished = pyqtSignal(dict)            # result dict
 
-    def __init__(self, filepath, knowledge_store, category, confidence):
+    def __init__(self, filepath, knowledge_store, category, confidence,
+                 llm_config: dict = None):
         super().__init__()
         self.filepath = filepath
         self.knowledge_store = knowledge_store
         self.category = category
         self.confidence = confidence
+        self.llm_config = llm_config
 
     def run(self):
         from llm.document_learner import import_document
+        # 创建AI视觉识别器（如果已配置LLM）
+        vision = None
+        if self.llm_config:
+            try:
+                from llm.vision_recognition import VisionRecognizer
+                vision = VisionRecognizer(**self.llm_config)
+            except Exception:
+                pass
         result = import_document(
             filepath=self.filepath,
             knowledge_store=self.knowledge_store,
             category=self.category,
             confidence=self.confidence,
-            progress_callback=lambda cur, tot, msg: self.progress.emit(cur, tot, msg)
+            progress_callback=lambda cur, tot, msg: self.progress.emit(cur, tot, msg),
+            vision_recognizer=vision
         )
         self.finished.emit(result)
 
@@ -898,9 +909,10 @@ class KnowledgeDialog(QDialog):
         "general": "其他",
     }
 
-    def __init__(self, knowledge_store, parent=None):
+    def __init__(self, knowledge_store, llm_config: dict = None, parent=None):
         super().__init__(parent)
         self.knowledge_store = knowledge_store
+        self.llm_config = llm_config  # LLM配置，用于AI视觉识别
         self._import_worker = None
         self._knowledge_entries = []
         self._data_entries = []
@@ -1290,7 +1302,8 @@ class KnowledgeDialog(QDialog):
         self.import_btn.setEnabled(False)
 
         self._import_worker = DocumentImportWorker(
-            filepath, self.knowledge_store, category, confidence
+            filepath, self.knowledge_store, category, confidence,
+            llm_config=self.llm_config
         )
         self._import_worker.progress.connect(self._on_import_progress)
         self._import_worker.finished.connect(self._on_import_finished)
@@ -1324,14 +1337,16 @@ class KnowledgeDialog(QDialog):
             tables = result.get("tables_extracted", 0)
             images = result.get("images_processed", 0)
             if tables or images:
-                msg += "\n\n增强识别:"
+                ai_used = result.get("ai_vision", False)
+                mode = "AI视觉" if ai_used else "文本/OCR"
+                msg += f"\n\n增强识别（{mode}模式）:"
                 if tables:
                     msg += f"\n  表格提取: {tables} 个"
                 if images:
                     msg += f"\n  图片处理: {images} 处"
-                if not result.get("ocr_available", False):
-                    msg += ("\n\n提示: 未检测到 Tesseract-OCR，图片文字未能识别。"
-                            "\n安装 Tesseract 后可识别图中文字内容。")
+                if not ai_used and not result.get("ocr_available", False):
+                    msg += ("\n\n提示: 连接LLM后导入可启用AI视觉识别，"
+                            "获得更准确的图片和表格识别效果。")
             QMessageBox.information(self, "导入成功", msg)
             self._refresh_all()
 
@@ -1784,7 +1799,18 @@ class ChatWidget(QWidget):
         """打开知识库管理对话框"""
         from llm.knowledge import KnowledgeStore
         store = self.agent.knowledge if self.agent else KnowledgeStore()
-        dlg = KnowledgeDialog(store, parent=self)
+        # 获取当前LLM配置，用于AI视觉识别
+        llm_config = None
+        if self.agent:
+            provider = self.provider_combo.currentText().lower()
+            api_key = self.api_key_input.text().strip() or None
+            model = self.model_combo.currentText()
+            base_url = None
+            if provider == "ollama":
+                base_url = self._get_ollama_base()
+            llm_config = {"provider": provider, "api_key": api_key,
+                          "model": model, "base_url": base_url}
+        dlg = KnowledgeDialog(store, llm_config=llm_config, parent=self)
         dlg.exec_()
         if self.agent:
             stats = store.get_stats()
