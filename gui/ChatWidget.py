@@ -1154,7 +1154,8 @@ class ChatWidget(QWidget):
     def setup_ui(self):
         """设置界面"""
         main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(10)
+        main_layout.setSpacing(6)
+        main_layout.setContentsMargins(6, 6, 6, 6)
 
         # 顶部：LLM配置区域
         config_group = self._create_config_group()
@@ -1169,87 +1170,96 @@ class ChatWidget(QWidget):
         main_layout.addWidget(input_area)
 
     def _create_config_group(self) -> QGroupBox:
-        """创建LLM配置组"""
+        """创建LLM配置组（两行布局，避免窗口窄时遮挡）"""
         group = QGroupBox("LLM 配置")
-        layout = QHBoxLayout(group)
+        outer = QVBoxLayout(group)
+        outer.setSpacing(6)
+        outer.setContentsMargins(8, 12, 8, 8)
+
+        # ---- 第一行：连接设置 ----
+        row1 = QHBoxLayout()
+        row1.setSpacing(6)
 
         # 提供商选择
-        layout.addWidget(QLabel("提供商:"))
+        row1.addWidget(QLabel("提供商:"))
         self.provider_combo = QComboBox()
         self.provider_combo.addItems([
             "ollama", "openai", "claude", "gemini", "deepseek", "kimichat"
         ])
         self.provider_combo.setCurrentText("ollama")
         self.provider_combo.currentTextChanged.connect(self._on_provider_changed)
-        layout.addWidget(self.provider_combo)
+        self.provider_combo.setMinimumWidth(90)
+        row1.addWidget(self.provider_combo)
 
         # 服务器地址（局域网Ollama等场景）
         self.server_label = QLabel("地址:")
-        layout.addWidget(self.server_label)
+        row1.addWidget(self.server_label)
         self.server_input = QLineEdit()
         self.server_input.setPlaceholderText("localhost:11434")
-        self.server_input.setMinimumWidth(150)
-        self.server_input.setMaximumWidth(200)
-        layout.addWidget(self.server_input)
+        self.server_input.setMinimumWidth(130)
+        self.server_input.setMaximumWidth(180)
+        row1.addWidget(self.server_input)
 
         # 模型选择
-        layout.addWidget(QLabel("模型:"))
+        row1.addWidget(QLabel("模型:"))
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)
-        self.model_combo.setMinimumWidth(200)
+        self.model_combo.setMinimumWidth(160)
         self._update_model_list("ollama")
-        layout.addWidget(self.model_combo)
+        row1.addWidget(self.model_combo)
 
         # 刷新模型按钮
         self.refresh_btn = QPushButton("刷新")
         self.refresh_btn.setToolTip("从服务器获取可用模型列表")
         self.refresh_btn.clicked.connect(self._refresh_models)
+        self.refresh_btn.setFixedWidth(48)
         self.refresh_btn.setStyleSheet("""
             QPushButton {
-                background-color: #95a5a6;
-                color: white;
-                padding: 6px 12px;
-                border: none;
-                border-radius: 4px;
+                background-color: #95a5a6; color: white;
+                padding: 5px 0px; border: none; border-radius: 4px;
             }
             QPushButton:hover { background-color: #7f8c8d; }
         """)
-        layout.addWidget(self.refresh_btn)
+        row1.addWidget(self.refresh_btn)
 
         # API Key 输入（仅非本地模型时显示）
         self.api_key_label = QLabel("API Key:")
-        layout.addWidget(self.api_key_label)
+        row1.addWidget(self.api_key_label)
         self.api_key_input = QLineEdit()
         self.api_key_input.setEchoMode(QLineEdit.Password)
         self.api_key_input.setPlaceholderText("请输入API Key")
-        self.api_key_input.setMinimumWidth(200)
-        layout.addWidget(self.api_key_input)
+        self.api_key_input.setMinimumWidth(140)
+        row1.addWidget(self.api_key_input)
         # 默认ollama时隐藏API Key
         self.api_key_label.setVisible(False)
         self.api_key_input.setVisible(False)
+
+        row1.addStretch()
+        outer.addLayout(row1)
+
+        # ---- 第二行：连接 / 状态 / 工具按钮 ----
+        row2 = QHBoxLayout()
+        row2.setSpacing(8)
 
         # 连接按钮
         self.connect_btn = QPushButton("连接")
         self.connect_btn.clicked.connect(self._connect_llm)
         self.connect_btn.setStyleSheet("""
             QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 8px 20px;
-                border: none;
-                border-radius: 4px;
+                background-color: #3498db; color: white;
+                padding: 6px 18px; border: none; border-radius: 4px;
                 font-weight: bold;
             }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
+            QPushButton:hover { background-color: #2980b9; }
         """)
-        layout.addWidget(self.connect_btn)
+        row2.addWidget(self.connect_btn)
 
         # 状态指示
         self.status_label = QLabel("未连接")
         self.status_label.setStyleSheet("color: #e74c3c; font-weight: bold;")
-        layout.addWidget(self.status_label)
+        row2.addWidget(self.status_label)
+
+        row2.addStretch()
 
         # 记忆管理按钮
         self.memory_btn = QPushButton("记忆管理")
@@ -1257,15 +1267,12 @@ class ChatWidget(QWidget):
         self.memory_btn.clicked.connect(self._open_memory_dialog)
         self.memory_btn.setStyleSheet("""
             QPushButton {
-                background-color: #8e44ad;
-                color: white;
-                padding: 6px 14px;
-                border: none;
-                border-radius: 4px;
+                background-color: #8e44ad; color: white;
+                padding: 5px 12px; border: none; border-radius: 4px;
             }
             QPushButton:hover { background-color: #7d3c98; }
         """)
-        layout.addWidget(self.memory_btn)
+        row2.addWidget(self.memory_btn)
 
         # 知识库管理按钮
         self.knowledge_btn = QPushButton("知识库")
@@ -1273,17 +1280,14 @@ class ChatWidget(QWidget):
         self.knowledge_btn.clicked.connect(self._open_knowledge_dialog)
         self.knowledge_btn.setStyleSheet("""
             QPushButton {
-                background-color: #16a085;
-                color: white;
-                padding: 6px 14px;
-                border: none;
-                border-radius: 4px;
+                background-color: #16a085; color: white;
+                padding: 5px 12px; border: none; border-radius: 4px;
             }
             QPushButton:hover { background-color: #138d75; }
         """)
-        layout.addWidget(self.knowledge_btn)
+        row2.addWidget(self.knowledge_btn)
 
-        layout.addStretch()
+        outer.addLayout(row2)
 
         return group
 
@@ -1337,20 +1341,20 @@ class ChatWidget(QWidget):
         """创建输入区域"""
         widget = QWidget()
         layout = QHBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 4, 0, 0)
+        layout.setSpacing(8)
 
         # 输入框
         self.input_text = QTextEdit()
         self.input_text.setPlaceholderText("输入您的问题... (Ctrl+Enter 发送)")
-        self.input_text.setMinimumHeight(80)
-        self.input_text.setMaximumHeight(160)
+        self.input_text.setMinimumHeight(70)
+        self.input_text.setMaximumHeight(120)
         self.input_text.setStyleSheet("""
             QTextEdit {
                 border: 2px solid #ddd;
                 border-radius: 8px;
-                padding: 12px;
-                font-size: 16px;
-                line-height: 1.5;
+                padding: 8px 10px;
+                font-size: 15px;
             }
             QTextEdit:focus {
                 border-color: #3498db;
@@ -1358,49 +1362,41 @@ class ChatWidget(QWidget):
         """)
         layout.addWidget(self.input_text, stretch=1)
 
-        # 按钮容器
+        # 按钮容器（固定宽度，上下排列）
         btn_layout = QVBoxLayout()
+        btn_layout.setSpacing(4)
+        btn_layout.setContentsMargins(0, 0, 0, 0)
 
         # 发送按钮
         self.send_btn = QPushButton("发送")
         self.send_btn.clicked.connect(self._send_message)
         self.send_btn.setEnabled(False)
+        self.send_btn.setFixedWidth(64)
         self.send_btn.setStyleSheet("""
             QPushButton {
-                background-color: #27ae60;
-                color: white;
-                padding: 10px 25px;
-                border: none;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 14px;
+                background-color: #27ae60; color: white;
+                padding: 8px 0px; border: none; border-radius: 4px;
+                font-weight: bold; font-size: 14px;
             }
-            QPushButton:hover {
-                background-color: #219a52;
-            }
-            QPushButton:disabled {
-                background-color: #bdc3c7;
-            }
+            QPushButton:hover { background-color: #219a52; }
+            QPushButton:disabled { background-color: #bdc3c7; }
         """)
         btn_layout.addWidget(self.send_btn)
 
         # 清空按钮
         self.clear_btn = QPushButton("清空")
         self.clear_btn.clicked.connect(self._clear_chat)
+        self.clear_btn.setFixedWidth(64)
         self.clear_btn.setStyleSheet("""
             QPushButton {
-                background-color: #95a5a6;
-                color: white;
-                padding: 8px 20px;
-                border: none;
-                border-radius: 4px;
+                background-color: #95a5a6; color: white;
+                padding: 6px 0px; border: none; border-radius: 4px;
             }
-            QPushButton:hover {
-                background-color: #7f8c8d;
-            }
+            QPushButton:hover { background-color: #7f8c8d; }
         """)
         btn_layout.addWidget(self.clear_btn)
 
+        btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
         return widget
