@@ -377,6 +377,8 @@ class ChatAgent:
             memory_store=self.memory, knowledge_store=self.knowledge,
             skill_registry=self.skill_registry
         )
+        # 绑定工具桥接：让动态技能可以调用内置计算工具
+        self.skill_registry.bind_tools(self.tools)
         self.session = ChatSession()
         self.max_tool_iterations = max_tool_iterations
         self.on_tool_call = on_tool_call
