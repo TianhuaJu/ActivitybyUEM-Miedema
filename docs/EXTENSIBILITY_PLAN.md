@@ -48,12 +48,21 @@ AlloyThermolCal Pro 当前基于 UEM-Miedema 模型框架，提供即时同步�
 │                                                               │
 ├───────────────────────────────────────────────────────────────┤
 │                     Plugin Layer (新增)                        │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐│
-│  │ DFT      │ │ MD       │ │ CALPHAD  │ │ ML Potential     ││
-│  │ Adapter  │ │ Adapter  │ │ Adapter  │ │ Adapter          ││
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └───────┬──────────┘│
-│       │            │            │                │           │
-│  ┌────┴────────────┴────────────┴────────────────┴──────────┐│
+│  ┌──────────────────────────┐  ┌───────────┐ ┌────────────┐ │
+│  │ DFT Adapter (统一入口)   │  │ MD        │ │ ML         │ │
+│  │  ┌─────┐ ┌────┐ ┌─────┐ │  │ Adapter   │ │ Potential  │ │
+│  │  │VASP │ │ QE │ │GPAW │ │  │ (LAMMPS)  │ │ Adapter    │ │
+│  │  │     │ │    │ │     │ │  └─────┬─────┘ └─────┬──────┘ │
+│  │  └──┬──┘ └─┬──┘ └──┬──┘ │        │             │        │
+│  │     └──────┴───────┘    │        │             │        │
+│  │  ┌──────┐ ┌──────┐      │        │             │        │
+│  │  │ABINIT│ │ CP2K │      │        │             │        │
+│  │  └──┬───┘ └──┬───┘      │        │             │        │
+│  │     └────────┘          │        │             │        │
+│  │    DFTEngine (策略接口)  │        │             │        │
+│  └────────────┬─────────────┘        │             │        │
+│               │                      │             │        │
+│  ┌────────────┴──────────────────────┴─────────────┴───────┐│
 │  │              CalculationPlugin (抽象基类)                  ││
 │  │  - get_metadata()   返回插件元信息                        ││
 │  │  - get_tools()      返回工具定义列表                      ││
@@ -87,14 +96,21 @@ extensions/                          # 插件系统根目录
 ├── base.py                          # CalculationPlugin 抽象基类
 ├── registry.py                      # PluginRegistry 自动发现与注册
 ├── async_task.py                    # AsyncTaskQueue 异步任务队列
-├── tool_bridge.py                   # 插件→LLM工具 自动转换器
 │
-├── adapters/                        # 内置适配器（示例实现）
+├── engines/                         # DFT 计算引擎抽象层（策略模式）
 │   ├── __init__.py
-│   ├── ase_adapter.py              # ASE 轻量DFT/MD (Phase 2)
-│   ├── vasp_adapter.py             # VASP DFT 远程提交 (Phase 3)
-│   ├── lammps_adapter.py           # LAMMPS MD 远程提交 (Phase 3)
-│   └── calphad_adapter.py          # Thermo-Calc/OpenCalphad (Phase 3)
+│   ├── dft_engine.py               # DFTEngine 抽象基类 + 统一数据格式
+│   ├── vasp_engine.py              # VASP 引擎（商业）
+│   ├── qe_engine.py                # Quantum ESPRESSO 引擎（GPL）
+│   ├── abinit_engine.py            # ABINIT 引擎（GPL）
+│   ├── cp2k_engine.py              # CP2K 引擎（GPL，擅长大体系/AIMD）
+│   └── gpaw_engine.py              # GPAW 引擎（GPL，Python原生）
+│
+├── adapters/                        # 插件适配器
+│   ├── __init__.py
+│   ├── dft_adapter.py              # 统一 DFT 适配器（调度所有引擎）
+│   ├── ase_adapter.py              # ASE 轻量 DFT/MD (Phase 2)
+│   └── lammps_adapter.py           # LAMMPS MD 远程提交 (Phase 3)
 │
 └── contrib/                         # 第三方插件目录（用户扩展）
     └── README.md                    # 开发指南
