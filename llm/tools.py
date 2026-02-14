@@ -1754,6 +1754,17 @@ class ThermodynamicTools:
             except ValueError:
                 pass
 
+        # parameters: create_custom_tool 的参数定义可能被LLM序列化为字符串
+        if "parameters" in args and isinstance(args["parameters"], str):
+            try:
+                args["parameters"] = json.loads(args["parameters"])
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # tags: 可能传成逗号分隔的字符串
+        if "tags" in args and isinstance(args["tags"], str):
+            args["tags"] = [t.strip() for t in args["tags"].split(",") if t.strip()]
+
         return args
 
     def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:

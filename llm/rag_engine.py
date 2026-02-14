@@ -67,35 +67,42 @@ class RAGEngine:
         返回:
             格式化的参考上下文字符串，无结果时返回空串
         """
-        keywords = self._extract_keywords(query)
-        if not keywords:
+        try:
+            keywords = self._extract_keywords(query)
+            if not keywords:
+                return ""
+
+            # 用各关键词搜索，去重
+            seen_ids = set()
+            scored = []
+            for kw in keywords:
+                try:
+                    entries = self.store.search_knowledge(kw, limit=20)
+                except Exception:
+                    continue
+                for entry in entries:
+                    if entry.id not in seen_ids:
+                        seen_ids.add(entry.id)
+                        score = self._score(entry, keywords)
+                        scored.append((score, entry))
+
+            if not scored:
+                return ""
+
+            scored.sort(key=lambda x: x[0], reverse=True)
+            top = [e for _, e in scored[:top_k]]
+
+            # 标记已访问
+            for e in top:
+                try:
+                    self.store.increment_access(e.id)
+                except Exception:
+                    pass
+
+            return self._format(top)
+        except Exception:
+            # RAG 检索失败不应中断对话
             return ""
-
-        # 用各关键词搜索，去重
-        seen_ids = set()
-        scored = []
-        for kw in keywords:
-            entries = self.store.search_knowledge(kw, limit=20)
-            for entry in entries:
-                if entry.id not in seen_ids:
-                    seen_ids.add(entry.id)
-                    score = self._score(entry, keywords)
-                    scored.append((score, entry))
-
-        if not scored:
-            return ""
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-        top = [e for _, e in scored[:top_k]]
-
-        # 标记已访问
-        for e in top:
-            try:
-                self.store.increment_access(e.id)
-            except Exception:
-                pass
-
-        return self._format(top)
 
     def retrieve_user_data(self, query: str) -> str:
         """
@@ -107,48 +114,57 @@ class RAGEngine:
         返回:
             格式化的实验数据参考，无结果时返回空串
         """
-        elements = _ELEMENT_RE.findall(query)
-        if not elements:
+        try:
+            elements = _ELEMENT_RE.findall(query)
+            if not elements:
+                return ""
+
+            results = []
+            seen = set()
+            for el in elements:
+                for dtype in ["first_order", "second_order", "lnY0", "enthalpy"]:
+                    try:
+                        entries = self.store.query_user_data(
+                            data_type=dtype, solvent=el
+                        )
+                    except Exception:
+                        continue
+                    for e in entries:
+                        key = (e.data_type, e.solvent, e.solute_i, e.solute_j, e.value_type)
+                        if key not in seen:
+                            seen.add(key)
+                            results.append(e)
+                # 也搜索 solute_i
+                for dtype in ["first_order", "second_order", "lnY0"]:
+                    try:
+                        entries = self.store.query_user_data(
+                            data_type=dtype, solute_i=el
+                        )
+                    except Exception:
+                        continue
+                    for e in entries:
+                        key = (e.data_type, e.solvent, e.solute_i, e.solute_j, e.value_type)
+                        if key not in seen:
+                            seen.add(key)
+                            results.append(e)
+
+            if not results:
+                return ""
+
+            lines = ["[检索到的相关实验数据]"]
+            for e in results[:10]:
+                desc = f"{e.solvent}中 {e.solute_i}"
+                if e.solute_j:
+                    desc += f"/{e.solute_j}"
+                desc += f" {e.value_type}={e.value}"
+                if e.temperature:
+                    desc += f" (T={e.temperature}K)"
+                if e.reference:
+                    desc += f" 来源:{e.reference}"
+                lines.append(f"  - {desc}")
+            return "\n".join(lines)
+        except Exception:
             return ""
-
-        results = []
-        seen = set()
-        for el in elements:
-            for dtype in ["first_order", "second_order", "lnY0", "enthalpy"]:
-                entries = self.store.query_user_data(
-                    data_type=dtype, solvent=el
-                )
-                for e in entries:
-                    key = (e.data_type, e.solvent, e.solute_i, e.solute_j, e.value_type)
-                    if key not in seen:
-                        seen.add(key)
-                        results.append(e)
-            # 也搜索 solute_i
-            for dtype in ["first_order", "second_order", "lnY0"]:
-                entries = self.store.query_user_data(
-                    data_type=dtype, solute_i=el
-                )
-                for e in entries:
-                    key = (e.data_type, e.solvent, e.solute_i, e.solute_j, e.value_type)
-                    if key not in seen:
-                        seen.add(key)
-                        results.append(e)
-
-        if not results:
-            return ""
-
-        lines = ["[检索到的相关实验数据]"]
-        for e in results[:10]:
-            desc = f"{e.solvent}中 {e.solute_i}"
-            if e.solute_j:
-                desc += f"/{e.solute_j}"
-            desc += f" {e.value_type}={e.value}"
-            if e.temperature:
-                desc += f" (T={e.temperature}K)"
-            if e.reference:
-                desc += f" 来源:{e.reference}"
-            lines.append(f"  - {desc}")
-        return "\n".join(lines)
 
     # ---- 内部方法 ----
 

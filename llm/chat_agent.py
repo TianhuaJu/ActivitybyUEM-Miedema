@@ -474,7 +474,10 @@ class ChatAgent:
         # 获取工具定义（含内置 + 动态技能）
         tool_defs = self.tools.get_tool_definitions()
         if self.skill_registry:
-            tool_defs.extend(self.skill_registry.get_tool_definitions())
+            try:
+                tool_defs.extend(self.skill_registry.get_tool_definitions())
+            except Exception:
+                pass  # 技能加载失败不影响内置工具
 
         # 迭代处理工具调用
         last_tool_results = []  # 记录最近一轮工具结果，用于空回复兜底
@@ -524,16 +527,23 @@ class ChatAgent:
                         self.on_tool_call(tool_name, arguments)
 
                     # 执行工具：区分动态技能和内置工具
-                    if tool_name.startswith("skill_"):
-                        skill_name = tool_name[6:]
-                        skill_result = self.skill_registry.execute_skill(
-                            skill_name, arguments
-                        )
+                    try:
+                        if tool_name.startswith("skill_"):
+                            skill_name = tool_name[6:]
+                            skill_result = self.skill_registry.execute_skill(
+                                skill_name, arguments
+                            )
+                            result = json.dumps(
+                                skill_result, ensure_ascii=False, indent=2
+                            )
+                        else:
+                            result = self.tools.execute_tool(tool_name, arguments)
+                    except Exception as e:
                         result = json.dumps(
-                            skill_result, ensure_ascii=False, indent=2
+                            {"status": "error",
+                             "message": f"工具执行异常: {e}"},
+                            ensure_ascii=False
                         )
-                    else:
-                        result = self.tools.execute_tool(tool_name, arguments)
                     last_tool_results.append((tool_name, result))
 
                     # 工具结果回调

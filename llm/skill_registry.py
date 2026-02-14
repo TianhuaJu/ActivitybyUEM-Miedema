@@ -8,9 +8,11 @@ Skill Registry - 动态技能注册表
 
 import json
 import os
+import signal
 import time
 import math
 import traceback
+import threading
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field, asdict
 
@@ -116,22 +118,39 @@ class SkillRegistry:
             "skill_name": name,
         }
 
+    _EXEC_TIMEOUT = 30  # 技能执行超时秒数
+
     def execute_skill(self, name: str,
                       arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """执行动态技能"""
+        """执行动态技能（带超时保护）"""
         if name not in self._compiled:
             return {"status": "error", "message": f"技能 '{name}' 未注册"}
         skill = self._skills[name]
         if not skill.enabled:
             return {"status": "error", "message": f"技能 '{name}' 已禁用"}
-        try:
-            result = self._compiled[name](**arguments)
-            if isinstance(result, dict):
-                return result
-            return {"status": "success", "result": result}
-        except Exception as e:
+
+        container = {"result": None, "error": None}
+
+        def _run():
+            try:
+                container["result"] = self._compiled[name](**arguments)
+            except Exception as e:
+                container["error"] = str(e)
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        t.join(timeout=self._EXEC_TIMEOUT)
+
+        if t.is_alive():
             return {"status": "error",
-                    "message": f"执行技能 '{name}' 出错: {e}"}
+                    "message": f"技能 '{name}' 执行超时 (>{self._EXEC_TIMEOUT}秒)"}
+        if container["error"]:
+            return {"status": "error",
+                    "message": f"执行技能 '{name}' 出错: {container['error']}"}
+        result = container["result"]
+        if isinstance(result, dict):
+            return result
+        return {"status": "success", "result": result}
 
     def list_skills(self) -> List[Dict[str, Any]]:
         """列出所有已注册的技能"""
@@ -229,8 +248,15 @@ class SkillRegistry:
         try:
             with open(self._file, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            if not isinstance(data, list):
+                return
             for item in data:
-                skill = DynamicSkill(**item)
+                if not isinstance(item, dict) or "name" not in item:
+                    continue
+                try:
+                    skill = DynamicSkill(**item)
+                except (TypeError, ValueError):
+                    continue
                 self._skills[skill.name] = skill
                 try:
                     self._compiled[skill.name] = self._compile(
@@ -238,11 +264,17 @@ class SkillRegistry:
                     )
                 except Exception:
                     skill.enabled = False
-        except Exception:
+        except (json.JSONDecodeError, OSError):
             pass
 
     def _save(self):
         """保存技能到磁盘"""
-        data = [asdict(s) for s in self._skills.values()]
-        with open(self._file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        try:
+            data = [asdict(s) for s in self._skills.values()]
+            tmp = self._file + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(tmp, self._file)
+        except Exception:
+            # 保存失败不影响运行
+            pass
