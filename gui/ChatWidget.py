@@ -911,10 +911,12 @@ class KnowledgeDialog(QDialog):
         "general": "其他",
     }
 
-    def __init__(self, knowledge_store, llm_config: dict = None, parent=None):
+    def __init__(self, knowledge_store, llm_config: dict = None,
+                 skill_registry=None, parent=None):
         super().__init__(parent)
         self.knowledge_store = knowledge_store
         self.llm_config = llm_config  # LLM配置，用于AI视觉识别
+        self.skill_registry = skill_registry
         self._import_worker = None
         self._knowledge_entries = []
         self._data_entries = []
@@ -1145,6 +1147,64 @@ class KnowledgeDialog(QDialog):
 
         self.tab_widget.addTab(d_tab, "实验数据")
 
+        # ===== Tab 3: 自定义技能 =====
+        s_tab = QWidget()
+        s_layout = QVBoxLayout(s_tab)
+        s_layout.setContentsMargins(8, 8, 8, 8)
+        s_layout.setSpacing(6)
+
+        s_hint = QLabel(
+            "通过对话让AI创建自定义计算工具。例如告诉AI：'帮我加一个计算理想混合熵的功能'。"
+            "技能保存在本地，重启后仍可使用。"
+        )
+        s_hint.setWordWrap(True)
+        s_hint.setStyleSheet("color:#7f8c8d; font-size:12px; margin-bottom:4px;")
+        s_layout.addWidget(s_hint)
+
+        s_splitter = QSplitter(Qt.Vertical)
+        self.skill_list = QListWidget()
+        self.skill_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.skill_list.setWordWrap(True)
+        self.skill_list.currentRowChanged.connect(self._on_skill_selected)
+        self.skill_list.setStyleSheet("""
+            QListWidget {
+                border:1px solid #e0e0e0; border-radius:6px;
+                font-size:13px; background:white; outline:none;
+            }
+            QListWidget::item {
+                padding:8px 12px; border-bottom:1px solid #f0f0f0;
+            }
+            QListWidget::item:selected { background-color:#e8d5f6; color:#000; }
+            QListWidget::item:hover:!selected { background-color:#f9f5ff; }
+        """)
+        s_splitter.addWidget(self.skill_list)
+
+        self.skill_detail = QTextBrowser()
+        self.skill_detail.setOpenExternalLinks(False)
+        self.skill_detail.setStyleSheet("""
+            QTextBrowser {
+                border:1px solid #e0e0e0; border-radius:6px;
+                padding:10px; font-size:13px; background:#fafbfc;
+                font-family: 'Consolas', 'Courier New', monospace;
+            }
+        """)
+        s_splitter.addWidget(self.skill_detail)
+        s_splitter.setStretchFactor(0, 2)
+        s_splitter.setStretchFactor(1, 3)
+        s_layout.addWidget(s_splitter, stretch=1)
+
+        del_s_btn = QPushButton("删除选中技能")
+        del_s_btn.clicked.connect(self._delete_skill)
+        del_s_btn.setStyleSheet("""
+            QPushButton { background-color:#8e44ad; color:white;
+                          padding:5px 14px; border:none; border-radius:5px;
+                          font-size:12px; }
+            QPushButton:hover { background-color:#7d3c98; }
+        """)
+        s_layout.addWidget(del_s_btn, alignment=Qt.AlignLeft)
+
+        self.tab_widget.addTab(s_tab, "自定义技能")
+
         layout.addWidget(self.tab_widget, stretch=1)
 
         # 底部关闭按钮
@@ -1166,9 +1226,13 @@ class KnowledgeDialog(QDialog):
     def _refresh_all(self):
         """刷新所有列表"""
         stats = self.knowledge_store.get_stats()
+        skill_count = 0
+        if self.skill_registry:
+            skill_count = self.skill_registry.get_skill_count()
         self.stats_label.setText(
             f"知识条目: {stats['knowledge_count']}   |   "
-            f"实验数据: {stats['user_data_count']}"
+            f"实验数据: {stats['user_data_count']}   |   "
+            f"自定义技能: {skill_count}"
         )
 
         # 知识列表
@@ -1195,6 +1259,17 @@ class KnowledgeDialog(QDialog):
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, entry.id)
             self.data_list.addItem(item)
+
+        # 技能列表
+        self.skill_list.clear()
+        self.skill_detail.clear()
+        if self.skill_registry:
+            for skill in self.skill_registry.list_skills():
+                status = "启用" if skill["enabled"] else "禁用"
+                text = f"[{status}]  {skill['name']}  —  {skill['description']}"
+                item = QListWidgetItem(text)
+                item.setData(Qt.UserRole, skill["name"])
+                self.skill_list.addItem(item)
 
     # ==================== 详情面板 ====================
 
@@ -1292,6 +1367,66 @@ class KnowledgeDialog(QDialog):
             for item in selected:
                 did = item.data(Qt.UserRole)
                 self.knowledge_store.delete_user_data(did)
+            self._refresh_all()
+
+    # ==================== 技能管理 ====================
+
+    def _on_skill_selected(self, row: int):
+        """技能选中时显示详情（代码）"""
+        if not self.skill_registry:
+            self.skill_detail.clear()
+            return
+        skills = self.skill_registry.list_skills()
+        if row < 0 or row >= len(skills):
+            self.skill_detail.clear()
+            return
+        skill = skills[row]
+        # 从 registry 取完整信息（含 code）
+        full = self.skill_registry._skills.get(skill["name"])
+        if not full:
+            return
+        import time as _time
+        created = _time.strftime(
+            "%Y-%m-%d %H:%M", _time.localtime(full.created_at)
+        )
+        tags_str = ", ".join(full.tags) if full.tags else "无"
+        code_html = full.code.replace("&", "&amp;").replace(
+            "<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
+        html = (
+            f"<div style='margin-bottom:6px;'>"
+            f"<span style='background:#8e44ad;color:white;padding:2px 8px;"
+            f"border-radius:3px;font-size:12px;'>技能</span>"
+            f"<span style='color:#999;font-size:12px;margin-left:10px;'>"
+            f"创建: {created} &nbsp;|&nbsp; 版本: v{full.version}</span></div>"
+            f"<div style='font-weight:bold;font-size:14px;color:#2c3e50;"
+            f"margin-bottom:4px;'>{full.name}</div>"
+            f"<div style='font-size:12px;color:#666;margin-bottom:4px;'>"
+            f"{full.description}</div>"
+            f"<div style='font-size:12px;color:#888;margin-bottom:8px;'>"
+            f"标签: {tags_str}</div>"
+            f"<hr style='border:none;border-top:1px solid #eee;'>"
+            f"<div style='font-size:12px;font-family:Consolas,monospace;"
+            f"background:#f8f8f8;padding:8px;border-radius:4px;"
+            f"line-height:1.5;color:#333;'>{code_html}</div>"
+        )
+        self.skill_detail.setHtml(html)
+
+    def _delete_skill(self):
+        """删除选中的技能"""
+        if not self.skill_registry:
+            return
+        selected = self.skill_list.selectedItems()
+        if not selected:
+            return
+        reply = QMessageBox.question(
+            self, "确认", "确定删除选中的自定义技能？删除后无法恢复。",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            for item in selected:
+                name = item.data(Qt.UserRole)
+                if name:
+                    self.skill_registry.remove_skill(name)
             self._refresh_all()
 
     # ==================== 文档导入 ====================
@@ -1852,6 +1987,9 @@ class ChatWidget(QWidget):
             if k_stats["knowledge_count"] > 0 or k_stats["user_data_count"] > 0:
                 conn_msg += (f"  |  知识库: {k_stats['knowledge_count']} 条知识, "
                              f"{k_stats['user_data_count']} 条实验数据")
+            skill_count = self.agent.skill_registry.get_skill_count()
+            if skill_count > 0:
+                conn_msg += f"  |  自定义技能: {skill_count} 个"
             self._add_system_message(conn_msg)
 
             # 恢复上次对话历史到GUI
@@ -1900,16 +2038,20 @@ class ChatWidget(QWidget):
                 base_url = self._get_ollama_base()
             llm_config = {"provider": provider, "api_key": api_key,
                           "model": model, "base_url": base_url}
-        dlg = KnowledgeDialog(store, llm_config=llm_config, parent=self)
+        skill_reg = self.agent.skill_registry if self.agent else None
+        dlg = KnowledgeDialog(store, llm_config=llm_config,
+                              skill_registry=skill_reg, parent=self)
         dlg.exec_()
         if self.agent:
             stats = store.get_stats()
-            total = stats["knowledge_count"] + stats["user_data_count"]
+            sk = self.agent.skill_registry.get_skill_count()
+            total = stats["knowledge_count"] + stats["user_data_count"] + sk
             if total > 0:
-                self._add_system_message(
-                    f"知识库已更新: {stats['knowledge_count']} 条知识, "
-                    f"{stats['user_data_count']} 条实验数据"
-                )
+                msg = (f"知识库已更新: {stats['knowledge_count']} 条知识, "
+                       f"{stats['user_data_count']} 条实验数据")
+                if sk > 0:
+                    msg += f", {sk} 个自定义技能"
+                self._add_system_message(msg)
 
     def _send_message(self):
         """发送消息"""
@@ -2033,10 +2175,30 @@ class ChatWidget(QWidget):
         """图表绘制回调"""
         self._add_chart(chart_data)
 
+    # 工具名→活动描述
+    _TOOL_ACTIVITY = {
+        "calculate_liquidus_temperature": "计算液相线温度",
+        "calculate_precipitation_temperature": "计算析出温度",
+        "calculate_activity": "计算活度",
+        "calculate_activity_coefficient": "计算活度系数",
+        "calculate_mixing_enthalpy": "计算混合焓",
+        "calculate_gibbs_energy": "计算Gibbs自由能",
+        "get_interaction_coefficient": "查询交互作用系数",
+        "calculate_all_properties": "计算全部热力学性质",
+        "screen_elements_liquidus_effect": "筛选元素影响",
+        "search_knowledge": "检索知识库",
+        "learn_knowledge": "学习新知识",
+        "update_experimental_value": "保存实验数据",
+        "create_custom_tool": "创建自定义技能",
+        "plot_chart": "绘制图表",
+    }
+
     def _on_tool_called(self, tool_name: str, arguments: dict):
-        """工具调用回调 — 只显示'计算中'提示，不暴露工具细节"""
-        if not hasattr(self, '_thinking_label') or self._thinking_label is None:
-            self._show_thinking_indicator()
+        """工具调用回调 — 显示当前操作提示"""
+        activity = self._TOOL_ACTIVITY.get(tool_name, "处理中")
+        if tool_name.startswith("skill_"):
+            activity = f"执行技能: {tool_name[6:]}"
+        self._show_thinking_indicator(activity + "...")
 
     def _on_tool_result(self, tool_name: str, result_json: str):
         """工具结果回调 — 不显示原始结果，等待LLM整理后输出"""
@@ -2055,20 +2217,24 @@ class ChatWidget(QWidget):
         self.messages_layout.addStretch()
         self._scroll_to_bottom()
 
-    def _show_thinking_indicator(self):
-        """显示'计算中...'提示"""
+    def _show_thinking_indicator(self, text: str = "正在处理..."):
+        """显示活动指示"""
+        # 如果已有 thinking label，更新文本即可
+        if hasattr(self, '_thinking_label') and self._thinking_label is not None:
+            self._thinking_label.setText(f"⟳  {text}")
+            self._scroll_to_bottom()
+            return
+
         if self.messages_layout.count() > 0:
             item = self.messages_layout.itemAt(self.messages_layout.count() - 1)
             if item.spacerItem():
                 self.messages_layout.removeItem(item)
 
-        self._thinking_label = QLabel("正在计算中...")
+        self._thinking_label = QLabel(f"⟳  {text}")
         self._thinking_label.setWordWrap(True)
         self._thinking_label.setStyleSheet("""
-            color: #888;
-            font-size: 12px;
-            font-style: italic;
-            padding: 5px 10px;
+            color: #3498db; font-size: 12px;
+            font-style: italic; padding: 4px 10px;
         """)
         self.messages_layout.addWidget(self._thinking_label)
         self.messages_layout.addStretch()
