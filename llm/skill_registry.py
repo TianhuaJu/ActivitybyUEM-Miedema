@@ -40,6 +40,59 @@ _FORBIDDEN = [
     '__builtins__', '__class__', '__subclasses__',
 ]
 
+# 允许技能调用的内置工具白名单（纯计算/查询，无副作用）
+_CALLABLE_TOOLS = {
+    "calculate_liquidus_temperature",
+    "calculate_precipitation_temperature",
+    "calculate_activity",
+    "calculate_activity_coefficient",
+    "calculate_mixing_enthalpy",
+    "calculate_gibbs_energy",
+    "calculate_chemical_potential",
+    "calculate_entropy",
+    "calculate_all_properties",
+    "calculate_melting_point_depression",
+    "get_interaction_coefficient",
+    "get_second_order_interaction_coefficient",
+    "get_contribution_coefficients",
+    "get_infinite_dilution_activity_coefficient",
+    "get_element_properties",
+    "screen_elements_liquidus_effect",
+    "search_knowledge",
+}
+
+
+class ToolBridge:
+    """工具桥接器 — 让动态技能安全地调用内置计算工具"""
+
+    def __init__(self, tools_ref):
+        """
+        参数:
+            tools_ref: ThermodynamicTools 实例
+        """
+        self._tools = tools_ref
+
+    def call_tool(self, tool_name: str, **kwargs) -> dict:
+        """
+        调用内置计算工具。
+
+        参数:
+            tool_name: 工具名称（如 'calculate_activity'）
+            **kwargs: 传给工具的参数
+
+        返回:
+            dict: 工具执行结果
+        """
+        if tool_name not in _CALLABLE_TOOLS:
+            return {"status": "error",
+                    "message": f"工具 '{tool_name}' 不在可调用白名单中"}
+        try:
+            result_json = self._tools.execute_tool(tool_name, kwargs)
+            return json.loads(result_json)
+        except (json.JSONDecodeError, Exception) as e:
+            return {"status": "error",
+                    "message": f"调用工具 '{tool_name}' 失败: {e}"}
+
 
 @dataclass
 class DynamicSkill:
@@ -66,8 +119,25 @@ class SkillRegistry:
         self._file = os.path.join(self._dir, "skills.json")
         self._skills: Dict[str, DynamicSkill] = {}
         self._compiled: Dict[str, Callable] = {}
+        self._bridge: Optional[ToolBridge] = None
         os.makedirs(self._dir, exist_ok=True)
         self._load()
+
+    def bind_tools(self, tools_ref) -> None:
+        """
+        绑定内置工具引用，启用技能→工具桥接。
+
+        参数:
+            tools_ref: ThermodynamicTools 实例
+        """
+        self._bridge = ToolBridge(tools_ref)
+        # 重新编译所有技能，注入 call_tool
+        for name, skill in self._skills.items():
+            if skill.enabled:
+                try:
+                    self._compiled[name] = self._compile(name, skill.code)
+                except Exception:
+                    skill.enabled = False
 
     def create_skill(self, name: str, description: str, code: str,
                      parameters: Dict[str, Any],
@@ -231,6 +301,19 @@ class SkillRegistry:
             safe_globals["scipy_interpolate"] = interpolate
         except ImportError:
             pass
+
+        # 注入工具桥接器：call_tool(tool_name, **kwargs) -> dict
+        if self._bridge:
+            safe_globals["call_tool"] = self._bridge.call_tool
+        else:
+            # 无桥接器时提供占位函数，返回错误信息
+            def _no_bridge(tool_name: str, **kwargs):
+                return {"status": "error",
+                        "message": "工具桥接器未初始化，无法调用内置工具"}
+            safe_globals["call_tool"] = _no_bridge
+
+        # 注入可调用工具清单（技能代码可读取）
+        safe_globals["AVAILABLE_TOOLS"] = sorted(_CALLABLE_TOOLS)
 
         exec(code, safe_globals)
 
