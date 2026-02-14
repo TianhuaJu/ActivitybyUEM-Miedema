@@ -787,7 +787,7 @@ TOOL_SCHEMAS["create_custom_tool"] = {
         },
         "code": {
             "type": "string",
-            "description": "Python函数代码。必须定义一个与name同名的函数，参数用type hints，返回dict。可用math/np/scipy_optimize。"
+            "description": "Python函数代码。必须定义一个与name同名的函数，参数用type hints，返回dict。可用math/np/scipy_optimize。可用call_tool(tool_name, **kwargs)调用内置计算工具（如calculate_activity等），返回dict结果。"
         },
         "parameters": {
             "type": "object",

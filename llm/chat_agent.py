@@ -273,6 +273,25 @@ screen_elements_liquidus_effect 返回的结果格式示例：
    - 创建后的技能会永久保存，下次启动也可以使用
    - 示例：用户说"帮我加一个计算理想混合熵的功能"，你写代码并注册
 
+   **编排型技能（调用内置工具）**：
+   - 技能代码中可使用 call_tool(tool_name, **kwargs) 调用内置计算工具
+   - call_tool 返回 dict 结果（已自动解析JSON），可直接读取
+   - 可调用的工具: calculate_liquidus_temperature, calculate_activity,
+     calculate_activity_coefficient, calculate_mixing_enthalpy,
+     calculate_gibbs_energy, calculate_chemical_potential, calculate_entropy,
+     calculate_all_properties, calculate_precipitation_temperature,
+     calculate_melting_point_depression, get_interaction_coefficient,
+     get_second_order_interaction_coefficient, get_element_properties,
+     screen_elements_liquidus_effect, search_knowledge 等
+   - 编排示例：
+     ```python
+     def compare_alloy_properties(comp: dict, temp: float) -> dict:
+         liq = call_tool("calculate_liquidus_temperature", composition=comp)
+         act = call_tool("calculate_activity", composition=comp, temperature=temp)
+         return {"status": "success", "liquidus": liq, "activity": act}
+     ```
+   - 适合：多步组合计算、对比分析、批量筛选等复杂场景
+
 4. 复杂任务规划
    当用户提出复杂的多步骤任务时（如"分析Fe-Cr-Ni体系在800-1200K的相稳定性"）：
    - 先分析任务，拆解为子步骤
