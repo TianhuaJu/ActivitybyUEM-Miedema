@@ -23,6 +23,8 @@ from llm.llm_backend import (
 from llm.tools import ThermodynamicTools
 from llm.memory import MemoryStore
 from llm.knowledge import KnowledgeStore
+from llm.rag_engine import RAGEngine
+from llm.skill_registry import SkillRegistry
 
 
 SYSTEM_PROMPT = """你是合金热力学计算软件的AI助手。你的唯一职责是：接收用户的计算需求，调用工具执行计算，返回结果。
@@ -249,6 +251,35 @@ screen_elements_liquidus_effect 返回的结果格式示例：
 
 展示时应使用表格，列出每个元素的ΔT值和排名。
 
+========== 智能代理能力 ==========
+
+你不仅是一个计算工具，更是一个持续进化的冶金热力学智能代理。你具备以下高级能力：
+
+1. 知识检索增强（RAG）
+   - 每次对话前，系统会自动从知识库中检索与用户问题相关的知识并注入上下文
+   - 你应该参考这些检索到的知识来增强回答的专业性和准确性
+   - 如果检索到的知识与问题高度相关，直接引用；如果需要更多信息，调用 search_knowledge
+
+2. 主动学习
+   - 对话中出现有价值的热力学知识（公式、规律、实验现象、经验），主动调用 learn_knowledge 保存
+   - 用户提供实验测量值时，主动调用 update_experimental_value 保存
+   - 学到的知识会在未来对话中被自动检索和使用
+
+3. 动态技能创建
+   - 当用户要求添加新的计算功能时，调用 create_custom_tool 创建自定义工具
+   - 你需要编写Python函数代码，函数将被编译并注册为可调用工具
+   - 代码中可使用: math、numpy(np)、scipy_optimize、scipy_interpolate
+   - 函数必须返回dict，格式: {"status": "success", ...结果字段}
+   - 创建后的技能会永久保存，下次启动也可以使用
+   - 示例：用户说"帮我加一个计算理想混合熵的功能"，你写代码并注册
+
+4. 复杂任务规划
+   当用户提出复杂的多步骤任务时（如"分析Fe-Cr-Ni体系在800-1200K的相稳定性"）：
+   - 先分析任务，拆解为子步骤
+   - 按顺序调用工具完成每个子步骤
+   - 汇总所有结果给出综合分析报告
+   - 可以用 plot_chart 可视化关键结果
+
 用中文回答，直接给出计算结果。"""
 
 
@@ -340,8 +371,11 @@ class ChatAgent:
         self.backend = create_backend(provider, api_key, model, base_url=base_url)
         self.memory = MemoryStore()
         self.knowledge = KnowledgeStore()
+        self.skill_registry = SkillRegistry()
+        self.rag_engine = RAGEngine(self.knowledge)
         self.tools = ThermodynamicTools(
-            memory_store=self.memory, knowledge_store=self.knowledge
+            memory_store=self.memory, knowledge_store=self.knowledge,
+            skill_registry=self.skill_registry
         )
         self.session = ChatSession()
         self.max_tool_iterations = max_tool_iterations
@@ -349,7 +383,7 @@ class ChatAgent:
         self.on_tool_result = on_tool_result
         self.on_response = on_response
 
-        # 构建系统消息：基础提示 + 已有记忆 + 知识库 + 用户数据 + 最近对话摘要
+        # 构建系统消息：基础提示 + 已有记忆 + 知识库摘要 + 用户数据 + 技能列表 + 对话摘要
         prompt = system_prompt or SYSTEM_PROMPT
         memory_context = self.memory.format_for_prompt()
         knowledge_context = self.knowledge.format_knowledge_for_prompt()
@@ -361,6 +395,15 @@ class ChatAgent:
             prompt += "\n" + knowledge_context
         if user_data_context:
             prompt += "\n" + user_data_context
+        # 已注册的自定义技能
+        skill_count = self.skill_registry.get_skill_count()
+        if skill_count > 0:
+            skills = self.skill_registry.list_skills()
+            skill_lines = [f"\n========== 已注册的自定义技能（{skill_count}个） =========="]
+            for s in skills:
+                if s["enabled"]:
+                    skill_lines.append(f"  - skill_{s['name']}: {s['description']}")
+            prompt += "\n".join(skill_lines)
         if history_context:
             prompt += "\n" + history_context
         self.session.add_message("system", prompt)
@@ -416,16 +459,41 @@ class ChatAgent:
         # 添加用户消息
         self.session.add_message("user", user_message)
 
-        # 获取工具定义
+        # RAG 检索：根据用户查询自动获取相关知识
+        rag_context = ""
+        if self.rag_engine:
+            try:
+                k_ctx = self.rag_engine.retrieve(user_message, top_k=5)
+                d_ctx = self.rag_engine.retrieve_user_data(user_message)
+                parts = [p for p in (k_ctx, d_ctx) if p]
+                if parts:
+                    rag_context = "\n".join(parts)
+            except Exception:
+                pass
+
+        # 获取工具定义（含内置 + 动态技能）
         tool_defs = self.tools.get_tool_definitions()
+        if self.skill_registry:
+            tool_defs.extend(self.skill_registry.get_tool_definitions())
 
         # 迭代处理工具调用
         last_tool_results = []  # 记录最近一轮工具结果，用于空回复兜底
 
         for iteration in range(self.max_tool_iterations):
+            # 构建消息列表
+            messages = self.session.get_messages()
+
+            # 首轮注入RAG上下文到system消息
+            if rag_context and iteration == 0 and messages:
+                messages = list(messages)
+                if messages[0].role == "system":
+                    augmented = (messages[0].content
+                                 + "\n\n" + rag_context)
+                    messages[0] = Message(role="system", content=augmented)
+
             try:
                 response = self.backend.chat(
-                    messages=self.session.get_messages(),
+                    messages=messages,
                     tools=tool_defs
                 )
             except Exception as e:
@@ -455,8 +523,17 @@ class ChatAgent:
                     if self.on_tool_call:
                         self.on_tool_call(tool_name, arguments)
 
-                    # 执行工具
-                    result = self.tools.execute_tool(tool_name, arguments)
+                    # 执行工具：区分动态技能和内置工具
+                    if tool_name.startswith("skill_"):
+                        skill_name = tool_name[6:]
+                        skill_result = self.skill_registry.execute_skill(
+                            skill_name, arguments
+                        )
+                        result = json.dumps(
+                            skill_result, ensure_ascii=False, indent=2
+                        )
+                    else:
+                        result = self.tools.execute_tool(tool_name, arguments)
                     last_tool_results.append((tool_name, result))
 
                     # 工具结果回调
@@ -514,6 +591,9 @@ class ChatAgent:
         "search_knowledge": "知识检索",
         "update_experimental_value": "实验数据更新",
         "list_user_data": "用户数据查询",
+        "create_custom_tool": "创建自定义工具",
+        "list_custom_tools": "查看自定义工具",
+        "remove_custom_tool": "删除自定义工具",
     }
 
     # 需要隐藏的内部字段（不展示给用户）

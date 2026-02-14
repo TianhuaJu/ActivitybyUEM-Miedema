@@ -767,19 +767,70 @@ TOOL_DESCRIPTIONS = {
     "learn_knowledge": "从对话中学习并保存领域知识。当对话中出现有价值的材料科学、热力学、冶金学知识（理论、公式、实验规律、计算经验等）时，主动调用此工具保存。分类：theory(理论)、formula(公式)、experimental(实验数据规律)、experience(计算经验)、correction(数据修正)、general(其他)。",
     "search_knowledge": "搜索已学习的领域知识。可按关键词和分类检索。当需要参考之前学到的知识时调用。",
     "update_experimental_value": "保存或更新用户提供的实验数据到用户数据库。当用户告诉你一个新的实验测量值（如活度相互作用系数、活度系数等）时，主动调用此工具保存。保存后该值将在后续计算中优先使用。支持一阶系数(first_order)、无限稀释活度系数(lnY0)、二阶系数(second_order)、焓值(enthalpy)。",
-    "list_user_data": "列出用户已保存的所有实验数据。可按基体元素和数据类型过滤。"
+    "list_user_data": "列出用户已保存的所有实验数据。可按基体元素和数据类型过滤。",
+    "create_custom_tool": "创建自定义计算工具（技能）。当用户要求添加新的计算功能时调用。你需要编写一个Python函数，该函数将被注册为可调用工具。函数内可使用math、numpy(np)、scipy_optimize、scipy_interpolate。",
+    "list_custom_tools": "列出所有已注册的自定义工具（技能），包括名称、描述和状态。",
+    "remove_custom_tool": "删除一个已注册的自定义工具（技能）。",
+}
+
+# 自定义工具元操作的Schema
+TOOL_SCHEMAS["create_custom_tool"] = {
+    "type": "object",
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "技能名称（英文snake_case），如 calculate_ternary_mixing_enthalpy"
+        },
+        "description": {
+            "type": "string",
+            "description": "技能的中文描述，说明功能和使用场景"
+        },
+        "code": {
+            "type": "string",
+            "description": "Python函数代码。必须定义一个与name同名的函数，参数用type hints，返回dict。可用math/np/scipy_optimize。"
+        },
+        "parameters": {
+            "type": "object",
+            "description": "JSON Schema格式的参数定义，与其他工具的schema格式一致"
+        },
+        "tags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "标签，如 ['焓', '三元', 'Fe-Cr-Ni']"
+        }
+    },
+    "required": ["name", "description", "code", "parameters"]
+}
+
+TOOL_SCHEMAS["list_custom_tools"] = {
+    "type": "object",
+    "properties": {},
+    "required": []
+}
+
+TOOL_SCHEMAS["remove_custom_tool"] = {
+    "type": "object",
+    "properties": {
+        "name": {
+            "type": "string",
+            "description": "要删除的技能名称"
+        }
+    },
+    "required": ["name"]
 }
 
 
 class ThermodynamicTools:
     """热力学计算工具集"""
 
-    def __init__(self, memory_store=None, knowledge_store=None):
+    def __init__(self, memory_store=None, knowledge_store=None,
+                 skill_registry=None):
         self._thermo_calc = None
         self._precip_calc = None
         self._binary_model = None
         self._memory_store = memory_store
         self._knowledge_store = knowledge_store
+        self._skill_registry = skill_registry
 
     @property
     def thermo_calc(self):
@@ -1578,9 +1629,36 @@ class ThermodynamicTools:
             })
         return {"status": "success", "count": len(items), "data": items}
 
+    # ==================== 动态技能元操作 ====================
+
+    def create_custom_tool(self, name: str, description: str, code: str,
+                           parameters: Dict[str, Any],
+                           tags: List[str] = None) -> Dict[str, Any]:
+        """创建自定义计算工具"""
+        if not self._skill_registry:
+            return {"status": "error",
+                    "message": "技能系统未初始化，无法创建自定义工具"}
+        return self._skill_registry.create_skill(
+            name=name, description=description, code=code,
+            parameters=parameters, tags=tags
+        )
+
+    def list_custom_tools(self) -> Dict[str, Any]:
+        """列出所有自定义工具"""
+        if not self._skill_registry:
+            return {"status": "success", "count": 0, "tools": []}
+        skills = self._skill_registry.list_skills()
+        return {"status": "success", "count": len(skills), "tools": skills}
+
+    def remove_custom_tool(self, name: str) -> Dict[str, Any]:
+        """删除自定义工具"""
+        if not self._skill_registry:
+            return {"status": "error", "message": "技能系统未初始化"}
+        return self._skill_registry.remove_skill(name)
+
     def _get_all_tool_methods(self) -> Dict[str, Any]:
         """获取所有工具方法映射"""
-        return {
+        methods = {
             "calculate_liquidus_temperature": self.calculate_liquidus_temperature,
             "calculate_precipitation_temperature": self.calculate_precipitation_temperature,
             "calculate_activity": self.calculate_activity,
@@ -1605,7 +1683,11 @@ class ThermodynamicTools:
             "search_knowledge": self.search_knowledge,
             "update_experimental_value": self.update_experimental_value,
             "list_user_data": self.list_user_data,
+            "create_custom_tool": self.create_custom_tool,
+            "list_custom_tools": self.list_custom_tools,
+            "remove_custom_tool": self.remove_custom_tool,
         }
+        return methods
 
     def get_tool_definitions(self) -> List[ToolDefinition]:
         """获取所有工具定义"""

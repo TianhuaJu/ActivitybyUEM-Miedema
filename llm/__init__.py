@@ -49,6 +49,8 @@ from llm.tools import (
 
 from llm.knowledge import KnowledgeStore
 from llm.vision_recognition import VisionRecognizer
+from llm.rag_engine import RAGEngine
+from llm.skill_registry import SkillRegistry
 
 from llm.chat_agent import (
     ChatAgent,
@@ -78,9 +80,13 @@ __all__ = [
     "TOOL_SCHEMAS",
     "TOOL_DESCRIPTIONS",
 
-    # Knowledge & Vision
+    # Knowledge & Vision & RAG
     "KnowledgeStore",
     "VisionRecognizer",
+    "RAGEngine",
+
+    # Dynamic Skills
+    "SkillRegistry",
 
     # Agent
     "ChatAgent",
