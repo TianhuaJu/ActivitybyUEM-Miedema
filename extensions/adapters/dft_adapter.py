@@ -38,10 +38,14 @@ class DFTAdapter(CalculationPlugin):
 
     自动发现并注册所有 DFTEngine 子类，通过 engine 参数灵活调度。
     用户无需关心具体是哪个软件，只需指定 engine="vasp"/"qe"/"abinit" 等。
+
+    本地工具（同步）: 生成输入、解析输出、比较引擎等
+    远程工具（异步）: 提交作业、监控状态、获取结果等
     """
 
     def __init__(self):
         self._engines: Dict[str, DFTEngine] = {}
+        self._job_manager = None  # 延迟初始化
         self._discover_engines()
 
     def _discover_engines(self) -> None:
@@ -82,6 +86,18 @@ class DFTAdapter(CalculationPlugin):
                                     cap.display_name, cap.engine_name)
             except Exception as e:
                 logger.warning("加载 DFT 引擎 %s 失败: %s", fname, e)
+
+    def _get_job_manager(self):
+        """延迟初始化 HPCJobManager（避免无远程需求时的开销）"""
+        if self._job_manager is None:
+            try:
+                from extensions.hpc_job_manager import HPCJobManager
+                self._job_manager = HPCJobManager(engines=self._engines)
+                logger.info("HPCJobManager 已初始化")
+            except Exception as e:
+                logger.warning("HPCJobManager 初始化失败: %s", e)
+                return None
+        return self._job_manager
 
     # ==================== CalculationPlugin 接口 ====================
 
@@ -313,11 +329,214 @@ class DFTAdapter(CalculationPlugin):
                     },
                 },
             ),
+
+            # ========== 远程 HPC 工具 ==========
+
+            # 7. 提交远程作业
+            ToolSchema(
+                name="submit_job",
+                description="将 DFT 计算提交到远程 HPC 集群。"
+                            "自动生成输入文件、上传、提交作业，返回任务ID用于跟踪",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "engine": {
+                            "type": "string",
+                            "description": "DFT 引擎名称",
+                            "enum": engine_enum,
+                        },
+                        "task_type": {
+                            "type": "string",
+                            "description": "计算类型",
+                            "enum": ["single_point", "optimize", "dos",
+                                     "band", "phonon", "md"],
+                        },
+                        "composition": {
+                            "type": "object",
+                            "description": "合金成分 {元素: 原子数}",
+                            "additionalProperties": {"type": "integer"},
+                        },
+                        "structure": {
+                            "type": "string",
+                            "description": "晶体结构类型",
+                            "enum": ["fcc", "bcc", "hcp"],
+                            "default": "fcc",
+                        },
+                        "cluster": {
+                            "type": "string",
+                            "description": "目标 HPC 集群名称（留空使用默认集群）",
+                        },
+                        "encut": {
+                            "type": "number",
+                            "description": "截断能 (eV)",
+                            "default": 400,
+                        },
+                        "kpoints": {
+                            "type": "string",
+                            "description": "K 点网格",
+                            "default": "6 6 6",
+                        },
+                        "n_cores": {
+                            "type": "integer",
+                            "description": "并行核心数",
+                        },
+                        "walltime": {
+                            "type": "string",
+                            "description": "最长运行时间",
+                        },
+                        "queue": {
+                            "type": "string",
+                            "description": "队列名",
+                        },
+                    },
+                    "required": ["engine", "task_type", "composition"],
+                },
+                is_async=True,
+                timeout=86400,
+            ),
+
+            # 8. 查询作业状态
+            ToolSchema(
+                name="check_job",
+                description="查询已提交的 DFT 作业的运行状态和进度",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "task_id": {
+                            "type": "string",
+                            "description": "任务 ID（submit_job 返回的）",
+                        },
+                    },
+                    "required": ["task_id"],
+                },
+            ),
+
+            # 9. 获取计算结果
+            ToolSchema(
+                name="get_results",
+                description="获取已完成的 DFT 计算结果。"
+                            "自动从 HPC 下载输出文件并解析",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "task_id": {
+                            "type": "string",
+                            "description": "任务 ID",
+                        },
+                        "force_download": {
+                            "type": "boolean",
+                            "description": "强制重新下载",
+                            "default": False,
+                        },
+                    },
+                    "required": ["task_id"],
+                },
+            ),
+
+            # 10. 取消作业
+            ToolSchema(
+                name="cancel_job",
+                description="取消正在运行或排队的 DFT 作业",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "task_id": {
+                            "type": "string",
+                            "description": "任务 ID",
+                        },
+                    },
+                    "required": ["task_id"],
+                },
+            ),
+
+            # 11. 列出所有作业
+            ToolSchema(
+                name="list_jobs",
+                description="列出所有已提交的 DFT 计算作业及其状态",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "status": {
+                            "type": "string",
+                            "description": "按状态过滤",
+                            "enum": ["pending", "running", "completed",
+                                     "failed", "cancelled"],
+                        },
+                    },
+                },
+            ),
+
+            # 12. 管理 HPC 集群配置
+            ToolSchema(
+                name="configure_hpc",
+                description="配置 HPC 集群连接信息（主机、用户名、SSH密钥等）。"
+                            "配置后即可向该集群提交 DFT 计算作业",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "description": "操作类型",
+                            "enum": ["list", "add", "remove", "test"],
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "集群配置名称（唯一标识）",
+                        },
+                        "host": {
+                            "type": "string",
+                            "description": "主机名或 IP 地址",
+                        },
+                        "username": {
+                            "type": "string",
+                            "description": "SSH 用户名",
+                        },
+                        "port": {
+                            "type": "integer",
+                            "description": "SSH 端口",
+                            "default": 22,
+                        },
+                        "key_file": {
+                            "type": "string",
+                            "description": "SSH 私钥文件路径",
+                            "default": "~/.ssh/id_rsa",
+                        },
+                        "work_dir": {
+                            "type": "string",
+                            "description": "远程工作目录",
+                            "default": "~/dft_jobs",
+                        },
+                        "scheduler": {
+                            "type": "string",
+                            "description": "调度器类型",
+                            "enum": ["slurm", "pbs"],
+                            "default": "slurm",
+                        },
+                        "default_queue": {
+                            "type": "string",
+                            "description": "默认队列",
+                            "default": "normal",
+                        },
+                        "default_cores": {
+                            "type": "integer",
+                            "description": "默认核心数",
+                            "default": 4,
+                        },
+                        "module_loads": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "需要加载的 module（如 'intel/2023'）",
+                        },
+                    },
+                    "required": ["action"],
+                },
+            ),
         ]
 
     def execute(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """同步执行 DFT 工具"""
-        dispatch = {
+        # 本地工具
+        local_dispatch = {
             "list_engines": self._list_engines,
             "generate_input": self._generate_input,
             "parse_output": self._parse_output,
@@ -325,13 +544,30 @@ class DFTAdapter(CalculationPlugin):
             "generate_submit_script": self._generate_submit_script,
             "compare_engines": self._compare_engines,
         }
-        handler = dispatch.get(tool_name)
-        if not handler:
-            return {"status": "error", "message": f"未知工具: {tool_name}"}
-        try:
-            return handler(**arguments)
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+        handler = local_dispatch.get(tool_name)
+        if handler:
+            try:
+                return handler(**arguments)
+            except Exception as e:
+                return {"status": "error", "message": str(e)}
+
+        # 远程 HPC 工具
+        remote_dispatch = {
+            "submit_job": self._submit_job,
+            "check_job": self._check_job,
+            "get_results": self._get_results,
+            "cancel_job": self._cancel_job,
+            "list_jobs": self._list_jobs,
+            "configure_hpc": self._configure_hpc,
+        }
+        handler = remote_dispatch.get(tool_name)
+        if handler:
+            try:
+                return handler(**arguments)
+            except Exception as e:
+                return {"status": "error", "message": str(e)}
+
+        return {"status": "error", "message": f"未知工具: {tool_name}"}
 
     # ==================== 工具实现 ====================
 
@@ -529,6 +765,169 @@ class DFTAdapter(CalculationPlugin):
             "status": "success",
             "comparison": comparison,
         }
+
+    # ==================== 远程 HPC 工具实现 ====================
+
+    def _submit_job(self, engine: str, task_type: str,
+                    composition: Dict[str, int],
+                    structure: str = "fcc",
+                    cluster: str = None,
+                    encut: float = 400,
+                    kpoints: str = "6 6 6",
+                    n_cores: int = None,
+                    walltime: str = None,
+                    queue: str = None,
+                    **extra) -> Dict[str, Any]:
+        """提交 DFT 计算到远程 HPC"""
+        mgr = self._get_job_manager()
+        if not mgr:
+            return {"status": "error",
+                    "message": "HPCJobManager 未就绪，请检查 extensions 模块"}
+
+        struct = self._build_structure(composition, structure)
+        params = {"encut": encut, "kpoints": kpoints}
+        params.update(extra)
+
+        return mgr.submit_job(
+            engine_name=engine,
+            task_type=task_type,
+            structure=struct,
+            params=params,
+            cluster_name=cluster,
+            n_cores=n_cores,
+            walltime=walltime,
+            queue=queue,
+        )
+
+    def _check_job(self, task_id: str) -> Dict[str, Any]:
+        """查询作业状态"""
+        mgr = self._get_job_manager()
+        if not mgr:
+            return {"status": "error", "message": "HPCJobManager 未就绪"}
+        return mgr.check_job(task_id)
+
+    def _get_results(self, task_id: str,
+                     force_download: bool = False) -> Dict[str, Any]:
+        """获取计算结果"""
+        mgr = self._get_job_manager()
+        if not mgr:
+            return {"status": "error", "message": "HPCJobManager 未就绪"}
+        return mgr.get_results(task_id, force_download)
+
+    def _cancel_job(self, task_id: str) -> Dict[str, Any]:
+        """取消作业"""
+        mgr = self._get_job_manager()
+        if not mgr:
+            return {"status": "error", "message": "HPCJobManager 未就绪"}
+        return mgr.cancel_job(task_id)
+
+    def _list_jobs(self, status: str = None) -> Dict[str, Any]:
+        """列出所有作业"""
+        mgr = self._get_job_manager()
+        if not mgr:
+            return {"status": "error", "message": "HPCJobManager 未就绪"}
+        jobs = mgr.list_jobs(status)
+        return {
+            "status": "success",
+            "job_count": len(jobs),
+            "jobs": jobs,
+        }
+
+    def _configure_hpc(self, action: str,
+                       name: str = None,
+                       host: str = None,
+                       username: str = None,
+                       port: int = 22,
+                       key_file: str = "~/.ssh/id_rsa",
+                       work_dir: str = "~/dft_jobs",
+                       scheduler: str = "slurm",
+                       default_queue: str = "normal",
+                       default_cores: int = 4,
+                       module_loads: List[str] = None,
+                       **extra) -> Dict[str, Any]:
+        """管理 HPC 集群配置"""
+        mgr = self._get_job_manager()
+        if not mgr:
+            return {"status": "error", "message": "HPCJobManager 未就绪"}
+
+        hpc = mgr.hpc
+
+        if action == "list":
+            profiles = hpc.list_profiles()
+            default = hpc.get_default_cluster()
+            if not profiles:
+                return {
+                    "status": "success",
+                    "message": "尚未配置任何 HPC 集群。"
+                               "使用 configure_hpc(action='add', name='...', "
+                               "host='...', username='...') 添加配置",
+                    "clusters": [],
+                    "default_cluster": None,
+                }
+            return {
+                "status": "success",
+                "cluster_count": len(profiles),
+                "clusters": profiles,
+                "default_cluster": default,
+            }
+
+        elif action == "add":
+            if not name or not host or not username:
+                return {"status": "error",
+                        "message": "添加集群需要: name（配置名）, host（主机名）, "
+                                   "username（用户名）"}
+
+            from extensions.hpc_connection import HPCProfile
+            profile = HPCProfile(
+                name=name,
+                host=host,
+                port=port,
+                username=username,
+                key_file=key_file,
+                work_dir=work_dir,
+                scheduler=scheduler,
+                default_queue=default_queue,
+                default_cores=default_cores,
+                module_loads=module_loads or [],
+            )
+            hpc.add_profile(profile)
+            return {
+                "status": "success",
+                "message": f"已添加集群配置: {name} ({username}@{host})",
+                "profile": {
+                    "name": name, "host": host, "username": username,
+                    "scheduler": scheduler, "work_dir": work_dir,
+                },
+            }
+
+        elif action == "remove":
+            if not name:
+                return {"status": "error", "message": "请指定要删除的集群名称"}
+            if hpc.remove_profile(name):
+                return {"status": "success",
+                        "message": f"已删除集群配置: {name}"}
+            return {"status": "error",
+                    "message": f"未找到集群配置: {name}"}
+
+        elif action == "test":
+            if not name:
+                return {"status": "error", "message": "请指定要测试的集群名称"}
+            conn_result = hpc.connect(name)
+            if conn_result["status"] != "success":
+                return conn_result
+
+            # 测试远程命令
+            cmd_result = hpc.exec_command(name, "hostname && whoami && pwd")
+            hpc.disconnect(name)
+
+            return {
+                "status": "success",
+                "message": f"连接测试成功",
+                "connection": conn_result["message"],
+                "remote_info": cmd_result.get("stdout", "").strip(),
+            }
+
+        return {"status": "error", "message": f"未知操作: {action}"}
 
     # ==================== 辅助方法 ====================
 
