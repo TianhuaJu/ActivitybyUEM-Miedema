@@ -302,6 +302,16 @@ class SkillRegistry:
         except ImportError:
             pass
 
+        # 安全的 import 函数：只允许已注入的模块
+        _allowed_imports = dict(safe_globals)  # 当前环境的快照
+
+        def _safe_import(name, *args, **kwargs):
+            if name in _allowed_imports:
+                return _allowed_imports[name]
+            raise ImportError(f"模块 '{name}' 不可用。可用模块: math, np/numpy, scipy_optimize, scipy_interpolate")
+
+        safe_globals["__builtins__"]["__import__"] = _safe_import
+
         # 注入工具桥接器：call_tool(tool_name, **kwargs) -> dict
         if self._bridge:
             safe_globals["call_tool"] = self._bridge.call_tool
