@@ -824,13 +824,14 @@ class ThermodynamicTools:
     """热力学计算工具集"""
 
     def __init__(self, memory_store=None, knowledge_store=None,
-                 skill_registry=None):
+                 skill_registry=None, plugin_registry=None):
         self._thermo_calc = None
         self._precip_calc = None
         self._binary_model = None
         self._memory_store = memory_store
         self._knowledge_store = knowledge_store
         self._skill_registry = skill_registry
+        self._plugin_registry = plugin_registry
 
     @property
     def thermo_calc(self):
@@ -1657,7 +1658,7 @@ class ThermodynamicTools:
         return self._skill_registry.remove_skill(name)
 
     def _get_all_tool_methods(self) -> Dict[str, Any]:
-        """获取所有工具方法映射"""
+        """获取所有工具方法映射（含插件工具）"""
         methods = {
             "calculate_liquidus_temperature": self.calculate_liquidus_temperature,
             "calculate_precipitation_temperature": self.calculate_precipitation_temperature,
@@ -1687,18 +1688,35 @@ class ThermodynamicTools:
             "list_custom_tools": self.list_custom_tools,
             "remove_custom_tool": self.remove_custom_tool,
         }
+        # 合并扩展插件工具
+        if self._plugin_registry:
+            try:
+                plugin_methods = self._plugin_registry.get_tool_methods()
+                methods.update(plugin_methods)
+            except Exception:
+                pass  # 插件加载失败不影响内置工具
         return methods
 
     def get_tool_definitions(self) -> List[ToolDefinition]:
-        """获取所有工具定义"""
+        """获取所有工具定义（含插件工具）"""
         tool_methods = self._get_all_tool_methods()
+
+        # 合并插件的 schema 和描述到查找表
+        all_schemas = dict(TOOL_SCHEMAS)
+        all_descs = dict(TOOL_DESCRIPTIONS)
+        if self._plugin_registry:
+            try:
+                all_schemas.update(self._plugin_registry.get_all_tool_schemas())
+                all_descs.update(self._plugin_registry.get_all_tool_descriptions())
+            except Exception:
+                pass
 
         tools = []
         for name, func in tool_methods.items():
             tools.append(ToolDefinition(
                 name=name,
-                description=TOOL_DESCRIPTIONS.get(name, ""),
-                parameters=TOOL_SCHEMAS.get(name, {}),
+                description=all_descs.get(name, ""),
+                parameters=all_schemas.get(name, {}),
                 function=func
             ))
         return tools

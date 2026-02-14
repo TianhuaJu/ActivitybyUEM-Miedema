@@ -392,9 +392,20 @@ class ChatAgent:
         self.knowledge = KnowledgeStore()
         self.skill_registry = SkillRegistry()
         self.rag_engine = RAGEngine(self.knowledge)
+
+        # 初始化插件注册表（自动发现扩展插件）
+        self.plugin_registry = None
+        try:
+            from extensions.registry import PluginRegistry
+            self.plugin_registry = PluginRegistry()
+            self.plugin_registry.discover()
+        except Exception:
+            pass  # 插件系统加载失败不影响核心功能
+
         self.tools = ThermodynamicTools(
             memory_store=self.memory, knowledge_store=self.knowledge,
-            skill_registry=self.skill_registry
+            skill_registry=self.skill_registry,
+            plugin_registry=self.plugin_registry
         )
         # 绑定工具桥接：让动态技能可以调用内置计算工具
         self.skill_registry.bind_tools(self.tools)
@@ -425,6 +436,14 @@ class ChatAgent:
                 if s["enabled"]:
                     skill_lines.append(f"  - skill_{s['name']}: {s['description']}")
             prompt += "\n".join(skill_lines)
+        # 扩展插件工具描述
+        if self.plugin_registry:
+            try:
+                plugin_prompt = self.plugin_registry.format_tools_for_prompt()
+                if plugin_prompt:
+                    prompt += plugin_prompt
+            except Exception:
+                pass
         if history_context:
             prompt += "\n" + history_context
         self.session.add_message("system", prompt)
