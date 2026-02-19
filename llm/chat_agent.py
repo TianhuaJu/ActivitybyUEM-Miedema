@@ -409,6 +409,14 @@ class ChatAgent:
         )
         # 绑定工具桥接：让动态技能可以调用内置计算工具
         self.skill_registry.bind_tools(self.tools)
+        # 自动发现并加载技能库（auto_load=true 的库）
+        try:
+            self.skill_registry.discover_libraries()
+            self.skill_registry.auto_load_libraries()
+            # 绑定后重新编译（确保库技能也能使用 call_tool）
+            self.skill_registry.bind_tools(self.tools)
+        except Exception:
+            pass  # 技能库加载失败不影响核心功能
         self.session = ChatSession()
         self.max_tool_iterations = max_tool_iterations
         self.on_tool_call = on_tool_call
@@ -427,11 +435,22 @@ class ChatAgent:
             prompt += "\n" + knowledge_context
         if user_data_context:
             prompt += "\n" + user_data_context
-        # 已注册的自定义技能
+        # 已加载的技能库
+        libraries = self.skill_registry.list_libraries()
+        loaded_libs = [lb for lb in libraries if lb.get("loaded")]
+        if loaded_libs:
+            lib_lines = ["\n========== 已加载的技能库 =========="]
+            for lb in loaded_libs:
+                lib_lines.append(
+                    f"  [{lb['display_name']}] ({lb['library_name']}) "
+                    f"- {lb['loaded_skills']}个技能"
+                )
+            prompt += "\n".join(lib_lines)
+        # 已注册的自定义技能（含技能库技能）
         skill_count = self.skill_registry.get_skill_count()
         if skill_count > 0:
             skills = self.skill_registry.list_skills()
-            skill_lines = [f"\n========== 已注册的自定义技能（{skill_count}个） =========="]
+            skill_lines = [f"\n========== 已注册的技能（{skill_count}个） =========="]
             for s in skills:
                 if s["enabled"]:
                     skill_lines.append(f"  - skill_{s['name']}: {s['description']}")
@@ -644,6 +663,15 @@ class ChatAgent:
         "create_custom_tool": "创建自定义工具",
         "list_custom_tools": "查看自定义工具",
         "remove_custom_tool": "删除自定义工具",
+        "list_skill_libraries": "查看技能库",
+        "load_skill_library": "加载技能库",
+        "unload_skill_library": "卸载技能库",
+        "store_dft_compound_energy": "存储DFT化合物能量",
+        "calculate_liquidus_dft_calibrated": "DFT校准液相线温度",
+        "calculate_precipitation_dft_calibrated": "DFT校准析出温度",
+        "compare_mixing_enthalpy": "混合焓对比",
+        "get_dft_data_summary": "DFT数据摘要",
+        "import_dft_result": "导入DFT结果",
     }
 
     # 需要隐藏的内部字段（不展示给用户）

@@ -999,6 +999,40 @@ TOOL_SCHEMAS["remove_custom_tool"] = {
     "required": ["name"]
 }
 
+# ========== 技能库管理工具 ==========
+
+TOOL_SCHEMAS["list_skill_libraries"] = {
+    "type": "object",
+    "properties": {},
+    "required": []
+}
+
+TOOL_SCHEMAS["load_skill_library"] = {
+    "type": "object",
+    "properties": {
+        "library_name": {
+            "type": "string",
+            "description": "技能库名称，如 'alloy_thermodynamics'"
+        }
+    },
+    "required": ["library_name"]
+}
+
+TOOL_SCHEMAS["unload_skill_library"] = {
+    "type": "object",
+    "properties": {
+        "library_name": {
+            "type": "string",
+            "description": "要卸载的技能库名称"
+        }
+    },
+    "required": ["library_name"]
+}
+
+TOOL_DESCRIPTIONS["list_skill_libraries"] = "列出所有可用的技能库（包括内置库和用户自定义库），显示每个库的名称、描述、技能数量和加载状态。"
+TOOL_DESCRIPTIONS["load_skill_library"] = "加载指定的技能库。加载后库中的技能将注册为可调用工具，AI可以直接使用。用户可以将自定义技能库JSON文件放在 ~/.alloyact/skill_libraries/ 目录下。"
+TOOL_DESCRIPTIONS["unload_skill_library"] = "卸载指定的技能库，移除该库中所有已加载的技能。"
+
 
 class ThermodynamicTools:
     """热力学计算工具集"""
@@ -1849,6 +1883,31 @@ class ThermodynamicTools:
             return {"status": "error", "message": "技能系统未初始化"}
         return self._skill_registry.remove_skill(name)
 
+    # ==================== 技能库管理工具 ====================
+
+    def list_skill_libraries(self) -> Dict[str, Any]:
+        """列出所有可用的技能库"""
+        if not self._skill_registry:
+            return {"status": "success", "count": 0, "libraries": []}
+        libraries = self._skill_registry.list_libraries()
+        return {
+            "status": "success",
+            "count": len(libraries),
+            "libraries": libraries,
+        }
+
+    def load_skill_library(self, library_name: str) -> Dict[str, Any]:
+        """加载指定的技能库"""
+        if not self._skill_registry:
+            return {"status": "error", "message": "技能系统未初始化"}
+        return self._skill_registry.load_library(library_name)
+
+    def unload_skill_library(self, library_name: str) -> Dict[str, Any]:
+        """卸载指定的技能库"""
+        if not self._skill_registry:
+            return {"status": "error", "message": "技能系统未初始化"}
+        return self._skill_registry.unload_library(library_name)
+
     # ==================== DFT 校准工具 ====================
 
     def store_dft_compound_energy(self, compound_name: str,
@@ -2026,6 +2085,9 @@ class ThermodynamicTools:
             "create_custom_tool": self.create_custom_tool,
             "list_custom_tools": self.list_custom_tools,
             "remove_custom_tool": self.remove_custom_tool,
+            "list_skill_libraries": self.list_skill_libraries,
+            "load_skill_library": self.load_skill_library,
+            "unload_skill_library": self.unload_skill_library,
             "store_dft_compound_energy": self.store_dft_compound_energy,
             "calculate_liquidus_dft_calibrated": self.calculate_liquidus_dft_calibrated,
             "calculate_precipitation_dft_calibrated": self.calculate_precipitation_dft_calibrated,

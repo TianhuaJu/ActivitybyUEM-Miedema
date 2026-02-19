@@ -4,6 +4,12 @@ Skill Registry - 动态技能注册表
 ================================
 支持通过对话动态创建、注册和管理计算工具（技能）。
 用户可以在对话中描述新的计算需求，AI生成代码并注册为可调用工具。
+
+技能库系统:
+- 内置技能库: skill_libraries/ 目录下的 JSON 文件
+- 用户技能库: ~/.alloyact/skill_libraries/ 目录下的 JSON 文件
+- 自动加载: 启动时自动扫描 auto_load=true 的技能库
+- 运行时加载: 通过 load_library / unload_library 动态管理
 """
 
 import json
@@ -11,10 +17,13 @@ import os
 import signal
 import time
 import math
+import logging
 import traceback
 import threading
 from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass, field, asdict
+
+logger = logging.getLogger(__name__)
 
 
 # 技能代码中允许的安全内置函数
@@ -59,6 +68,10 @@ _CALLABLE_TOOLS = {
     "get_element_properties",
     "screen_elements_liquidus_effect",
     "search_knowledge",
+    "calculate_liquidus_dft_calibrated",
+    "calculate_precipitation_dft_calibrated",
+    "compare_mixing_enthalpy",
+    "get_dft_data_summary",
 }
 
 
@@ -105,22 +118,52 @@ class DynamicSkill:
     version: int = 1
     enabled: bool = True
     tags: List[str] = field(default_factory=list)
+    library: str = ""  # 所属技能库名称（空字符串表示用户自创建）
+
+
+@dataclass
+class SkillLibraryInfo:
+    """技能库元信息"""
+    library_name: str
+    display_name: str
+    version: str
+    description: str
+    author: str
+    category: str
+    auto_load: bool
+    file_path: str
+    skill_count: int
+    loaded: bool = False
 
 
 class SkillRegistry:
-    """动态技能注册表 — 管理用户通过对话创建的自定义计算工具"""
+    """动态技能注册表 — 管理用户通过对话创建的自定义计算工具和技能库"""
 
-    def __init__(self, storage_dir: str = None):
+    def __init__(self, storage_dir: str = None,
+                 library_dirs: List[str] = None):
         """
         参数:
             storage_dir: 存储目录，默认 ~/.alloyact
+            library_dirs: 技能库搜索目录列表，默认包含项目内置和用户目录
         """
         self._dir = storage_dir or os.path.expanduser("~/.alloyact")
         self._file = os.path.join(self._dir, "skills.json")
         self._skills: Dict[str, DynamicSkill] = {}
         self._compiled: Dict[str, Callable] = {}
         self._bridge: Optional[ToolBridge] = None
+
+        # 技能库目录（按优先级排序：项目内置 → 用户自定义）
+        _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self._library_dirs = library_dirs or [
+            os.path.join(_project_root, "skill_libraries"),
+            os.path.join(self._dir, "skill_libraries"),
+        ]
+        # 已发现的技能库元信息
+        self._libraries: Dict[str, SkillLibraryInfo] = {}
+
         os.makedirs(self._dir, exist_ok=True)
+        for d in self._library_dirs:
+            os.makedirs(d, exist_ok=True)
         self._load()
 
     def bind_tools(self, tools_ref) -> None:
@@ -361,13 +404,282 @@ class SkillRegistry:
             pass
 
     def _save(self):
-        """保存技能到磁盘"""
+        """保存用户自创建的技能到磁盘（不保存技能库中的技能）"""
         try:
-            data = [asdict(s) for s in self._skills.values()]
+            data = [asdict(s) for s in self._skills.values()
+                    if not s.library]  # 只保存非技能库技能
             tmp = self._file + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             os.replace(tmp, self._file)
         except Exception:
-            # 保存失败不影响运行
             pass
+
+    # ==================== 技能库系统 ====================
+
+    def discover_libraries(self) -> List[Dict[str, Any]]:
+        """
+        扫描所有技能库目录，发现可用的技能库。
+
+        返回:
+            技能库信息列表
+        """
+        self._libraries.clear()
+        discovered = []
+        for lib_dir in self._library_dirs:
+            if not os.path.isdir(lib_dir):
+                continue
+            for fname in sorted(os.listdir(lib_dir)):
+                if not fname.endswith(".json"):
+                    continue
+                fpath = os.path.join(lib_dir, fname)
+                try:
+                    info = self._parse_library_file(fpath)
+                    if info and info.library_name not in self._libraries:
+                        self._libraries[info.library_name] = info
+                        discovered.append(asdict(info))
+                except Exception as e:
+                    logger.warning("加载技能库文件失败 %s: %s", fpath, e)
+        return discovered
+
+    def auto_load_libraries(self) -> Dict[str, Any]:
+        """
+        自动加载所有 auto_load=true 的技能库。
+
+        返回:
+            {"loaded": [...], "failed": [...], "skipped": [...]}
+        """
+        if not self._libraries:
+            self.discover_libraries()
+
+        loaded, failed, skipped = [], [], []
+        for name, info in self._libraries.items():
+            if not info.auto_load:
+                skipped.append(name)
+                continue
+            if info.loaded:
+                skipped.append(name)
+                continue
+            result = self.load_library(name)
+            if result.get("status") == "success":
+                loaded.append(name)
+            else:
+                failed.append({"name": name, "error": result.get("message", "")})
+
+        logger.info("技能库自动加载完成: %d 成功, %d 失败, %d 跳过",
+                     len(loaded), len(failed), len(skipped))
+        return {"loaded": loaded, "failed": failed, "skipped": skipped}
+
+    def load_library(self, library_name: str,
+                     file_path: str = None) -> Dict[str, Any]:
+        """
+        加载指定技能库中的所有技能。
+
+        参数:
+            library_name: 技能库名称（已发现的库）
+            file_path: 直接从文件加载（跳过已发现的库查找）
+
+        返回:
+            {"status": "success"/"error", "skills_loaded": [...]}
+        """
+        # 确定文件路径
+        if file_path:
+            fpath = file_path
+        elif library_name in self._libraries:
+            fpath = self._libraries[library_name].file_path
+        else:
+            # 搜索所有目录
+            fpath = self._find_library_file(library_name)
+
+        if not fpath or not os.path.exists(fpath):
+            return {"status": "error",
+                    "message": f"找不到技能库 '{library_name}'"}
+
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                lib_data = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            return {"status": "error",
+                    "message": f"读取技能库文件失败: {e}"}
+
+        lib_name = lib_data.get("library_name", library_name)
+        skills_data = lib_data.get("skills", [])
+        if not skills_data:
+            return {"status": "error",
+                    "message": f"技能库 '{lib_name}' 中没有技能"}
+
+        loaded_names = []
+        errors = []
+        for skill_def in skills_data:
+            name = skill_def.get("name", "")
+            if not name:
+                continue
+
+            # 安全检查
+            code = skill_def.get("code", "")
+            err = self._check_safety(code)
+            if err:
+                errors.append(f"{name}: 安全检查失败 - {err}")
+                continue
+
+            # 编译
+            try:
+                func = self._compile(name, code)
+            except Exception as e:
+                errors.append(f"{name}: 编译失败 - {e}")
+                continue
+
+            # 注册技能（标记所属技能库）
+            skill = DynamicSkill(
+                name=name,
+                description=skill_def.get("description", ""),
+                code=code,
+                parameters=skill_def.get("parameters", {}),
+                tags=skill_def.get("tags", []),
+                library=lib_name,
+            )
+            self._skills[name] = skill
+            self._compiled[name] = func
+            loaded_names.append(name)
+
+        # 更新库状态
+        if lib_name in self._libraries:
+            self._libraries[lib_name].loaded = True
+        else:
+            # 动态注册新发现的库
+            info = self._parse_library_file(fpath)
+            if info:
+                info.loaded = True
+                self._libraries[lib_name] = info
+
+        msg_parts = [f"已加载技能库 '{lib_name}': {len(loaded_names)} 个技能"]
+        if errors:
+            msg_parts.append(f"（{len(errors)} 个失败）")
+
+        return {
+            "status": "success",
+            "library": lib_name,
+            "skills_loaded": loaded_names,
+            "errors": errors,
+            "message": "".join(msg_parts),
+        }
+
+    def unload_library(self, library_name: str) -> Dict[str, Any]:
+        """
+        卸载指定技能库的所有技能。
+
+        参数:
+            library_name: 技能库名称
+
+        返回:
+            {"status": "success"/"error", "skills_removed": [...]}
+        """
+        removed = []
+        for name in list(self._skills.keys()):
+            if self._skills[name].library == library_name:
+                del self._skills[name]
+                self._compiled.pop(name, None)
+                removed.append(name)
+
+        if library_name in self._libraries:
+            self._libraries[library_name].loaded = False
+
+        if not removed:
+            return {"status": "error",
+                    "message": f"技能库 '{library_name}' 未加载或不存在"}
+
+        return {
+            "status": "success",
+            "library": library_name,
+            "skills_removed": removed,
+            "message": f"已卸载技能库 '{library_name}': {len(removed)} 个技能",
+        }
+
+    def list_libraries(self) -> List[Dict[str, Any]]:
+        """
+        列出所有已发现的技能库。
+
+        返回:
+            技能库信息列表
+        """
+        if not self._libraries:
+            self.discover_libraries()
+
+        results = []
+        for name, info in self._libraries.items():
+            # 统计已加载的技能数
+            loaded_count = sum(
+                1 for s in self._skills.values()
+                if s.library == name and s.enabled
+            )
+            results.append({
+                "library_name": info.library_name,
+                "display_name": info.display_name,
+                "version": info.version,
+                "description": info.description,
+                "category": info.category,
+                "auto_load": info.auto_load,
+                "loaded": info.loaded,
+                "total_skills": info.skill_count,
+                "loaded_skills": loaded_count,
+                "file_path": info.file_path,
+            })
+        return results
+
+    def get_library_skills(self, library_name: str) -> List[Dict[str, Any]]:
+        """获取指定技能库中的技能列表"""
+        return [
+            {"name": s.name, "description": s.description,
+             "enabled": s.enabled, "tags": s.tags}
+            for s in self._skills.values()
+            if s.library == library_name
+        ]
+
+    # ---- 技能库内部方法 ----
+
+    def _parse_library_file(self, file_path: str) -> Optional[SkillLibraryInfo]:
+        """解析技能库 JSON 文件的元信息"""
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return None
+
+        name = data.get("library_name", "")
+        if not name:
+            return None
+
+        return SkillLibraryInfo(
+            library_name=name,
+            display_name=data.get("display_name", name),
+            version=data.get("version", "0.0.0"),
+            description=data.get("description", ""),
+            author=data.get("author", ""),
+            category=data.get("category", "general"),
+            auto_load=data.get("auto_load", False),
+            file_path=file_path,
+            skill_count=len(data.get("skills", [])),
+        )
+
+    def _find_library_file(self, library_name: str) -> Optional[str]:
+        """在技能库目录中搜索指定名称的库文件"""
+        for lib_dir in self._library_dirs:
+            if not os.path.isdir(lib_dir):
+                continue
+            # 按名称匹配
+            for fname in os.listdir(lib_dir):
+                if not fname.endswith(".json"):
+                    continue
+                fpath = os.path.join(lib_dir, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    if data.get("library_name") == library_name:
+                        return fpath
+                except (json.JSONDecodeError, OSError):
+                    continue
+            # 按文件名匹配
+            candidate = os.path.join(lib_dir, f"{library_name}.json")
+            if os.path.exists(candidate):
+                return candidate
+        return None
