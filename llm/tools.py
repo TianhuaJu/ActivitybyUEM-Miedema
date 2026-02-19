@@ -740,7 +740,181 @@ TOOL_SCHEMAS = {
             }
         },
         "required": []
-    }
+    },
+
+    # ========== DFT 校准工具 ==========
+
+    "store_dft_compound_energy": {
+        "type": "object",
+        "properties": {
+            "compound_name": {
+                "type": "string",
+                "description": "化合物名称，如 'TiC', 'Fe3C', 'Ni3Al'"
+            },
+            "elements": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "组成元素列表，如 ['Ti', 'C']"
+            },
+            "stoichiometry": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "化学计量数列表，如 [1, 1]"
+            },
+            "formation_energy_J": {
+                "type": "number",
+                "description": "形成能 ΔH_f (J/mol-atom)。可从 DFT 计算或文献获取"
+            },
+            "delta_G_A": {
+                "type": "number",
+                "description": "Gibbs 自由能系数 A，ΔG(T) = A + B*T (J/mol)。不提供则默认等于形成能",
+                "default": 0
+            },
+            "delta_G_B": {
+                "type": "number",
+                "description": "Gibbs 自由能系数 B (J/(mol·K))。不提供则默认为 0",
+                "default": 0
+            },
+            "source": {
+                "type": "string",
+                "description": "数据来源",
+                "enum": ["dft", "literature", "user"],
+                "default": "dft"
+            },
+            "dft_engine": {
+                "type": "string",
+                "description": "DFT 引擎名称（如 'vasp', 'qe'）",
+                "default": ""
+            },
+            "reference": {
+                "type": "string",
+                "description": "参考文献或备注",
+                "default": ""
+            }
+        },
+        "required": ["compound_name", "elements", "stoichiometry", "formation_energy_J"]
+    },
+
+    "calculate_liquidus_dft_calibrated": {
+        "type": "object",
+        "properties": {
+            "composition": {
+                "type": "object",
+                "description": "合金成分 {元素: 摩尔分数}",
+                "additionalProperties": {"type": "number"}
+            },
+            "extrapolation_model": {
+                "type": "string",
+                "description": "外推模型名称",
+                "enum": ["UEM1", "UEM2", "Muggianu", "Toop_Muggianu", "Toop_Kohler"],
+                "default": "UEM1"
+            },
+            "activity_model": {
+                "type": "string",
+                "description": "活度模型",
+                "enum": ["Wagner", "Darken", "Elliott"],
+                "default": "Wagner"
+            }
+        },
+        "required": ["composition"]
+    },
+
+    "calculate_precipitation_dft_calibrated": {
+        "type": "object",
+        "properties": {
+            "composition": {
+                "type": "object",
+                "description": "合金成分 {元素: 摩尔分数}",
+                "additionalProperties": {"type": "number"}
+            },
+            "phase_type": {
+                "type": "string",
+                "description": "析出相名称，如 'TiC', 'Fe3C', 'Ni3Al'"
+            },
+            "solution_phase": {
+                "type": "string",
+                "enum": ["LIQUID", "SOLID"],
+                "default": "LIQUID"
+            },
+            "extrapolation_model": {
+                "type": "string",
+                "enum": ["UEM1", "UEM2", "Muggianu", "Toop_Muggianu", "Toop_Kohler"],
+                "default": "UEM1"
+            },
+            "activity_model": {
+                "type": "string",
+                "enum": ["Wagner", "Darken", "Elliott"],
+                "default": "Wagner"
+            }
+        },
+        "required": ["composition", "phase_type"]
+    },
+
+    "compare_mixing_enthalpy": {
+        "type": "object",
+        "properties": {
+            "element_a": {
+                "type": "string",
+                "description": "元素 A"
+            },
+            "element_b": {
+                "type": "string",
+                "description": "元素 B"
+            },
+            "temperature": {
+                "type": "number",
+                "description": "温度 (K)",
+                "default": 1800
+            },
+            "phase": {
+                "type": "string",
+                "enum": ["liquid", "solid"],
+                "default": "liquid"
+            }
+        },
+        "required": ["element_a", "element_b"]
+    },
+
+    "get_dft_data_summary": {
+        "type": "object",
+        "properties": {
+            "element_filter": {
+                "type": "string",
+                "description": "按元素过滤（可选）"
+            }
+        },
+        "required": []
+    },
+
+    "import_dft_result": {
+        "type": "object",
+        "properties": {
+            "task_id": {
+                "type": "string",
+                "description": "DFT 计算任务 ID"
+            },
+            "compound_name": {
+                "type": "string",
+                "description": "化合物名称"
+            },
+            "elements": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "组成元素"
+            },
+            "stoichiometry": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "description": "化学计量数"
+            },
+            "reference_energies": {
+                "type": "object",
+                "description": "纯元素参考能量 {元素: eV/atom}",
+                "additionalProperties": {"type": "number"}
+            }
+        },
+        "required": ["compound_name", "elements", "stoichiometry", "reference_energies"]
+    },
 }
 
 TOOL_DESCRIPTIONS = {
@@ -771,6 +945,12 @@ TOOL_DESCRIPTIONS = {
     "create_custom_tool": "创建自定义计算工具（技能）。当用户要求添加新的计算功能时调用。你需要编写一个Python函数，该函数将被注册为可调用工具。函数内可使用math、numpy(np)、scipy_optimize、scipy_interpolate。",
     "list_custom_tools": "列出所有已注册的自定义工具（技能），包括名称、描述和状态。",
     "remove_custom_tool": "删除一个已注册的自定义工具（技能）。",
+    "store_dft_compound_energy": "存储 DFT 计算或文献中的化合物形成能数据。存储后该数据将在液相线温度、析出温度、固溶度等计算中自动优先使用，替代内置经验值。支持存储 ΔH_f 和 ΔG(T) = A + B*T 格式。",
+    "calculate_liquidus_dft_calibrated": "使用 DFT 数据校准的液相线温度计算。如果 DFT 数据库中有相关的端基能量或混合焓数据，自动使用 DFT 值进行校准；否则回退到 Miedema 经验值。返回结果中标注数据来源。",
+    "calculate_precipitation_dft_calibrated": "使用 DFT 数据校准的析出温度计算。如果 DFT 数据库中有该化合物的形成能，自动使用 DFT 值替代内置经验数据库；否则回退到经验值。返回结果中标注是否使用了 DFT 校准。",
+    "compare_mixing_enthalpy": "对比 Miedema 模型预测和 DFT 计算的二元系混合焓曲线。返回 Miedema 曲线和 DFT 数据点，以及偏差统计。用于评估 Miedema 模型在特定体系的预测精度。",
+    "get_dft_data_summary": "获取 DFT 数据库的统计信息和所有存储的数据概要。包括化合物数量、混合焓数据点数、元素参数数量等。",
+    "import_dft_result": "从已完成的 DFT 计算任务中自动导入结果到 DFT 数据库。需要提供化合物信息和纯元素参考能量，系统自动计算形成能并存储。",
 }
 
 # 自定义工具元操作的Schema
@@ -828,6 +1008,7 @@ class ThermodynamicTools:
         self._thermo_calc = None
         self._precip_calc = None
         self._binary_model = None
+        self._dft_calc = None
         self._memory_store = memory_store
         self._knowledge_store = knowledge_store
         self._skill_registry = skill_registry
@@ -853,6 +1034,17 @@ class ThermodynamicTools:
             from models.extrapolation_models import BinaryModel
             self._binary_model = BinaryModel()
         return self._binary_model
+
+    @property
+    def dft_calc(self):
+        """DFT 校准的热力学计算器（延迟初始化）"""
+        if self._dft_calc is None:
+            try:
+                from calculations.dft_calibrated_properties import DFTCalibratedProperties
+                self._dft_calc = DFTCalibratedProperties()
+            except Exception:
+                pass
+        return self._dft_calc
 
     def _get_extrapolation_func(self, model_name: str):
         """获取外推模型函数"""
@@ -1657,6 +1849,153 @@ class ThermodynamicTools:
             return {"status": "error", "message": "技能系统未初始化"}
         return self._skill_registry.remove_skill(name)
 
+    # ==================== DFT 校准工具 ====================
+
+    def store_dft_compound_energy(self, compound_name: str,
+                                  elements: list,
+                                  stoichiometry: list,
+                                  formation_energy_J: float,
+                                  delta_G_A: float = 0,
+                                  delta_G_B: float = 0,
+                                  source: str = "dft",
+                                  dft_engine: str = "",
+                                  reference: str = "") -> Dict[str, Any]:
+        """存储化合物形成能到 DFT 数据库"""
+        if not self.dft_calc:
+            return {"status": "error", "message": "DFT 校准模块未就绪"}
+        try:
+            from core.dft_data_store import CompoundEnergy
+            data = CompoundEnergy(
+                compound_name=compound_name,
+                elements=tuple(elements),
+                stoichiometry=tuple(stoichiometry),
+                formation_energy_J=formation_energy_J,
+                delta_G_A=delta_G_A if delta_G_A else formation_energy_J,
+                delta_G_B=delta_G_B,
+                source=source,
+                dft_engine=dft_engine,
+                reference=reference,
+            )
+            self.dft_calc.dft_store.store_compound_energy(data)
+            return {
+                "status": "success",
+                "message": f"已存储 {compound_name} 的形成能: "
+                           f"{formation_energy_J:.0f} J/mol "
+                           f"({formation_energy_J/1000:.1f} kJ/mol)",
+                "compound": compound_name,
+                "formation_energy_J": formation_energy_J,
+                "formation_energy_kJ": formation_energy_J / 1000,
+                "delta_G": f"ΔG(T) = {delta_G_A or formation_energy_J:.0f} "
+                           f"+ {delta_G_B:.1f}*T (J/mol)",
+                "source": source,
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def calculate_liquidus_dft_calibrated(self, composition: Dict[str, float],
+                                          extrapolation_model: str = "UEM1",
+                                          activity_model: str = "Wagner") -> Dict[str, Any]:
+        """DFT 校准的液相线温度计算"""
+        if not self.dft_calc:
+            return {"status": "error", "message": "DFT 校准模块未就绪"}
+        try:
+            extrap_func = self._get_extrapolation_func(extrapolation_model)
+            result = self.dft_calc.calculate_liquidus_temperature_calibrated(
+                composition=composition,
+                extrapolation_model_func=extrap_func,
+                extrapolation_model_name=extrapolation_model,
+                activity_model=activity_model,
+            )
+            return result
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def calculate_precipitation_dft_calibrated(self, composition: Dict[str, float],
+                                                phase_type: str,
+                                                solution_phase: str = "LIQUID",
+                                                extrapolation_model: str = "UEM1",
+                                                activity_model: str = "Wagner") -> Dict[str, Any]:
+        """DFT 校准的析出温度计算"""
+        if not self.dft_calc:
+            return {"status": "error", "message": "DFT 校准模块未就绪"}
+        try:
+            extrap_func = self._get_extrapolation_func(extrapolation_model)
+            result = self.dft_calc.calculate_precipitation_temperature_calibrated(
+                alloy_composition=composition,
+                phase_type=phase_type,
+                solution_phase=solution_phase,
+                extrapolation_model_func=extrap_func,
+                extrapolation_model_name=extrapolation_model,
+                activity_model=activity_model,
+            )
+            return result
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def compare_mixing_enthalpy(self, element_a: str, element_b: str,
+                                temperature: float = 1800,
+                                phase: str = "liquid") -> Dict[str, Any]:
+        """对比 Miedema 和 DFT 混合焓"""
+        if not self.dft_calc:
+            return {"status": "error", "message": "DFT 校准模块未就绪"}
+        try:
+            result = self.dft_calc.compare_mixing_enthalpy(
+                element_a=element_a,
+                element_b=element_b,
+                temperature_K=temperature,
+                phase=phase,
+            )
+            return result
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def get_dft_data_summary(self, element_filter: str = "") -> Dict[str, Any]:
+        """获取 DFT 数据库摘要"""
+        if not self.dft_calc:
+            return {"status": "error", "message": "DFT 校准模块未就绪"}
+        try:
+            result = self.dft_calc.get_dft_data_summary()
+            return result
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def import_dft_result(self, compound_name: str,
+                          elements: list,
+                          stoichiometry: list,
+                          reference_energies: Dict[str, float],
+                          task_id: str = "") -> Dict[str, Any]:
+        """从 DFT 计算结果导入形成能"""
+        if not self.dft_calc:
+            return {"status": "error", "message": "DFT 校准模块未就绪"}
+
+        # 如果有 task_id，从任务队列获取结果
+        dft_result = None
+        if task_id and self._plugin_registry:
+            try:
+                plugin = self._plugin_registry.get_plugin("dft")
+                if plugin:
+                    mgr = plugin._get_job_manager()
+                    if mgr:
+                        dft_result = mgr.get_results(task_id)
+            except Exception:
+                pass
+
+        if dft_result and dft_result.get("status") == "success":
+            result = self.dft_calc.dft_store.import_from_dft_result(
+                dft_result=dft_result,
+                compound_name=compound_name,
+                elements=tuple(elements),
+                stoichiometry=tuple(stoichiometry),
+                reference_energies=reference_energies,
+            )
+        else:
+            result = {
+                "status": "error",
+                "message": f"无法获取 DFT 结果。请手动使用 store_dft_compound_energy 存储数据，"
+                           f"或确保 task_id '{task_id}' 对应的计算已完成",
+            }
+        return result
+
     def _get_all_tool_methods(self) -> Dict[str, Any]:
         """获取所有工具方法映射（含插件工具）"""
         methods = {
@@ -1687,6 +2026,12 @@ class ThermodynamicTools:
             "create_custom_tool": self.create_custom_tool,
             "list_custom_tools": self.list_custom_tools,
             "remove_custom_tool": self.remove_custom_tool,
+            "store_dft_compound_energy": self.store_dft_compound_energy,
+            "calculate_liquidus_dft_calibrated": self.calculate_liquidus_dft_calibrated,
+            "calculate_precipitation_dft_calibrated": self.calculate_precipitation_dft_calibrated,
+            "compare_mixing_enthalpy": self.compare_mixing_enthalpy,
+            "get_dft_data_summary": self.get_dft_data_summary,
+            "import_dft_result": self.import_dft_result,
         }
         # 合并扩展插件工具
         if self._plugin_registry:
