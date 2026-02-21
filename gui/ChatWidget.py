@@ -1776,20 +1776,20 @@ class ChatWidget(QWidget):
                 border-top: 1px solid #d0d0d0;
             }
         """)
-        bar.setFixedHeight(56)
+        bar.setFixedHeight(70)
 
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
 
         # 输入框
         self.input_text = QTextEdit()
         self.input_text.setPlaceholderText("输入您的问题… (Ctrl+Enter 发送)")
-        self.input_text.setFixedHeight(38)
+        self.input_text.setFixedHeight(48)
         self.input_text.setStyleSheet("""
             QTextEdit {
-                border: 1px solid #ccc; border-radius: 19px;
-                padding: 6px 14px; font-size: 14px;
+                border: 1px solid #ccc; border-radius: 10px;
+                padding: 8px 14px; font-size: 14px;
                 background: #f5f6f8;
             }
             QTextEdit:focus { border-color: #3498db; background: #fff; }
@@ -1801,13 +1801,13 @@ class ChatWidget(QWidget):
         self.send_btn = QPushButton("发送")
         self.send_btn.clicked.connect(self._send_message)
         self.send_btn.setEnabled(False)
-        self.send_btn.setFixedSize(72, 38)
+        self.send_btn.setFixedSize(72, 48)
         self.send_btn.setCursor(Qt.PointingHandCursor)
         self.send_btn.setStyleSheet("""
             QPushButton {
                 background: #27ae60; color: #fff;
-                border: none; border-radius: 19px;
-                font-weight: bold; font-size: 14px;
+                border: none; border-radius: 10px;
+                font-weight: bold; font-size: 15px;
             }
             QPushButton:hover { background: #219a52; }
             QPushButton:disabled { background: #ccc; color: #fff; }
@@ -1817,13 +1817,13 @@ class ChatWidget(QWidget):
         # 清空按钮
         self.clear_btn = QPushButton("清空")
         self.clear_btn.clicked.connect(self._clear_chat)
-        self.clear_btn.setFixedSize(56, 38)
+        self.clear_btn.setFixedSize(72, 48)
         self.clear_btn.setCursor(Qt.PointingHandCursor)
         self.clear_btn.setStyleSheet("""
             QPushButton {
                 background: #e0e0e0; color: #555;
-                border: none; border-radius: 19px;
-                font-size: 13px; font-weight:bold;
+                border: none; border-radius: 10px;
+                font-size: 14px; font-weight:bold;
             }
             QPushButton:hover { background: #d0d0d0; color: #333; }
         """)
@@ -2078,8 +2078,8 @@ class ChatWidget(QWidget):
         self.send_btn.setStyleSheet("""
             QPushButton {
                 background: #e74c3c; color: #fff;
-                border: none; border-radius: 19px;
-                font-weight: bold; font-size: 14px;
+                border: none; border-radius: 10px;
+                font-weight: bold; font-size: 15px;
             }
             QPushButton:hover { background: #c0392b; }
         """)
@@ -2281,8 +2281,8 @@ class ChatWidget(QWidget):
         self.send_btn.setStyleSheet("""
             QPushButton {
                 background: #27ae60; color: #fff;
-                border: none; border-radius: 19px;
-                font-weight: bold; font-size: 14px;
+                border: none; border-radius: 10px;
+                font-weight: bold; font-size: 15px;
             }
             QPushButton:hover { background: #219a52; }
             QPushButton:disabled { background: #ccc; color: #fff; }
