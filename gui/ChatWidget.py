@@ -1918,7 +1918,7 @@ class ChatWidget(QWidget):
         self.model_combo.addItems(model_lists.get(provider, []))
 
     def _mark_non_tool_models(self):
-        """标记不支持工具调用的Ollama模型为禁用状态"""
+        """标记不支持工具调用的Ollama模型（仅提示，不禁用选择）"""
         first_capable = -1
         for i in range(self.model_combo.count()):
             name = self.model_combo.itemText(i)
@@ -1926,12 +1926,9 @@ class ChatWidget(QWidget):
                 if first_capable == -1:
                     first_capable = i
             else:
-                # 追加提示文字并禁用该项
+                # 仅追加提示文字，不禁用，用户仍可选择
                 self.model_combo.setItemText(i, f"{name}  (不支持工具调用)")
-                item = self.model_combo.model().item(i)
-                if item:
-                    item.setEnabled(False)
-        # 自动选中第一个支持工具调用的模型
+        # 默认选中第一个支持工具调用的模型（如果有）
         if first_capable >= 0:
             self.model_combo.setCurrentIndex(first_capable)
 
