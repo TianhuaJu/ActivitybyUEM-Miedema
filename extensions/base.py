@@ -8,11 +8,16 @@ CalculationPlugin 抽象基类
 异步插件还需实现:  submit(), poll(), get_result(), cancel()
 """
 
+import logging
 import shutil
+import subprocess
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class PluginType(Enum):
@@ -88,9 +93,26 @@ class CalculationPlugin(ABC):
         """
         ...
 
-    def check_availability(self) -> Dict[str, Any]:
+    @staticmethod
+    def _auto_install(pip_name: str) -> bool:
+        """尝试通过 pip 自动安装缺失的依赖包"""
+        try:
+            logger.info("[自动安装] 正在安装 %s ...", pip_name)
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", pip_name],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=120
+            )
+            logger.info("[自动安装] %s 安装完成", pip_name)
+            return True
+        except Exception as e:
+            logger.warning("[自动安装] %s 安装失败: %s", pip_name, e)
+            return False
+
+    def check_availability(self, auto_install: bool = True) -> Dict[str, Any]:
         """
         检查插件运行环境是否满足（依赖包、外部程序）。
+        若 auto_install=True，会自动尝试 pip install 缺失的 Python 依赖。
 
         返回:
             {"available": bool, "missing_deps": [...], "missing_programs": [...]}
@@ -102,6 +124,13 @@ class CalculationPlugin(ABC):
             try:
                 __import__(pkg)
             except ImportError:
+                if auto_install and self._auto_install(dep):
+                    # 安装后重新验证
+                    try:
+                        __import__(pkg)
+                        continue  # 安装成功，不加入 missing
+                    except ImportError:
+                        pass
                 missing_deps.append(dep)
 
         missing_progs = []

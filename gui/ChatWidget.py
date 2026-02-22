@@ -1871,23 +1871,27 @@ class ChatWidget(QWidget):
         try:
             base = self._get_ollama_base()
             req = urllib.request.Request(f"{base}/api/tags", method="GET")
-            with urllib.request.urlopen(req, timeout=3) as resp:
+            with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read().decode())
                 models = [m["name"] for m in data.get("models", [])]
                 return sorted(models) if models else []
-        except Exception:
+        except Exception as e:
+            self._last_fetch_error = str(e)
             return []
 
     def _refresh_models(self):
         """手动刷新Ollama模型列表"""
+        self._last_fetch_error = ""
         models = self._fetch_ollama_models()
         self.model_combo.clear()
         if models:
             self.model_combo.addItems(models)
         else:
             base = self._get_ollama_base()
-            self.model_combo.addItems(["qwen3:8b", "qwen3:4b", "llama3.2:3b", "mistral:7b"])
-            self._add_system_message(f"无法连接 {base}，使用默认模型列表")
+            err_detail = f" ({self._last_fetch_error})" if self._last_fetch_error else ""
+            self._add_system_message(
+                f"无法从 {base} 获取模型列表{err_detail}，请检查 Ollama 服务是否运行。"
+            )
         self._mark_non_tool_models()
 
     def _update_model_list(self, provider: str):
@@ -1898,9 +1902,7 @@ class ChatWidget(QWidget):
             models = self._fetch_ollama_models()
             if models:
                 self.model_combo.addItems(models)
-            else:
-                # ollama未运行时的回退列表
-                self.model_combo.addItems(["qwen3:8b", "qwen3:4b", "llama3.2:3b", "mistral:7b"])
+            # 无模型时不显示虚假的默认列表，避免用户选择不存在的模型
             self._mark_non_tool_models()
             return
 
@@ -1943,21 +1945,25 @@ class ChatWidget(QWidget):
                 pass
 
         provider = self.provider_combo.currentText()
-        model = self.model_combo.currentText()
-        # 清理模型名中的能力标注后缀
-        model = re.sub(r'\s*\(不支持工具调用\)\s*$', '', model)
         api_key = self.api_key_input.text().strip() or None
 
         # 构建自定义base_url（仅ollama使用服务器地址输入框）
         base_url = None
         if provider == "ollama":
-            addr = self.server_input.text().strip()
-            if addr:
-                if not addr.startswith("http"):
-                    addr = f"http://{addr}"
-                base_url = addr.rstrip("/") + "/v1"
-            # 连接时自动刷新模型列表
+            # 始终使用 _get_ollama_base() 获取地址，确保模型列表和API调用使用同一地址
+            ollama_base = self._get_ollama_base()
+            base_url = ollama_base.rstrip("/") + "/v1"
+            # 连接时自动刷新模型列表（在获取model之前刷新）
             self._refresh_models()
+
+        # 刷新后再获取模型名，确保使用最新列表中的模型
+        model = self.model_combo.currentText()
+        # 清理模型名中的能力标注后缀
+        model = re.sub(r'\s*\(不支持工具调用\)\s*$', '', model)
+
+        if not model:
+            QMessageBox.warning(self, "无可用模型", "未找到可用模型，请检查服务连接。")
+            return
 
         try:
             from llm.chat_agent import ChatAgent
@@ -1970,9 +1976,30 @@ class ChatWidget(QWidget):
                 on_tool_call=self._on_tool_called
             )
 
-            # 提前初始化客户端，验证连接是否可用
+            # 验证连接和模型可用性
             if hasattr(self.agent.backend, '_get_client'):
-                self.agent.backend._get_client()
+                client = self.agent.backend._get_client()
+                # 对Ollama/OpenAI兼容后端，发送最小请求验证模型是否存在
+                if provider == "ollama":
+                    try:
+                        client.chat.completions.create(
+                            model=model,
+                            messages=[{"role": "user", "content": "hi"}],
+                            max_tokens=1
+                        )
+                    except Exception as e:
+                        err_str = str(e)
+                        if "404" in err_str or "not found" in err_str.lower():
+                            raise ConnectionError(
+                                f"模型 '{model}' 在 Ollama 服务器上不存在。\n"
+                                f"请先运行: ollama pull {model}"
+                            )
+                        elif "timed out" in err_str.lower() or "timeout" in err_str.lower():
+                            raise ConnectionError(
+                                f"连接 Ollama 服务器超时，请检查服务器地址和网络连接。"
+                            )
+                        else:
+                            raise
 
             self.status_label.setText(f"已连接: {model}")
             self.status_label.setStyleSheet("color: #27ae60; font-size:13px; font-weight: bold;")
