@@ -388,6 +388,26 @@ class ChatWorker(QThread):
             self.error_occurred.emit(str(e))
 
 
+class _OllamaModelWorker(QThread):
+    """后台线程：获取Ollama模型列表，避免阻塞UI"""
+    finished_signal = pyqtSignal(list)
+
+    def __init__(self, base_url: str):
+        super().__init__()
+        self.base_url = base_url
+
+    def run(self):
+        import urllib.request
+        try:
+            req = urllib.request.Request(f"{self.base_url}/api/tags", method="GET")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode())
+                models = [m["name"] for m in data.get("models", [])]
+                self.finished_signal.emit(sorted(models) if models else [])
+        except Exception:
+            self.finished_signal.emit([])
+
+
 # 右键菜单样式（浅色主题，与气泡风格统一）
 _CONTEXT_MENU_STYLE = """
     QMenu {
@@ -1865,45 +1885,75 @@ class ChatWidget(QWidget):
             addr = f"http://{addr}"
         return addr.rstrip("/")
 
-    def _fetch_ollama_models(self) -> list:
-        """从Ollama服务获取已安装的模型列表"""
+    # Ollama 默认模型列表（当无法连接服务器时使用）
+    _OLLAMA_FALLBACK_MODELS = [
+        "qwen3:8b", "qwen3:4b", "qwen2.5:7b",
+        "llama3.1:8b", "llama3.2:3b", "llama3.3:latest",
+        "mistral:7b",
+    ]
+
+    @staticmethod
+    def _fetch_ollama_models_sync(base_url: str) -> list:
+        """从Ollama服务获取已安装的模型列表（静态方法，可在子线程调用）"""
         import urllib.request
         try:
-            base = self._get_ollama_base()
-            req = urllib.request.Request(f"{base}/api/tags", method="GET")
+            req = urllib.request.Request(f"{base_url}/api/tags", method="GET")
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read().decode())
                 models = [m["name"] for m in data.get("models", [])]
                 return sorted(models) if models else []
-        except Exception as e:
-            self._last_fetch_error = str(e)
+        except Exception:
             return []
 
     def _refresh_models(self):
-        """手动刷新Ollama模型列表"""
-        self._last_fetch_error = ""
-        models = self._fetch_ollama_models()
+        """异步刷新Ollama模型列表（不阻塞UI）"""
+        base = self._get_ollama_base()
+        self.refresh_btn.setEnabled(False)
+        self.refresh_btn.setText("刷新中...")
+
+        worker = _OllamaModelWorker(base)
+        worker.finished_signal.connect(lambda models: self._on_models_fetched(models, base))
+        self._model_worker = worker  # 防止被GC回收
+        worker.start()
+
+    def _on_models_fetched(self, models: list, base: str):
+        """模型列表获取完成的回调"""
+        self.refresh_btn.setEnabled(True)
+        self.refresh_btn.setText("刷新模型")
+        prev_text = self.model_combo.currentText()
         self.model_combo.clear()
         if models:
             self.model_combo.addItems(models)
         else:
-            base = self._get_ollama_base()
-            err_detail = f" ({self._last_fetch_error})" if self._last_fetch_error else ""
+            self.model_combo.addItems(self._OLLAMA_FALLBACK_MODELS)
             self._add_system_message(
-                f"无法从 {base} 获取模型列表{err_detail}，请检查 Ollama 服务是否运行。"
+                f"无法从 {base} 获取模型列表，已显示默认列表，也可手动输入模型名。"
             )
         self._mark_non_tool_models()
+        # 尝试恢复之前选中的模型
+        if prev_text:
+            idx = self.model_combo.findText(prev_text)
+            if idx >= 0:
+                self.model_combo.setCurrentIndex(idx)
+            else:
+                self.model_combo.setEditText(prev_text)
 
     def _update_model_list(self, provider: str):
         """更新模型列表（ollama自动检测本地已安装模型）"""
         self.model_combo.clear()
 
         if provider == "ollama":
-            models = self._fetch_ollama_models()
-            if models:
-                self.model_combo.addItems(models)
-            # 无模型时不显示虚假的默认列表，避免用户选择不存在的模型
+            # 先显示默认列表避免空白，然后异步拉取真实列表
+            self.model_combo.addItems(self._OLLAMA_FALLBACK_MODELS)
             self._mark_non_tool_models()
+            # 异步获取真实列表
+            base = self._get_ollama_base()
+            worker = _OllamaModelWorker(base)
+            worker.finished_signal.connect(
+                lambda models: self._on_models_fetched(models, base) if models else None
+            )
+            self._model_worker = worker
+            worker.start()
             return
 
         model_lists = {
@@ -1944,23 +1994,20 @@ class ChatWidget(QWidget):
         provider = self.provider_combo.currentText()
         api_key = self.api_key_input.text().strip() or None
 
-        # 构建自定义base_url（仅ollama使用服务器地址输入框）
-        base_url = None
-        if provider == "ollama":
-            # 始终使用 _get_ollama_base() 获取地址，确保模型列表和API调用使用同一地址
-            ollama_base = self._get_ollama_base()
-            base_url = ollama_base.rstrip("/") + "/v1"
-            # 连接时自动刷新模型列表（在获取model之前刷新）
-            self._refresh_models()
-
-        # 刷新后再获取模型名，确保使用最新列表中的模型
+        # 获取当前选择的模型名
         model = self.model_combo.currentText()
         # 清理模型名中的能力标注后缀
-        model = re.sub(r'\s*\(不支持工具调用\)\s*$', '', model)
+        model = re.sub(r'\s*\(不支持工具调用\)\s*$', '', model).strip()
 
         if not model:
-            QMessageBox.warning(self, "无可用模型", "未找到可用模型，请检查服务连接。")
+            QMessageBox.warning(self, "无可用模型", "请先选择或输入一个模型名称。")
             return
+
+        # 构建自定义base_url
+        base_url = None
+        if provider == "ollama":
+            ollama_base = self._get_ollama_base()
+            base_url = ollama_base.rstrip("/") + "/v1"
 
         try:
             from llm.chat_agent import ChatAgent
@@ -1973,30 +2020,9 @@ class ChatWidget(QWidget):
                 on_tool_call=self._on_tool_called
             )
 
-            # 验证连接和模型可用性
+            # 初始化客户端（不做阻塞式模型验证，首次聊天时自然检测）
             if hasattr(self.agent.backend, '_get_client'):
-                client = self.agent.backend._get_client()
-                # 对Ollama/OpenAI兼容后端，发送最小请求验证模型是否存在
-                if provider == "ollama":
-                    try:
-                        client.chat.completions.create(
-                            model=model,
-                            messages=[{"role": "user", "content": "hi"}],
-                            max_tokens=1
-                        )
-                    except Exception as e:
-                        err_str = str(e)
-                        if "404" in err_str or "not found" in err_str.lower():
-                            raise ConnectionError(
-                                f"模型 '{model}' 在 Ollama 服务器上不存在。\n"
-                                f"请先运行: ollama pull {model}"
-                            )
-                        elif "timed out" in err_str.lower() or "timeout" in err_str.lower():
-                            raise ConnectionError(
-                                f"连接 Ollama 服务器超时，请检查服务器地址和网络连接。"
-                            )
-                        else:
-                            raise
+                self.agent.backend._get_client()
 
             self.status_label.setText(f"已连接: {model}")
             self.status_label.setStyleSheet("color: #27ae60; font-size:13px; font-weight: bold;")
@@ -2281,9 +2307,21 @@ class ChatWidget(QWidget):
         self._add_assistant_message(response)
 
     def _on_error(self, error_msg: str):
-        """错误回调"""
+        """错误回调，对常见错误提供可操作的提示"""
         self._remove_thinking_indicator()
-        self._add_system_message(f"错误: {error_msg}")
+        msg = error_msg
+        lower = error_msg.lower()
+        if "404" in error_msg and "not found" in lower:
+            model = self.model_combo.currentText()
+            model = re.sub(r'\s*\(不支持工具调用\)\s*$', '', model).strip()
+            msg = (f"模型 '{model}' 不存在。请在 Ollama 服务器上执行:\n"
+                   f"  ollama pull {model}\n"
+                   f"或切换到已安装的模型。")
+        elif "timed out" in lower or "timeout" in lower:
+            msg = "请求超时，请检查 Ollama 服务器地址和网络连接。"
+        elif "connection" in lower and ("refused" in lower or "error" in lower):
+            msg = "无法连接到 Ollama 服务器，请检查服务是否运行。"
+        self._add_system_message(f"LLM调用失败: {msg}")
 
     def _on_worker_finished(self):
         """工作线程完成回调"""
