@@ -435,7 +435,16 @@ class CompoundSolubilityCalculator(ThermodynamicProperties):
 
     def get_compound_info(self, compound: str) -> Optional[CompoundData]:
         """获取化合物信息"""
-        return self.compound_db.get(compound.upper())
+        # 先尝试原始键名，再尝试大写
+        result = self.compound_db.get(compound)
+        if result is None:
+            result = self.compound_db.get(compound.upper())
+        if result is None:
+            # 大小写不敏感查找
+            for key in self.compound_db:
+                if key.upper() == compound.upper():
+                    return self.compound_db[key]
+        return result
 
     def add_compound(self, data: CompoundData):
         """向数据库添加化合物"""

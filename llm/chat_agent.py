@@ -73,6 +73,13 @@ SYSTEM_PROMPT_CORE = """你是合金热力学计算软件的AI助手。你的唯
 - calculate_precipitation_temperature → 析出温度 (参数: composition, solute)
 - calculate_melting_point_depression → 熔点降低 (参数: solvent, solute, solute_content_percent)
 
+【溶解度积与析出】
+- calculate_solubility_product → 溶解度积Ksp (参数: compound, temperature, phase, method)
+- calculate_precipitation_temperature_sp → 析出温度(溶解度积法) (参数: compound, metal_content, nonmetal_content, phase)
+- calculate_equilibrium_solubility → 平衡溶解度 (参数: compound, temperature, fixed_element, fixed_content, phase)
+- get_precipitation_sequence → 析出顺序 (参数: composition, phase)
+注意: compound参数可以是化合物名称(如"TiN")或反应方程式(如"TiN=[Ti]+[N]")。metal_content和nonmetal_content为质量百分数(wt%)。phase默认AUSTENITE。
+
 【辅助】
 - get_element_properties → 元素性质 (参数: element)
 - get_contribution_coefficients → 贡献系数 (参数: solvent, solute_i, solute_j)
@@ -85,6 +92,9 @@ SYSTEM_PROMPT_CORE = """你是合金热力学计算软件的AI助手。你的唯
 - "混合焓"→ calculate_mixing_enthalpy, "自由能"→ calculate_gibbs_energy
 - "相互作用系数"/"ε" → get_interaction_coefficient
 - "二阶"/"ρ" → get_second_order_interaction_coefficient
+- "溶解度积"/"Ksp" → calculate_solubility_product
+- "平衡溶解度"/"平衡含量" → calculate_equilibrium_solubility
+- "析出顺序"/"析出序列" → get_precipitation_sequence
 
 活度模型：Wagner(默认,一阶) / Darken(二阶) / Elliott(二阶交叉)
 外推模型：UEM1(默认) / UEM2 / Muggianu / Toop_Muggianu / Toop_Kohler
@@ -172,6 +182,10 @@ _CORE_TOOLS = {
     "get_element_properties",
     "screen_elements_liquidus_effect",
     "plot_chart",
+    "calculate_solubility_product",
+    "calculate_precipitation_temperature_sp",
+    "calculate_equilibrium_solubility",
+    "get_precipitation_sequence",
 }
 
 # 判断模型是否为小模型（需要精简工具和提示词）
@@ -591,6 +605,10 @@ class ChatAgent:
         "compare_mixing_enthalpy": "混合焓对比",
         "get_dft_data_summary": "DFT数据摘要",
         "import_dft_result": "导入DFT结果",
+        "calculate_solubility_product": "溶解度积",
+        "calculate_precipitation_temperature_sp": "析出温度(溶解度积)",
+        "calculate_equilibrium_solubility": "平衡溶解度",
+        "get_precipitation_sequence": "析出顺序",
     }
 
     # 需要隐藏的内部字段（不展示给用户）
@@ -632,6 +650,15 @@ class ChatAgent:
         "gibbs_energy_J_per_mol": ("Gibbs自由能", "J/mol"),
         "entropy_J_per_mol_K": ("熵", "J/(mol·K)"),
         "chemical_potential_J_per_mol": ("化学势", "J/mol"),
+        "log_Ksp": ("log(Ksp)", ""),
+        "Ksp": ("溶解度积 Ksp", ""),
+        "expression": ("溶解度积表达式", ""),
+        "metal_content_wt_pct": ("金属元素含量", "wt%"),
+        "nonmetal_content_wt_pct": ("非金属元素含量", "wt%"),
+        "equilibrium_content_wt_pct": ("平衡含量", "wt%"),
+        "equilibrium_content_ppm": ("平衡含量", "ppm"),
+        "precipitation_temperature_C": ("析出温度", "°C"),
+        "delta_G_dissolution": ("溶解Gibbs能变", "J/mol"),
     }
 
     @classmethod
@@ -800,6 +827,79 @@ class ChatAgent:
         # ---------- 元素筛选 ----------
         if tool_name == "screen_elements_liquidus_effect":
             return cls._format_screening_result(data)
+
+        # ---------- 溶解度积 ----------
+        if tool_name == "calculate_solubility_product":
+            compound = data.get("compound", "?")
+            temp = data.get("temperature", "?")
+            temp_c = data.get("temperature_celsius", "?")
+            phase = data.get("phase", "?")
+            log_ksp = data.get("log_Ksp")
+            expr = data.get("expression", "")
+            ref = data.get("reference", "")
+            if log_ksp is not None:
+                text = f"**{compound}** 在 {temp}K ({temp_c}°C) {phase} 中的溶解度积:\n"
+                text += f"  log(Ksp) = **{log_ksp:.4g}**"
+                ksp = data.get("Ksp")
+                if ksp is not None:
+                    text += f"，Ksp = {ksp:.4g}"
+                if expr:
+                    text += f"\n  表达式: {expr}"
+                if ref:
+                    text += f"\n  参考文献: {ref}"
+                # 热力学对比
+                thermo_log = data.get("thermo_log_Ksp")
+                if thermo_log is not None:
+                    text += f"\n  热力学法 log(Ksp) = {thermo_log:.4g}"
+                return text
+
+        # ---------- 析出温度(溶解度积) ----------
+        if tool_name == "calculate_precipitation_temperature_sp":
+            compound = data.get("compound", "?")
+            t_k = data.get("precipitation_temperature_K")
+            t_c = data.get("precipitation_temperature_C")
+            metal = data.get("metal", "?")
+            nonmetal = data.get("nonmetal", "?")
+            m_wt = data.get("metal_content_wt_pct", "?")
+            nm_wt = data.get("nonmetal_content_wt_pct", "?")
+            if t_k is not None:
+                text = f"**{compound}** 的析出温度: **{t_k:.1f} K ({t_c:.1f}°C)**\n"
+                text += f"  [{metal}] = {m_wt} wt%, [{nonmetal}] = {nm_wt} wt%"
+                expr = data.get("expression", "")
+                if expr:
+                    text += f"\n  表达式: {expr}"
+                return text
+
+        # ---------- 平衡溶解度 ----------
+        if tool_name == "calculate_equilibrium_solubility":
+            compound = data.get("compound", "?")
+            temp = data.get("temperature", "?")
+            temp_c = data.get("temperature_celsius", "?")
+            fixed_el = data.get("fixed_element", "?")
+            fixed_wt = data.get("fixed_content_wt_pct", "?")
+            eq_el = data.get("equilibrium_element", "?")
+            eq_wt = data.get("equilibrium_content_wt_pct")
+            eq_ppm = data.get("equilibrium_content_ppm")
+            if eq_wt is not None:
+                text = f"在 {temp}K ({temp_c}°C) 下，[{fixed_el}] = {fixed_wt} wt% 时，"
+                text += f"**{compound}** 中 **[{eq_el}]** 的平衡含量 = **{eq_wt:.4g} wt%**"
+                if eq_ppm is not None:
+                    text += f" ({eq_ppm:.1f} ppm)"
+                return text
+
+        # ---------- 析出顺序 ----------
+        if tool_name == "get_precipitation_sequence":
+            sequence = data.get("sequence", [])
+            if sequence:
+                lines = ["**析出顺序**（从高温到低温）:\n"]
+                lines.append("| 序号 | 化合物 | 析出温度 (K) | 析出温度 (°C) |")
+                lines.append("|------|--------|-------------|--------------|")
+                for i, item in enumerate(sequence, 1):
+                    c = item.get("compound", "?")
+                    tk = item.get("precipitation_temperature_K", 0)
+                    tc = item.get("precipitation_temperature_C", tk - 273.15)
+                    lines.append(f"| {i} | {c} | {tk:.1f} | {tc:.1f} |")
+                return "\n".join(lines)
 
         # ---------- 通用兜底：用中文标签替代英文字段名 ----------
         lines = [f"**{tool_zh}**:"]

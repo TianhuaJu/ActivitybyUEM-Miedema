@@ -926,6 +926,107 @@ TOOL_SCHEMAS = {
         },
         "required": ["compound_name", "elements", "stoichiometry", "reference_energies"]
     },
+
+    # ========== 溶解度积计算工具 ==========
+
+    "calculate_solubility_product": {
+        "type": "object",
+        "properties": {
+            "compound": {
+                "type": "string",
+                "description": "化合物名称或平衡反应方程式。例如: \"TiN\", \"NbC\", \"AlN\", 或 \"TiN = [Ti] + [N]\""
+            },
+            "temperature": {
+                "type": "number",
+                "description": "温度 (K)"
+            },
+            "phase": {
+                "type": "string",
+                "description": "基体相",
+                "enum": ["AUSTENITE", "FERRITE", "LIQUID"],
+                "default": "AUSTENITE"
+            },
+            "method": {
+                "type": "string",
+                "description": "计算方法: empirical(经验公式,默认), thermodynamic(热力学), both(两种对比)",
+                "enum": ["empirical", "thermodynamic", "both"],
+                "default": "empirical"
+            }
+        },
+        "required": ["compound", "temperature"]
+    },
+
+    "calculate_precipitation_temperature_sp": {
+        "type": "object",
+        "properties": {
+            "compound": {
+                "type": "string",
+                "description": "化合物名称，如 \"TiN\", \"NbC\""
+            },
+            "metal_content": {
+                "type": "number",
+                "description": "金属元素质量百分数 (wt%)，如 Ti=0.02 表示 0.02%Ti"
+            },
+            "nonmetal_content": {
+                "type": "number",
+                "description": "非金属元素质量百分数 (wt%)，如 N=0.005 表示 0.005%N"
+            },
+            "phase": {
+                "type": "string",
+                "description": "基体相",
+                "enum": ["AUSTENITE", "FERRITE", "LIQUID"],
+                "default": "AUSTENITE"
+            }
+        },
+        "required": ["compound", "metal_content", "nonmetal_content"]
+    },
+
+    "calculate_equilibrium_solubility": {
+        "type": "object",
+        "properties": {
+            "compound": {
+                "type": "string",
+                "description": "化合物名称，如 \"TiN\", \"NbC\""
+            },
+            "temperature": {
+                "type": "number",
+                "description": "温度 (K)"
+            },
+            "fixed_element": {
+                "type": "string",
+                "description": "已知含量的元素符号或角色。如 \"Ti\", \"N\", \"metal\", \"nonmetal\""
+            },
+            "fixed_content": {
+                "type": "number",
+                "description": "已知元素的质量百分数 (wt%)"
+            },
+            "phase": {
+                "type": "string",
+                "description": "基体相",
+                "enum": ["AUSTENITE", "FERRITE", "LIQUID"],
+                "default": "AUSTENITE"
+            }
+        },
+        "required": ["compound", "temperature", "fixed_element", "fixed_content"]
+    },
+
+    "get_precipitation_sequence": {
+        "type": "object",
+        "properties": {
+            "composition": {
+                "type": "object",
+                "description": "钢的成分（质量百分数 wt%）。例如: {\"Ti\": 0.015, \"Nb\": 0.025, \"C\": 0.08, \"N\": 0.008}",
+                "additionalProperties": {"type": "number"}
+            },
+            "phase": {
+                "type": "string",
+                "description": "基体相",
+                "enum": ["AUSTENITE", "FERRITE", "LIQUID"],
+                "default": "AUSTENITE"
+            }
+        },
+        "required": ["composition"]
+    },
 }
 
 TOOL_DESCRIPTIONS = {
@@ -963,6 +1064,10 @@ TOOL_DESCRIPTIONS = {
     "compare_mixing_enthalpy": "对比 Miedema 模型预测和 DFT 计算的二元系混合焓曲线。返回 Miedema 曲线和 DFT 数据点，以及偏差统计。用于评估 Miedema 模型在特定体系的预测精度。",
     "get_dft_data_summary": "获取 DFT 数据库的统计信息和所有存储的数据概要。包括化合物数量、混合焓数据点数、元素参数数量等。",
     "import_dft_result": "从已完成的 DFT 计算任务中自动导入结果到 DFT 数据库。需要提供化合物信息和纯元素参考能量，系统自动计算形成能并存储。",
+    "calculate_solubility_product": "计算化合物（碳化物、氮化物、硫化物等）在指定相中的溶解度积Ksp。支持经验公式法（Turkdogan，基于wt%）和热力学法（基于Gibbs能）。可用于TiN、NbC、VC、AlN、MnS等约40种化合物。经验表达式: log[%M][%X]^n = A - B/T。",
+    "calculate_precipitation_temperature_sp": "根据溶解度积计算化合物在钢中的析出温度。输入化合物名称和金属/非金属元素的质量百分数(wt%)，返回析出温度。基于 T = B/(A - log[%M][%X]^n)。",
+    "calculate_equilibrium_solubility": "计算给定温度下化合物的平衡溶解度。固定一种元素含量，计算另一种元素的平衡含量(wt%)。例如：已知温度和[Ti]含量，计算平衡[N]含量。",
+    "get_precipitation_sequence": "计算多种析出物在钢中的析出顺序。输入钢的成分（wt%），返回按析出温度从高到低排列的化合物列表。用于分析微合金钢中碳氮化物的析出行为。",
 }
 
 # 自定义工具元操作的Schema
@@ -1055,6 +1160,7 @@ class ThermodynamicTools:
         self._precip_calc = None
         self._binary_model = None
         self._dft_calc = None
+        self._solubility_calc = None
         self._memory_store = memory_store
         self._knowledge_store = knowledge_store
         self._skill_registry = skill_registry
@@ -1091,6 +1197,27 @@ class ThermodynamicTools:
             except Exception:
                 pass
         return self._dft_calc
+
+    @property
+    def solubility_calc(self):
+        """化合物溶解度积计算器（延迟初始化）"""
+        if self._solubility_calc is None:
+            from calculations.compound_solubility import CompoundSolubilityCalculator
+            self._solubility_calc = CompoundSolubilityCalculator()
+        return self._solubility_calc
+
+    def _parse_compound_input(self, compound_input: str) -> str:
+        """解析用户输入的化合物名称或反应方程式"""
+        import re
+        s = compound_input.strip()
+        # 如果是反应方程式: "TiN = [Ti] + [N]" 或 "TiN -> Ti + N"
+        for sep in ('⇌', '⇋', '->', '→', '='):
+            if sep in s:
+                s = s.split(sep)[0].strip()
+                break
+        # 移除冶金学中常用的括号标记
+        s = re.sub(r'[\[\]()]', '', s)
+        return s.strip()
 
     def _get_extrapolation_func(self, model_name: str):
         """获取外推模型函数"""
@@ -2125,6 +2252,246 @@ class ThermodynamicTools:
             }
         return result
 
+    # ========== 溶解度积计算工具方法 ==========
+
+    def calculate_solubility_product(
+        self,
+        compound: str,
+        temperature: float,
+        phase: str = "AUSTENITE",
+        method: str = "empirical"
+    ) -> Dict[str, Any]:
+        """计算化合物溶解度积"""
+        try:
+            import math
+            compound = self._parse_compound_input(compound)
+
+            from database.solubility_product_database import (
+                calculate_log_solubility_product,
+                get_solubility_product_data
+            )
+
+            results = {}
+
+            if method in ("empirical", "both"):
+                log_ksp = calculate_log_solubility_product(compound, phase, temperature)
+                sp_data = get_solubility_product_data(compound, phase)
+                if log_ksp is not None and sp_data is not None:
+                    n = sp_data.get('n', 1.0)
+                    results["empirical"] = {
+                        "log_Ksp": round(log_ksp, 4),
+                        "Ksp": 10 ** log_ksp,
+                        "A": sp_data["A"],
+                        "B": sp_data["B"],
+                        "n": n,
+                        "metal": sp_data["metal"],
+                        "nonmetal": sp_data["nonmetal"],
+                        "expression": f"log[%{sp_data['metal']}][%{sp_data['nonmetal']}]^{n} = {sp_data['A']} - {sp_data['B']}/T",
+                        "reference": sp_data.get("reference", ""),
+                        "T_min": sp_data.get("T_min"),
+                        "T_max": sp_data.get("T_max"),
+                    }
+                elif method == "empirical":
+                    return {"status": "error", "message": f"化合物 {compound} 在 {phase} 相中无经验溶解度积数据"}
+
+            if method in ("thermodynamic", "both"):
+                thermo_result = self.solubility_calc.calculate_solubility_product_ideal(
+                    compound, temperature, phase
+                )
+                if thermo_result.get("status") == "success":
+                    results["thermodynamic"] = thermo_result
+                elif method == "thermodynamic":
+                    return thermo_result
+
+            if not results:
+                return {"status": "error", "message": f"化合物 {compound} 在 {phase} 相中无可用数据"}
+
+            response = {
+                "status": "success",
+                "compound": compound,
+                "temperature": temperature,
+                "temperature_celsius": round(temperature - 273.15, 2),
+                "phase": phase,
+                "method": method,
+            }
+
+            if "empirical" in results:
+                emp = results["empirical"]
+                response["log_Ksp"] = emp["log_Ksp"]
+                response["Ksp"] = emp["Ksp"]
+                response["expression"] = emp["expression"]
+                response["reference"] = emp["reference"]
+                response["metal"] = emp["metal"]
+                response["nonmetal"] = emp["nonmetal"]
+                response["A"] = emp["A"]
+                response["B"] = emp["B"]
+                response["n"] = emp["n"]
+                if emp.get("T_min") and emp.get("T_max"):
+                    response["valid_range"] = f"{emp['T_min']}-{emp['T_max']} K"
+
+            if "thermodynamic" in results:
+                thermo = results["thermodynamic"]
+                prefix = "thermo_" if "empirical" in results else ""
+                response[f"{prefix}log_Ksp"] = round(thermo.get("log_Ksp", 0), 4)
+                response[f"{prefix}Ksp"] = thermo.get("Ksp_ideal")
+                response[f"{prefix}delta_G_dissolution"] = round(thermo.get("delta_G_dissolution", 0), 1)
+
+            return response
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def calculate_precipitation_temperature_sp(
+        self,
+        compound: str,
+        metal_content: float,
+        nonmetal_content: float,
+        phase: str = "AUSTENITE"
+    ) -> Dict[str, Any]:
+        """根据溶解度积计算析出温度"""
+        try:
+            compound = self._parse_compound_input(compound)
+
+            from database.solubility_product_database import (
+                calculate_precipitation_temperature_from_product,
+                get_solubility_product_data
+            )
+
+            sp_data = get_solubility_product_data(compound, phase)
+            if sp_data is None:
+                return {"status": "error", "message": f"化合物 {compound} 在 {phase} 相中无溶解度积数据"}
+
+            T_precip = calculate_precipitation_temperature_from_product(
+                compound, phase, metal_content, nonmetal_content
+            )
+
+            if T_precip is None:
+                return {
+                    "status": "error",
+                    "message": f"在给定含量下 {compound} 不会析出（溶解度积过大或含量为零）"
+                }
+
+            n = sp_data.get('n', 1.0)
+            return {
+                "status": "success",
+                "compound": compound,
+                "metal": sp_data["metal"],
+                "nonmetal": sp_data["nonmetal"],
+                "metal_content_wt_pct": metal_content,
+                "nonmetal_content_wt_pct": nonmetal_content,
+                "precipitation_temperature_K": round(T_precip, 1),
+                "precipitation_temperature_C": round(T_precip - 273.15, 1),
+                "phase": phase,
+                "expression": f"log[%{sp_data['metal']}][%{sp_data['nonmetal']}]^{n} = {sp_data['A']} - {sp_data['B']}/T",
+                "reference": sp_data.get("reference", ""),
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def calculate_equilibrium_solubility(
+        self,
+        compound: str,
+        temperature: float,
+        fixed_element: str,
+        fixed_content: float,
+        phase: str = "AUSTENITE"
+    ) -> Dict[str, Any]:
+        """计算平衡溶解度"""
+        try:
+            compound = self._parse_compound_input(compound)
+
+            from database.solubility_product_database import (
+                calculate_equilibrium_content,
+                get_solubility_product_data
+            )
+
+            sp_data = get_solubility_product_data(compound, phase)
+            if sp_data is None:
+                return {"status": "error", "message": f"化合物 {compound} 在 {phase} 相中无溶解度积数据"}
+
+            # 智能解析 fixed_element: 元素符号→metal/nonmetal角色
+            fe_upper = fixed_element.upper()
+            if fe_upper in ("METAL", "NONMETAL"):
+                role = fe_upper.lower()
+            elif fe_upper == sp_data["metal"]:
+                role = "metal"
+            elif fe_upper == sp_data["nonmetal"]:
+                role = "nonmetal"
+            else:
+                return {
+                    "status": "error",
+                    "message": f"元素 {fixed_element} 不是 {compound} 的组成元素（{sp_data['metal']}/{sp_data['nonmetal']}）"
+                }
+
+            eq_content = calculate_equilibrium_content(
+                compound, phase, temperature, role, fixed_content
+            )
+
+            if eq_content is None:
+                return {"status": "error", "message": f"无法计算 {compound} 在 {temperature}K 下的平衡含量"}
+
+            # 确定平衡元素
+            if role == "metal":
+                eq_element = sp_data["nonmetal"]
+                fixed_el_name = sp_data["metal"]
+            else:
+                eq_element = sp_data["metal"]
+                fixed_el_name = sp_data["nonmetal"]
+
+            return {
+                "status": "success",
+                "compound": compound,
+                "temperature": temperature,
+                "temperature_celsius": round(temperature - 273.15, 2),
+                "phase": phase,
+                "fixed_element": fixed_el_name,
+                "fixed_content_wt_pct": fixed_content,
+                "equilibrium_element": eq_element,
+                "equilibrium_content_wt_pct": round(eq_content, 6),
+                "equilibrium_content_ppm": round(eq_content * 10000, 2),
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def get_precipitation_sequence(
+        self,
+        composition: Dict[str, float],
+        phase: str = "AUSTENITE"
+    ) -> Dict[str, Any]:
+        """计算析出顺序"""
+        try:
+            from database.solubility_product_database import (
+                get_precipitation_sequence as _get_precip_seq
+            )
+
+            # 键名转大写以匹配数据库
+            comp_upper = {k.upper(): float(v) for k, v in composition.items()}
+
+            sequence = _get_precip_seq(comp_upper, phase)
+
+            if not sequence:
+                return {
+                    "status": "error",
+                    "message": f"在给定成分下，{phase} 相中没有可析出的化合物"
+                }
+
+            result_sequence = []
+            for compound, T_precip in sequence:
+                result_sequence.append({
+                    "compound": compound,
+                    "precipitation_temperature_K": round(T_precip, 1),
+                    "precipitation_temperature_C": round(T_precip - 273.15, 1),
+                })
+
+            return {
+                "status": "success",
+                "phase": phase,
+                "composition_wt_pct": composition,
+                "sequence": result_sequence,
+                "count": len(result_sequence),
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     def _get_all_tool_methods(self) -> Dict[str, Any]:
         """获取所有工具方法映射（含插件工具）"""
         methods = {
@@ -2165,6 +2532,10 @@ class ThermodynamicTools:
             "compare_mixing_enthalpy": self.compare_mixing_enthalpy,
             "get_dft_data_summary": self.get_dft_data_summary,
             "import_dft_result": self.import_dft_result,
+            "calculate_solubility_product": self.calculate_solubility_product,
+            "calculate_precipitation_temperature_sp": self.calculate_precipitation_temperature_sp,
+            "calculate_equilibrium_solubility": self.calculate_equilibrium_solubility,
+            "get_precipitation_sequence": self.get_precipitation_sequence,
         }
         # 合并扩展插件工具
         if self._plugin_registry:
@@ -2260,6 +2631,28 @@ class ThermodynamicTools:
         # tags: 可能传成逗号分隔的字符串
         if "tags" in args and isinstance(args["tags"], str):
             args["tags"] = [t.strip() for t in args["tags"].split(",") if t.strip()]
+
+        # 溶解度积工具参数修正
+        for key in ("metal_content", "nonmetal_content", "fixed_content"):
+            if key in args and isinstance(args[key], str):
+                try:
+                    args[key] = float(args[key])
+                except ValueError:
+                    pass
+
+        # phase: 中文别名→标准名
+        if "phase" in args and isinstance(args["phase"], str):
+            phase_map = {
+                "austenite": "AUSTENITE", "gamma": "AUSTENITE", "fcc": "AUSTENITE",
+                "ferrite": "FERRITE", "alpha": "FERRITE", "bcc": "FERRITE",
+                "liquid": "LIQUID", "melt": "LIQUID",
+                "奥氏体": "AUSTENITE", "铁素体": "FERRITE", "液相": "LIQUID",
+            }
+            args["phase"] = phase_map.get(args["phase"].lower(), args["phase"].upper())
+
+        # method: 统一小写
+        if "method" in args and isinstance(args["method"], str):
+            args["method"] = args["method"].lower()
 
         return args
 
