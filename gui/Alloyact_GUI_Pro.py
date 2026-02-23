@@ -19,7 +19,8 @@ matplotlib.rcParams['mathtext.default'] = 'regular'
 # Import PyQt5 modules
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QTabWidget, QMessageBox,
-                             QStatusBar, QAction, QSystemTrayIcon, QMenu)
+                             QStatusBar, QAction, QSystemTrayIcon, QMenu,
+                             QDialog, QTextBrowser)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QGuiApplication, QIcon
 
@@ -40,6 +41,7 @@ from gui.PhaseDiagramWidget import PhaseDiagramWidget
 from gui.SolubilityWidget import SolubilityWidget
 from gui.PhaseEquilibriumWidget import PhaseEquilibriumWidget
 from gui.PrecipitationTemperatureWidget import PrecipitationTemperatureWidget
+from gui.SolubilityProductWidget import SolubilityProductWidget
 from gui.ChatWidget import ChatWidget
 
 
@@ -161,7 +163,14 @@ class AlloyThermolCalProGUI(QMainWindow):
 		
 		# 帮助菜单
 		help_menu = menubar.addMenu('帮助(&H)')
-		
+
+		help_guide_action = QAction('用户手册(&M)', self)
+		help_guide_action.setShortcut('F1')
+		help_guide_action.triggered.connect(self.show_help_guide)
+		help_menu.addAction(help_guide_action)
+
+		help_menu.addSeparator()
+
 		about_action = QAction('关于(&A)', self)
 		about_action.triggered.connect(self.show_about)
 		help_menu.addAction(about_action)
@@ -232,6 +241,9 @@ class AlloyThermolCalProGUI(QMainWindow):
 
 		# 析出温度计算选项卡
 		self.create_precipitation_temperature_tab()
+
+		# 溶解度积计算选项卡
+		self.create_solubility_product_tab()
 
 		# 相平衡计算选项卡
 		self.create_phase_equilibrium_tab()
@@ -358,6 +370,11 @@ class AlloyThermolCalProGUI(QMainWindow):
 		self.precipitation_temp_widget = PrecipitationTemperatureWidget()
 		self.tabs.addTab(self.precipitation_temp_widget, "析出温度计算")
 
+	def create_solubility_product_tab(self):
+		"""创建溶解度积计算选项卡"""
+		self.solubility_product_widget = SolubilityProductWidget()
+		self.tabs.addTab(self.solubility_product_widget, "溶解度积计算")
+
 	def show_about (self):
 		"""显示关于对话框"""
 		about_text = """
@@ -367,6 +384,7 @@ class AlloyThermolCalProGUI(QMainWindow):
         <ul>
         <li><b>溶解度计算</b> - 液相/固相溶解度、溶解度-温度/成分曲线</li>
         <li><b>析出温度计算</b> - 单点/曲线计算、多溶质析出顺序分析</li>
+        <li><b>溶解度积计算</b> - 碳化物/氮化物溶解度积、析出温度、平衡溶解度、析出顺序</li>
         <li><b>活度计算</b> - 活度系数、化学势、过剩Gibbs能</li>
         <li><b>相互作用系数</b> - 一阶/二阶Wagner相互作用系数</li>
         <li><b>相图计算</b> - 液相线/固相线温度计算</li>
@@ -382,6 +400,45 @@ class AlloyThermolCalProGUI(QMainWindow):
         <p><b>技术支持:</b> <a href="mailto:jutianhua@gxu.edu.cn">jutianhua@gxu.edu.cn</a></p>
         """
 		QMessageBox.about(self, "关于 AlloyThermolCal Pro", about_text)
+
+	def show_help_guide(self):
+		"""显示用户帮助手册"""
+		help_path = self.get_resource_path('docs/help_guide.md')
+		if not os.path.exists(help_path):
+			QMessageBox.warning(self, "提示", "未找到帮助文档文件。")
+			return
+
+		try:
+			with open(help_path, 'r', encoding='utf-8') as f:
+				md_content = f.read()
+		except Exception as e:
+			QMessageBox.warning(self, "错误", f"读取帮助文档失败：{e}")
+			return
+
+		dialog = QDialog(self)
+		dialog.setWindowTitle("AlloyThermolCal Pro - 用户手册")
+		dialog.resize(900, 650)
+
+		layout = QVBoxLayout(dialog)
+		layout.setContentsMargins(6, 6, 6, 6)
+
+		browser = QTextBrowser()
+		browser.setOpenExternalLinks(True)
+		browser.setStyleSheet("""
+			QTextBrowser {
+				font-family: "Microsoft YaHei UI", "SimHei", sans-serif;
+				font-size: 13px;
+				line-height: 1.6;
+				padding: 16px;
+				border: 1px solid #dee2e6;
+				border-radius: 4px;
+				background: #fff;
+			}
+		""")
+		browser.setMarkdown(md_content)
+
+		layout.addWidget(browser)
+		dialog.exec_()
 		
 	# 4. 添加打开独立窗口的新方法
 	def open_conversion_tool (self):

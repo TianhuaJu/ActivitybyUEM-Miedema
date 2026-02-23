@@ -2068,11 +2068,21 @@ class ChatWidget(QWidget):
         # 欢迎消息
         welcome = QLabel(
             "欢迎使用对话式热力学计算助手！\n\n"
-            "您可以用自然语言描述计算需求，例如：\n"
+            "您可以用自然语言描述计算需求，例如：\n\n"
+            "【活度与热力学性质】\n"
             "• 计算Al-5%Cu合金的液相线温度\n"
             "• 铝中每增加1%铜，熔点会降低多少？\n"
+            "• 获取Fe元素的热力学性质\n\n"
+            "【相互作用系数】\n"
+            "• 求Fe中C对Si的一阶相互作用系数ε\n"
+            "• 计算1873K下Fe中C的二阶相互作用系数ρ\n\n"
+            "【溶解度积与析出】\n"
+            "• 计算TiN在1200°C奥氏体中的溶解度积\n"
+            "• 钢中含0.02%Ti和0.005%N，计算TiN的析出温度\n"
+            "• 1200°C下含0.02%Ti的钢中，平衡氮含量是多少？\n"
+            "• 分析含Ti/Nb/V/C/N钢的析出顺序\n\n"
+            "【温度与相图】\n"
             "• 计算Fe-0.2%C合金中C的析出温度\n"
-            "• 获取Fe元素的热力学性质\n"
             "• 绘制Cu含量对Al合金液相线温度的影响图\n\n"
             "请先在上方配置LLM后端并点击\"连接\"按钮。\n"
             "模型下拉框可编辑，支持手动输入自定义模型名称。"
@@ -2151,6 +2161,21 @@ class ChatWidget(QWidget):
             QPushButton:hover { background: #d0d0d0; color: #333; }
         """)
         layout.addWidget(self.clear_btn)
+
+        # 功能指南按钮
+        self.guide_btn = QPushButton("功能\n指南")
+        self.guide_btn.clicked.connect(self._show_feature_guide)
+        self.guide_btn.setFixedSize(72, 72)
+        self.guide_btn.setCursor(Qt.PointingHandCursor)
+        self.guide_btn.setStyleSheet("""
+            QPushButton {
+                background: #8e44ad; color: #fff;
+                border: none; border-radius: 10px;
+                font-size: 13px; font-weight:bold;
+            }
+            QPushButton:hover { background: #7d3c98; }
+        """)
+        layout.addWidget(self.guide_btn)
 
         return bar
 
@@ -2715,6 +2740,74 @@ class ChatWidget(QWidget):
 
         # 添加欢迎消息
         self._add_system_message("对话已清空，开始新的会话。")
+
+    def _show_feature_guide(self):
+        """显示功能指南对话框"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("AI助手 - 功能指南")
+        dialog.resize(650, 550)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(8, 8, 8, 8)
+
+        browser = QTextBrowser()
+        browser.setOpenExternalLinks(False)
+        browser.setStyleSheet("""
+            QTextBrowser {
+                font-family: "Microsoft YaHei UI", "SimHei", sans-serif;
+                font-size: 13px;
+                padding: 12px;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                background: #fff;
+            }
+        """)
+
+        guide_md = (
+            "# AI助手功能指南\n\n"
+            "以下是AI助手支持的所有计算工具及示例用法。\n\n"
+            "---\n\n"
+            "## 活度计算\n\n"
+            "| 功能 | 示例提问 |\n"
+            "|------|----------|\n"
+            "| 活度 | 计算Fe-5%C合金中C的活度 |\n"
+            "| 活度系数 | 求Al-3%Cu合金中Cu的活度系数 |\n"
+            "| 化学势 | 计算Fe-2%Mn合金中Mn的化学势 |\n"
+            "| 混合焓 | Fe-5%Cr合金在1873K的混合焓 |\n"
+            "| Gibbs自由能 | 计算Cu-30%Zn合金的Gibbs自由能 |\n\n"
+            "## 相互作用系数\n\n"
+            "| 功能 | 示例提问 |\n"
+            "|------|----------|\n"
+            "| 一阶系数 ε | 求Fe中C对Si的相互作用系数 |\n"
+            "| 二阶系数 ρ | 计算Fe中C的二阶相互作用系数 |\n"
+            "| 无限稀释活度系数 | 求Fe中C的无限稀释活度系数 |\n"
+            "| 贡献系数 | 查询Fe-C-Si体系的贡献系数 |\n\n"
+            "## 温度计算\n\n"
+            "| 功能 | 示例提问 |\n"
+            "|------|----------|\n"
+            "| 液相线温度 | 计算Al-5%Cu合金的液相线温度 |\n"
+            "| 熔点降低 | 铝中每增加1%铜，熔点降低多少 |\n"
+            "| 析出温度 | 计算Fe-0.2%C合金中C的析出温度 |\n\n"
+            "## 溶解度积\n\n"
+            "| 功能 | 示例提问 |\n"
+            "|------|----------|\n"
+            "| 溶解度积 Ksp | 计算TiN在1200°C奥氏体中的溶解度积 |\n"
+            "| 析出温度(溶解度积法) | 0.02%Ti, 0.005%N钢中TiN的析出温度 |\n"
+            "| 平衡溶解度 | 1200°C下含0.02%Ti钢中平衡氮含量 |\n"
+            "| 析出顺序 | 含Ti/Nb/V/C/N钢的析出顺序 |\n\n"
+            "## 辅助功能\n\n"
+            "| 功能 | 示例提问 |\n"
+            "|------|----------|\n"
+            "| 元素性质 | 获取Fe元素的热力学性质 |\n"
+            "| 元素筛选 | 筛选哪些元素最能降低Al的液相线温度 |\n"
+            "| 绘图 | 绘制Cu含量对Al合金液相线温度的影响图 |\n\n"
+            "---\n\n"
+            "**提示：** 关键词如\"活度\"、\"液相线\"、\"溶解度积\"、\"析出顺序\"等会自动触发对应的计算工具。"
+        )
+        browser.setMarkdown(guide_md)
+
+        layout.addWidget(browser)
+        dialog.exec_()
 
     def _scroll_to_bottom(self):
         """滚动到底部"""

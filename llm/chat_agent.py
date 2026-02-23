@@ -157,7 +157,31 @@ SYSTEM_PROMPT_EXTENDED = """
 用 get_contribution_coefficients 查询，如：solvent="Fe", solute_i="C", solute_j="Si"
 
 ========== 合金设计工作流 ==========
-用 screen_elements_liquidus_effect 一次筛选多种元素的液相线影响，用表格展示排名结果。"""
+用 screen_elements_liquidus_effect 一次筛选多种元素的液相线影响，用表格展示排名结果。
+
+========== 溶解度积工具使用指南 ==========
+溶解度积系列工具基于Turkdogan经验公式 log Ksp = A - B/T，用于钢中碳化物/氮化物的析出分析。
+
+1. calculate_solubility_product — 计算指定温度下的log(Ksp)
+   适用场景：用户问"某化合物在某温度下的溶解度积是多少"
+   示例：calculate_solubility_product(compound="TiN", temperature=1473, phase="AUSTENITE")
+
+2. calculate_precipitation_temperature_sp — 根据元素含量计算析出温度
+   适用场景：用户给出金属和非金属元素的wt%含量，问析出温度
+   注意：metal_content和nonmetal_content为质量百分数(wt%)，不是摩尔分数
+   示例：calculate_precipitation_temperature_sp(compound="TiN", metal_content=0.02, nonmetal_content=0.005, phase="AUSTENITE")
+
+3. calculate_equilibrium_solubility — 给定温度和一个元素含量，求另一元素的平衡含量
+   适用场景：用户问"某温度下含X%某元素时，另一元素的平衡含量"
+   示例：calculate_equilibrium_solubility(compound="TiN", temperature=1473, fixed_element="metal", fixed_content=0.02, phase="AUSTENITE")
+
+4. get_precipitation_sequence — 分析多种析出物的析出顺序
+   适用场景：用户给出钢的成分(wt%)，问各析出物的析出顺序
+   注意：composition为wt%格式，键名大写，如 {"TI": 0.015, "NB": 0.025, "C": 0.08, "N": 0.008}
+   示例：get_precipitation_sequence(composition={"TI": 0.015, "NB": 0.025, "V": 0.05, "C": 0.08, "N": 0.008}, phase="AUSTENITE")
+
+支持的化合物：TiN, TiC, NbC, NbN, VC, VN, AlN, Cr23C6, MnS
+支持的相：AUSTENITE(奥氏体), FERRITE(铁素体), LIQUID(液相)"""
 
 
 # 完整提示词：核心+扩展（用于大模型）
