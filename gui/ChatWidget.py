@@ -2065,33 +2065,18 @@ class ChatWidget(QWidget):
         self.messages_layout.setSpacing(4)
         self.messages_layout.setContentsMargins(8, 8, 8, 8)
 
-        # 欢迎消息
+        # 欢迎提示（紧凑tip样式）
         welcome = QLabel(
-            "欢迎使用对话式热力学计算助手！\n\n"
-            "您可以用自然语言描述计算需求，例如：\n\n"
-            "【活度与热力学性质】\n"
-            "• 计算Al-5%Cu合金的液相线温度\n"
-            "• 铝中每增加1%铜，熔点会降低多少？\n"
-            "• 获取Fe元素的热力学性质\n\n"
-            "【相互作用系数】\n"
-            "• 求Fe中C对Si的一阶相互作用系数ε\n"
-            "• 计算1873K下Fe中C的二阶相互作用系数ρ\n\n"
-            "【溶解度积与析出】\n"
-            "• 计算TiN在1200°C奥氏体中的溶解度积\n"
-            "• 钢中含0.02%Ti和0.005%N，计算TiN的析出温度\n"
-            "• 1200°C下含0.02%Ti的钢中，平衡氮含量是多少？\n"
-            "• 分析含Ti/Nb/V/C/N钢的析出顺序\n\n"
-            "【温度与相图】\n"
-            "• 计算Fe-0.2%C合金中C的析出温度\n"
-            "• 绘制Cu含量对Al合金液相线温度的影响图\n\n"
-            "请先在上方配置LLM后端并点击\"连接\"按钮。\n"
-            "模型下拉框可编辑，支持手动输入自定义模型名称。"
+            "Tip: 请先在上方配置LLM后端并点击\"连接\"。"
+            "连接成功后，直接输入自然语言即可调用计算工具，"
+            "如\"计算TiN在1200°C的溶解度积\"。"
+            "点击右下角「功能指南」查看全部工具和示例。"
         )
         welcome.setWordWrap(True)
         welcome.setStyleSheet("""
-            color: #555; font-size: 13px; line-height: 1.5;
-            padding: 16px; background: #fff;
-            border-radius: 8px; border: 1px solid #e8e8e8;
+            color: #666; font-size: 13px;
+            padding: 10px 14px; background: #eef6ff;
+            border-radius: 6px; border: 1px solid #c8ddf0;
         """)
         self.messages_layout.addWidget(welcome)
         self.messages_layout.addStretch()

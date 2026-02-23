@@ -215,7 +215,7 @@ class SolubilityProductWidget(QWidget):
 
         splitter.addWidget(left_widget)
         splitter.addWidget(right_widget)
-        splitter.setSizes([400, 800])
+        splitter.setSizes([420, 800])
 
     def _create_input_panel(self):
         """创建输入面板"""
@@ -228,10 +228,10 @@ class SolubilityProductWidget(QWidget):
 
         self.mode_button_group = QButtonGroup()
 
-        self.mode_ksp = QRadioButton("溶解度积计算")
-        self.mode_precip = QRadioButton("析出温度计算")
-        self.mode_equilibrium = QRadioButton("平衡溶解度计算")
-        self.mode_sequence = QRadioButton("析出顺序分析")
+        self.mode_ksp = QRadioButton("溶解度积计算 — log(Ksp) vs 温度")
+        self.mode_precip = QRadioButton("析出温度计算 — 由元素含量求 T")
+        self.mode_equilibrium = QRadioButton("平衡溶解度计算 — 由温度求平衡含量")
+        self.mode_sequence = QRadioButton("析出顺序分析 — 多化合物排序")
 
         self.mode_button_group.addButton(self.mode_ksp, 1)
         self.mode_button_group.addButton(self.mode_precip, 2)
@@ -260,6 +260,18 @@ class SolubilityProductWidget(QWidget):
 
         layout.addWidget(self.input_group)
 
+        # 化合物信息展示
+        self.info_group = QGroupBox("化合物信息")
+        info_layout = QVBoxLayout(self.info_group)
+        self.info_label = QLabel("选择化合物和基体相后显示公式信息")
+        self.info_label.setWordWrap(True)
+        self.info_label.setStyleSheet("""
+            color: #444; font-size: 12px; padding: 4px;
+            background: #fafafa; border-radius: 4px;
+        """)
+        info_layout.addWidget(self.info_label)
+        layout.addWidget(self.info_group)
+
         # 按钮
         button_layout = QHBoxLayout()
 
@@ -268,21 +280,21 @@ class SolubilityProductWidget(QWidget):
         self.calculate_button.clicked.connect(self._perform_calculation)
         button_layout.addWidget(self.calculate_button)
 
+        self.clear_button = QPushButton("清空结果")
+        self.clear_button.setMinimumHeight(40)
+        self.clear_button.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6; color: white;
+            }
+            QPushButton:hover { background-color: #7f8c8d; }
+        """)
+        self.clear_button.clicked.connect(self._clear_results)
+        button_layout.addWidget(self.clear_button)
+
         layout.addLayout(button_layout)
         layout.addStretch()
 
         return widget
-
-    def _get_compound_list(self, phase: str):
-        """获取指定相中可用的化合物列表"""
-        phase_upper = phase.upper()
-        phase_map = {
-            '奥氏体 (AUSTENITE)': 'AUSTENITE',
-            '铁素体 (FERRITE)': 'FERRITE',
-            '液相 (LIQUID)': 'LIQUID',
-        }
-        phase_key = phase_map.get(phase_upper, phase_upper)
-        return list(SOLUBILITY_PRODUCTS.get(phase_key, {}).keys())
 
     def _get_phase_key(self, phase_text: str) -> str:
         """将下拉框文本转换为相键"""
@@ -304,67 +316,38 @@ class SolubilityProductWidget(QWidget):
         row = 0
 
         if self.mode_ksp.isChecked():
-            # 溶解度积计算
-            self.input_layout.addWidget(QLabel("基体相:"), row, 0, Qt.AlignRight)
-            self.phase_combo = QComboBox()
-            self.phase_combo.addItems(['奥氏体 (AUSTENITE)', '铁素体 (FERRITE)', '液相 (LIQUID)'])
-            self.phase_combo.currentIndexChanged.connect(self._on_phase_changed)
-            self.input_layout.addWidget(self.phase_combo, row, 1)
-            row += 1
-
-            self.input_layout.addWidget(QLabel("化合物:"), row, 0, Qt.AlignRight)
-            self.compound_combo = QComboBox()
-            self._update_compound_list()
-            self.input_layout.addWidget(self.compound_combo, row, 1)
-            row += 1
+            self._build_phase_and_compound(row)
+            row += 2
 
             self.input_layout.addWidget(QLabel("温度 (K):"), row, 0, Qt.AlignRight)
             self.temp_input = QLineEdit("1473")
             self.temp_input.setPlaceholderText("例如: 1473 (即1200°C)")
             self.input_layout.addWidget(self.temp_input, row, 1)
-            row += 1
 
         elif self.mode_precip.isChecked():
-            # 析出温度计算
-            self.input_layout.addWidget(QLabel("基体相:"), row, 0, Qt.AlignRight)
-            self.phase_combo = QComboBox()
-            self.phase_combo.addItems(['奥氏体 (AUSTENITE)', '铁素体 (FERRITE)', '液相 (LIQUID)'])
-            self.phase_combo.currentIndexChanged.connect(self._on_phase_changed)
-            self.input_layout.addWidget(self.phase_combo, row, 1)
-            row += 1
+            self._build_phase_and_compound(row)
+            row += 2
 
-            self.input_layout.addWidget(QLabel("化合物:"), row, 0, Qt.AlignRight)
-            self.compound_combo = QComboBox()
-            self._update_compound_list()
-            self.input_layout.addWidget(self.compound_combo, row, 1)
-            row += 1
-
-            self.input_layout.addWidget(QLabel("金属元素含量 (wt%):"), row, 0, Qt.AlignRight)
+            # 动态标签 — 根据化合物显示具体元素名
+            self.metal_label = QLabel("金属元素含量 (wt%):")
+            self.input_layout.addWidget(self.metal_label, row, 0, Qt.AlignRight)
             self.metal_input = QLineEdit("0.02")
             self.metal_input.setPlaceholderText("例如: 0.02")
             self.input_layout.addWidget(self.metal_input, row, 1)
             row += 1
 
-            self.input_layout.addWidget(QLabel("非金属元素含量 (wt%):"), row, 0, Qt.AlignRight)
+            self.nonmetal_label = QLabel("非金属元素含量 (wt%):")
+            self.input_layout.addWidget(self.nonmetal_label, row, 0, Qt.AlignRight)
             self.nonmetal_input = QLineEdit("0.005")
             self.nonmetal_input.setPlaceholderText("例如: 0.005")
             self.input_layout.addWidget(self.nonmetal_input, row, 1)
-            row += 1
+
+            # 初始化动态标签
+            self._update_element_labels()
 
         elif self.mode_equilibrium.isChecked():
-            # 平衡溶解度计算
-            self.input_layout.addWidget(QLabel("基体相:"), row, 0, Qt.AlignRight)
-            self.phase_combo = QComboBox()
-            self.phase_combo.addItems(['奥氏体 (AUSTENITE)', '铁素体 (FERRITE)', '液相 (LIQUID)'])
-            self.phase_combo.currentIndexChanged.connect(self._on_phase_changed)
-            self.input_layout.addWidget(self.phase_combo, row, 1)
-            row += 1
-
-            self.input_layout.addWidget(QLabel("化合物:"), row, 0, Qt.AlignRight)
-            self.compound_combo = QComboBox()
-            self._update_compound_list()
-            self.input_layout.addWidget(self.compound_combo, row, 1)
-            row += 1
+            self._build_phase_and_compound(row)
+            row += 2
 
             self.input_layout.addWidget(QLabel("温度 (K):"), row, 0, Qt.AlignRight)
             self.temp_input = QLineEdit("1473")
@@ -374,7 +357,8 @@ class SolubilityProductWidget(QWidget):
 
             self.input_layout.addWidget(QLabel("固定元素:"), row, 0, Qt.AlignRight)
             self.fixed_element_combo = QComboBox()
-            self.fixed_element_combo.addItems(['metal (金属元素)', 'nonmetal (非金属元素)'])
+            # 动态选项 — 根据化合物显示实际元素名
+            self._build_fixed_element_options()
             self.input_layout.addWidget(self.fixed_element_combo, row, 1)
             row += 1
 
@@ -382,10 +366,8 @@ class SolubilityProductWidget(QWidget):
             self.fixed_content_input = QLineEdit("0.02")
             self.fixed_content_input.setPlaceholderText("例如: 0.02")
             self.input_layout.addWidget(self.fixed_content_input, row, 1)
-            row += 1
 
         elif self.mode_sequence.isChecked():
-            # 析出顺序分析
             self.input_layout.addWidget(QLabel("基体相:"), row, 0, Qt.AlignRight)
             self.phase_combo = QComboBox()
             self.phase_combo.addItems(['奥氏体 (AUSTENITE)', '铁素体 (FERRITE)', '液相 (LIQUID)'])
@@ -396,27 +378,45 @@ class SolubilityProductWidget(QWidget):
             comp_widget = QWidget()
             comp_layout = QGridLayout(comp_widget)
             comp_layout.setContentsMargins(0, 0, 0, 0)
-            comp_layout.setSpacing(4)
+            comp_layout.setSpacing(6)
 
             self.comp_inputs = {}
             elements = ['TI', 'NB', 'V', 'AL', 'CR', 'MN', 'C', 'N', 'S']
             for i, el in enumerate(elements):
                 r, c = divmod(i, 3)
-                comp_layout.addWidget(QLabel(f"{el}:"), r, c * 2, Qt.AlignRight)
+                lbl = QLabel(f"{el}:")
+                lbl.setStyleSheet("font-weight: bold;")
+                comp_layout.addWidget(lbl, r, c * 2, Qt.AlignRight)
                 inp = QLineEdit()
                 inp.setPlaceholderText("0")
                 inp.setFixedWidth(80)
                 comp_layout.addWidget(inp, r, c * 2 + 1)
                 self.comp_inputs[el] = inp
 
-            # 设置默认值
-            defaults = {'TI': '0.015', 'NB': '0.025', 'V': '0.05', 'C': '0.08', 'N': '0.008', 'AL': '0.03'}
+            defaults = {'TI': '0.015', 'NB': '0.025', 'V': '0.05',
+                        'C': '0.08', 'N': '0.008', 'AL': '0.03'}
             for el, val in defaults.items():
                 if el in self.comp_inputs:
                     self.comp_inputs[el].setText(val)
 
             self.input_layout.addWidget(comp_widget, row, 1)
-            row += 1
+
+        # 更新化合物信息
+        self._update_compound_info()
+
+    def _build_phase_and_compound(self, start_row: int):
+        """构建基体相和化合物下拉框（前三种模式共用）"""
+        self.input_layout.addWidget(QLabel("基体相:"), start_row, 0, Qt.AlignRight)
+        self.phase_combo = QComboBox()
+        self.phase_combo.addItems(['奥氏体 (AUSTENITE)', '铁素体 (FERRITE)', '液相 (LIQUID)'])
+        self.phase_combo.currentIndexChanged.connect(self._on_phase_changed)
+        self.input_layout.addWidget(self.phase_combo, start_row, 1)
+
+        self.input_layout.addWidget(QLabel("化合物:"), start_row + 1, 0, Qt.AlignRight)
+        self.compound_combo = QComboBox()
+        self._update_compound_list()
+        self.compound_combo.currentIndexChanged.connect(self._on_compound_changed)
+        self.input_layout.addWidget(self.compound_combo, start_row + 1, 1)
 
     def _on_mode_changed(self):
         """模式改变时更新输入字段"""
@@ -425,6 +425,15 @@ class SolubilityProductWidget(QWidget):
     def _on_phase_changed(self):
         """相改变时更新化合物列表"""
         self._update_compound_list()
+        self._on_compound_changed()
+
+    def _on_compound_changed(self):
+        """化合物改变时更新信息和动态标签"""
+        self._update_compound_info()
+        if self.mode_precip.isChecked():
+            self._update_element_labels()
+        elif self.mode_equilibrium.isChecked():
+            self._build_fixed_element_options()
 
     def _update_compound_list(self):
         """更新化合物下拉列表"""
@@ -432,8 +441,89 @@ class SolubilityProductWidget(QWidget):
             return
         phase_key = self._get_phase_key(self.phase_combo.currentText())
         compounds = list(SOLUBILITY_PRODUCTS.get(phase_key, {}).keys())
+        self.compound_combo.blockSignals(True)
         self.compound_combo.clear()
         self.compound_combo.addItems(compounds)
+        self.compound_combo.blockSignals(False)
+
+    def _update_compound_info(self):
+        """更新化合物信息展示"""
+        if not hasattr(self, 'info_label'):
+            return
+        if self.mode_sequence.isChecked():
+            self.info_group.setVisible(False)
+            return
+
+        self.info_group.setVisible(True)
+        if not hasattr(self, 'compound_combo') or not hasattr(self, 'phase_combo'):
+            return
+
+        compound = self.compound_combo.currentText()
+        phase = self._get_phase_key(self.phase_combo.currentText())
+        data = get_solubility_product_data(compound, phase)
+
+        if data is None:
+            self.info_label.setText("未找到该化合物的数据")
+            return
+
+        n_str = f"^{data['n']}" if data['n'] != 1.0 else ""
+        formula = f"log[%{data['metal']}][%{data['nonmetal']}]{n_str} = {data['A']} - {data['B']}/T"
+        temp_range = f"{data['T_min']}~{data['T_max']} K ({data['T_min']-273.15:.0f}~{data['T_max']-273.15:.0f} °C)"
+        ref = data.get('reference', 'N/A')
+        notes = data.get('notes', '')
+
+        info_text = (
+            f"公式: {formula}\n"
+            f"适用温度: {temp_range}\n"
+            f"参考文献: {ref}"
+        )
+        if notes:
+            info_text += f"\n备注: {notes}"
+
+        self.info_label.setText(info_text)
+
+    def _update_element_labels(self):
+        """根据选中化合物更新金属/非金属标签"""
+        if not hasattr(self, 'compound_combo') or not hasattr(self, 'phase_combo'):
+            return
+        if not hasattr(self, 'metal_label') or not hasattr(self, 'nonmetal_label'):
+            return
+
+        compound = self.compound_combo.currentText()
+        phase = self._get_phase_key(self.phase_combo.currentText())
+        data = get_solubility_product_data(compound, phase)
+
+        if data:
+            self.metal_label.setText(f"[{data['metal']}] 含量 (wt%):")
+            self.nonmetal_label.setText(f"[{data['nonmetal']}] 含量 (wt%):")
+        else:
+            self.metal_label.setText("金属元素含量 (wt%):")
+            self.nonmetal_label.setText("非金属元素含量 (wt%):")
+
+    def _build_fixed_element_options(self):
+        """根据选中化合物构建固定元素选项"""
+        if not hasattr(self, 'fixed_element_combo'):
+            return
+        if not hasattr(self, 'compound_combo') or not hasattr(self, 'phase_combo'):
+            return
+
+        compound = self.compound_combo.currentText()
+        phase = self._get_phase_key(self.phase_combo.currentText())
+        data = get_solubility_product_data(compound, phase)
+
+        self.fixed_element_combo.blockSignals(True)
+        self.fixed_element_combo.clear()
+        if data:
+            self.fixed_element_combo.addItems([
+                f"metal — 固定 [{data['metal']}] 含量",
+                f"nonmetal — 固定 [{data['nonmetal']}] 含量",
+            ])
+        else:
+            self.fixed_element_combo.addItems([
+                'metal (金属元素)',
+                'nonmetal (非金属元素)',
+            ])
+        self.fixed_element_combo.blockSignals(False)
 
     def _create_results_panel(self):
         """创建结果面板"""
@@ -449,7 +539,7 @@ class SolubilityProductWidget(QWidget):
         self.results_text.setMinimumHeight(180)
         self.results_text.setLineWrapMode(QTextEdit.NoWrap)
 
-        font = QFont("Courier New", 9)
+        font = QFont("Consolas", 10)
         font.setStyleHint(QFont.Monospace)
         self.results_text.setFont(font)
 
@@ -466,6 +556,12 @@ class SolubilityProductWidget(QWidget):
         layout.addWidget(chart_group)
 
         return widget
+
+    def _clear_results(self):
+        """清空计算结果和图表"""
+        self.results_text.clear()
+        self.chart_canvas.axes.clear()
+        self.chart_canvas.draw()
 
     def _perform_calculation(self):
         """执行计算"""
@@ -517,7 +613,7 @@ class SolubilityProductWidget(QWidget):
     def _calc_equilibrium(self):
         """平衡溶解度计算"""
         fixed_text = self.fixed_element_combo.currentText()
-        fixed_element = 'metal' if 'metal' in fixed_text else 'nonmetal'
+        fixed_element = 'metal' if fixed_text.startswith('metal') else 'nonmetal'
 
         params = {
             'compound': self.compound_combo.currentText(),
@@ -579,6 +675,7 @@ class SolubilityProductWidget(QWidget):
         T = result['temperature']
         T_c = T - 273.15
 
+        n_str = f"^{data['n']}" if data['n'] != 1.0 else ""
         text = (
             f"{'='*60}\n"
             f" 溶解度积计算结果\n"
@@ -590,7 +687,7 @@ class SolubilityProductWidget(QWidget):
             f" log(Ksp) = {result['log_ksp']:.4f}\n"
             f" Ksp      = {result['ksp']:.4e}\n"
             f"{'-'*60}\n"
-            f" 经验公式: log[%{data['metal']}][%{data['nonmetal']}]^{data['n']}"
+            f" 经验公式: log[%{data['metal']}][%{data['nonmetal']}]{n_str}"
             f" = {data['A']} - {data['B']}/T\n"
             f" 适用温度: {data['T_min']}-{data['T_max']} K\n"
             f" 参考文献: {data.get('reference', 'N/A')}\n"
@@ -617,6 +714,7 @@ class SolubilityProductWidget(QWidget):
     def _display_precip_temp_result(self, result: dict):
         """显示析出温度结果"""
         data = result['data']
+        n_str = f"^{data['n']}" if data['n'] != 1.0 else ""
 
         text = (
             f"{'='*60}\n"
@@ -629,9 +727,9 @@ class SolubilityProductWidget(QWidget):
             f"{'-'*60}\n"
             f" 析出温度 = {result['t_precip_k']:.1f} K ({result['t_precip_c']:.1f} °C)\n"
             f"{'-'*60}\n"
-            f" 经验公式: log[%{data['metal']}][%{data['nonmetal']}]^{data['n']}"
+            f" 经验公式: log[%{data['metal']}][%{data['nonmetal']}]{n_str}"
             f" = {data['A']} - {data['B']}/T\n"
-            f" T_precip = {data['B']} / ({data['A']} - log([%M][%X]^n))\n"
+            f" T_precip = {data['B']} / ({data['A']} - log([%M][%X]{n_str}))\n"
             f" 参考文献: {data.get('reference', 'N/A')}\n"
             f"{'='*60}\n"
         )

@@ -403,6 +403,8 @@ class AlloyThermolCalProGUI(QMainWindow):
 
 	def show_help_guide(self):
 		"""显示用户帮助手册"""
+		import re
+
 		help_path = self.get_resource_path('docs/help_guide.md')
 		if not os.path.exists(help_path):
 			QMessageBox.warning(self, "提示", "未找到帮助文档文件。")
@@ -417,7 +419,7 @@ class AlloyThermolCalProGUI(QMainWindow):
 
 		dialog = QDialog(self)
 		dialog.setWindowTitle("AlloyThermolCal Pro - 用户手册")
-		dialog.resize(900, 650)
+		dialog.resize(960, 700)
 
 		layout = QVBoxLayout(dialog)
 		layout.setContentsMargins(6, 6, 6, 6)
@@ -427,15 +429,37 @@ class AlloyThermolCalProGUI(QMainWindow):
 		browser.setStyleSheet("""
 			QTextBrowser {
 				font-family: "Microsoft YaHei UI", "SimHei", sans-serif;
-				font-size: 13px;
-				line-height: 1.6;
-				padding: 16px;
+				font-size: 16px;
+				padding: 20px;
 				border: 1px solid #dee2e6;
 				border-radius: 4px;
 				background: #fff;
 			}
 		""")
+
+		# 先用 setMarkdown 转换，再后处理 HTML 添加锚点
 		browser.setMarkdown(md_content)
+		html = browser.toHtml()
+
+		# 为 h1-h6 标签添加 id 属性以支持 TOC 锚点跳转
+		def _add_heading_id(match):
+			tag = match.group(1)
+			attrs = match.group(2)
+			content = match.group(3)
+			# 提取纯文本生成 anchor id
+			plain = re.sub(r'<[^>]+>', '', content)
+			anchor_id = plain.strip().lower()
+			anchor_id = re.sub(r'[.\s]+', '-', anchor_id)
+			anchor_id = re.sub(r'[^a-z0-9\u4e00-\u9fff-]', '', anchor_id)
+			return f'<{tag}{attrs} id="{anchor_id}">{content}</{tag}>'
+
+		html = re.sub(
+			r'<(h[1-6])([^>]*)>(.*?)</\1>',
+			_add_heading_id,
+			html,
+			flags=re.IGNORECASE | re.DOTALL
+		)
+		browser.setHtml(html)
 
 		layout.addWidget(browser)
 		dialog.exec_()
