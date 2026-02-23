@@ -222,18 +222,18 @@ def _convert_markdown_tables(text):
             # 构建 HTML 表格（QTextBrowser 友好的样式）
             table_css = (
                 'border-collapse:collapse;margin:10px 0;width:100%;'
-                'font-size:13px;border:1px solid #c0c0c0;'
+                'font-size:15px;border:1px solid #c0c0c0;'
             )
             th_css = (
-                'border:1px solid #b0b0b0;padding:8px 14px;'
+                'border:1px solid #b0b0b0;padding:9px 16px;'
                 'background-color:#4a90d9;color:#ffffff;font-weight:bold;'
             )
             td_css_even = (
-                'border:1px solid #d0d0d0;padding:7px 14px;'
+                'border:1px solid #d0d0d0;padding:8px 16px;'
                 'background-color:#ffffff;'
             )
             td_css_odd = (
-                'border:1px solid #d0d0d0;padding:7px 14px;'
+                'border:1px solid #d0d0d0;padding:8px 16px;'
                 'background-color:#f2f7fc;'
             )
 
@@ -272,12 +272,12 @@ def format_message_html(text):
     # 块级公式: \[ ... \] 或 $$ ... $$
     text = re.sub(
         r'\\\[(.*?)\\\]',
-        lambda m: '<div style="text-align:center;margin:6px 0;font-size:15px;">'
+        lambda m: '<div style="text-align:center;margin:6px 0;font-size:17px;">'
                   + _convert_latex_math(m.group(1)) + '</div>',
         text, flags=re.DOTALL)
     text = re.sub(
         r'\$\$(.*?)\$\$',
-        lambda m: '<div style="text-align:center;margin:6px 0;font-size:15px;">'
+        lambda m: '<div style="text-align:center;margin:6px 0;font-size:17px;">'
                   + _convert_latex_math(m.group(1)) + '</div>',
         text, flags=re.DOTALL)
 
@@ -462,7 +462,7 @@ class MessageBubble(QFrame):
         role_label.setStyleSheet(f"""
             font-weight: bold;
             color: {'#2c3e50' if is_user else '#27ae60'};
-            font-size: 12px;
+            font-size: 13px;
         """)
 
         # 消息内容（助手消息使用QTextBrowser渲染，支持完整HTML表格；用户消息保持QLabel）
