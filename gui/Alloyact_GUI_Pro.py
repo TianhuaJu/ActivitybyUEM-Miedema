@@ -28,9 +28,9 @@ from models.extrapolation_models import BinaryModel
 from calculations.activity_calculator import ActivityCoefficient
 
 # 导入新的界面组件
-from gui.ActivityVaryTemperatureWdget import ActivityTemperatureVariationWidget
-from gui.ActivityVaryConcentrationWdget import CompositionVariationWidget
-from gui.ActivityVaryConcentrationWdget2 import AlloyAdditionWidget
+from gui.ActivityVaryTemperatureWidget import ActivityTemperatureVariationWidget
+from gui.ActivityVaryConcentrationWidget import CompositionVariationWidget
+from gui.ActivityVaryConcentrationWidget2 import AlloyAdditionWidget
 from gui.data_ui import DatabaseManagerTab
 from gui.ActivityCalculationWidget import ActivityCalculationWidget
 from gui.InteractionCoefficientWidget import InteractionCoefficientWidget
@@ -39,6 +39,8 @@ from gui.ThermodynamicPropertiesWidget import ThermodynamicPropertiesWidget
 from gui.PhaseDiagramWidget import PhaseDiagramWidget
 from gui.SolubilityWidget import SolubilityWidget
 from gui.PhaseEquilibriumWidget import PhaseEquilibriumWidget
+from gui.PrecipitationTemperatureWidget import PrecipitationTemperatureWidget
+from gui.ChatWidget import ChatWidget
 
 
 class MplCanvas(FigureCanvas):
@@ -51,12 +53,17 @@ class MplCanvas(FigureCanvas):
 		super(MplCanvas, self).__init__(self.fig)
 
 
-class AlloyActProGUI(QMainWindow):
+class AlloyThermolCalProGUI(QMainWindow):
 	def __init__ (self):
 		super().__init__()
-		self.setWindowTitle("AlloyThermocal Pro - 合金热力学计算器")
-		self.resize(1400, 1000)
-		self.setMinimumSize(1000, 1200)
+		self.setWindowTitle("AlloyThermolCal Pro - 合金热力学计算专业版")
+		self.setMinimumSize(900, 600)
+
+		# 根据屏幕大小自适应初始窗口尺寸
+		screen = QGuiApplication.primaryScreen().availableGeometry()
+		w = min(1400, int(screen.width() * 0.82))
+		h = min(900, int(screen.height() * 0.82))
+		self.resize(w, h)
 		
 		# 窗口居中
 		self.center_window()
@@ -114,6 +121,10 @@ class AlloyActProGUI(QMainWindow):
 		
 		#数据库管理
 		self.create_database_mangner_tabs()
+
+		# AI对话助手
+		self.create_chat_tab()
+
 		# 创建状态栏
 		self.status_bar = QStatusBar()
 		self.setStatusBar(self.status_bar)
@@ -219,6 +230,9 @@ class AlloyActProGUI(QMainWindow):
 		# 溶解度计算选项卡
 		self.create_solubility_tab()
 
+		# 析出温度计算选项卡
+		self.create_precipitation_temperature_tab()
+
 		# 相平衡计算选项卡
 		self.create_phase_equilibrium_tab()
 
@@ -283,6 +297,11 @@ class AlloyActProGUI(QMainWindow):
 		self.database_widget = DatabaseManagerTab(self)
 		self.tabs.addTab(self.database_widget, "数据管理")
 
+	def create_chat_tab(self):
+		"""创建AI对话助手选项卡"""
+		self.chat_widget = ChatWidget(self)
+		self.tabs.addTab(self.chat_widget, "AI助手")
+
 	def create_concentration_variation_tab (self):
 		"""创建浓度变化分析选项卡"""
 		# 创建浓度变化分析组件实例
@@ -334,34 +353,35 @@ class AlloyActProGUI(QMainWindow):
 		self.phase_equilibrium_widget = PhaseEquilibriumWidget()
 		self.tabs.addTab(self.phase_equilibrium_widget, "相平衡计算")
 
+	def create_precipitation_temperature_tab(self):
+		"""创建析出温度计算选项卡"""
+		self.precipitation_temp_widget = PrecipitationTemperatureWidget()
+		self.tabs.addTab(self.precipitation_temp_widget, "析出温度计算")
+
 	def show_about (self):
 		"""显示关于对话框"""
 		about_text = """
-        <h3>AlloyAct Pro - 合金热力学计算器</h3>
-        <p>基于uem-miedema模型</p>
-        <p><b>功能特性:</b></p>
+        <h3>AlloyThermolCal Pro - 合金热力学计算专业版</h3>
+        <p>基于UEM-Miedema模型框架的专业热力学计算软件</p>
+        <p><b>核心功能:</b></p>
         <ul>
-        <li>活度和活度系数计算</li>
-        <li>相互作用系数分析</li>
-        <li>二阶相互作用系数计算</li>
-        <li>温度变化分析</li>
-        <li>浓度变化分析</li>
-        <li>多种外推模型支持 (UEM1, UEM2, GSM, Muggianu, etc)</li>
-        <li>完整热力学性质计算 (活度、化学势、摩尔焓、吉布斯自由能)</li>
-        <li>液相线/固相线温度计算</li>
-        <li>相图绘制与分析</li>
-        <li>溶解度计算 (液相与固相)</li>
-        <li>溶解度-浓度关系曲线分析</li>
-        <li>相平衡计算 (吉布斯自由能最小化)</li>
-        <li>平衡相组成及相分数计算</li>
-        <li>相平衡随温度和组分的变化分析</li>
-        <li>基于SGTE Unary Database的纯物质热力学数据</li>
+        <li><b>溶解度计算</b> - 液相/固相溶解度、溶解度-温度/成分曲线</li>
+        <li><b>析出温度计算</b> - 单点/曲线计算、多溶质析出顺序分析</li>
+        <li><b>活度计算</b> - 活度系数、化学势、过剩Gibbs能</li>
+        <li><b>相互作用系数</b> - 一阶/二阶Wagner相互作用系数</li>
+        <li><b>相图计算</b> - 液相线/固相线温度计算</li>
+        <li><b>相平衡计算</b> - 多相平衡、相组成及相分数</li>
+        </ul>
+        <p><b>热力学模型:</b></p>
+        <ul>
+        <li>外推模型: UEM1,UEM1_A, UEM2, UEM2-Adv, GSM, Muggianu, Toop-Kohler等</li>
+        <li>活度模型: Wagner, Darken, Elliott</li>
+        <li>热力学数据: SGTE Unary Database</li>
         </ul>
         <p><b>开发团队:</b> 合金热力学计算实验室</p>
         <p><b>技术支持:</b> <a href="mailto:jutianhua@gxu.edu.cn">jutianhua@gxu.edu.cn</a></p>
-        
         """
-		QMessageBox.about(self, "关于 AlloyAct Pro", about_text)
+		QMessageBox.about(self, "关于 AlloyThermolCal Pro", about_text)
 		
 	# 4. 添加打开独立窗口的新方法
 	def open_conversion_tool (self):
@@ -571,7 +591,7 @@ class AlloyActProGUI(QMainWindow):
 			self.tray_icon.show()
 			
 			# 设置托盘图标提示
-			self.tray_icon.setToolTip("AlloyAct Pro")
+			self.tray_icon.setToolTip("AlloyThermolCal Pro")
 	
 	def get_resource_path (self, relative_path):
 		"""获取资源文件路径"""
@@ -586,22 +606,22 @@ class AlloyActProGUI(QMainWindow):
 def main ():
 	"""主程序入口"""
 	app = QApplication(sys.argv)
-	
+
 	# 设置应用程序属性
-	app.setApplicationName("AlloyAct Pro")
+	app.setApplicationName("AlloyThermolCal Pro")
 	app.setApplicationVersion("2.0")
 	app.setOrganizationName("Material Science Lab")
-	
+
 	# 设置高DPI缩放 (Qt 5.6+). AA_EnableHighDpiScaling 是推荐的方式
 	if hasattr(Qt, 'AA_EnableHighDpiScaling'):
 		QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
 	if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
 		QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-	
+
 	# 创建并显示主窗口
-	window = AlloyActProGUI()
+	window = AlloyThermolCalProGUI()
 	window.show()
-	
+
 	return app.exec_()
 
 

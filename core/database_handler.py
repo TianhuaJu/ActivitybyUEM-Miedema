@@ -6,6 +6,35 @@ import sqlite3
 import sys
 
 
+# 用户数据覆盖层路径（知识库中的实验数据）
+_USER_DATA_DB = os.path.join(os.path.expanduser("~"), ".alloyact", "knowledge.db")
+
+
+def _query_user_data_overlay(data_type, solvent, solute_i, solute_j="",
+                             value_type=""):
+    """从用户知识库查询覆盖数据（优先级高于默认数据库）"""
+    if not os.path.exists(_USER_DATA_DB):
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{_USER_DATA_DB}?mode=ro", uri=True)
+        conditions = ["is_active = 1", "data_type = ?", "solvent = ?", "solute_i = ?"]
+        params = [data_type, solvent, solute_i]
+        if solute_j:
+            conditions.append("solute_j = ?")
+            params.append(solute_j)
+        if value_type:
+            conditions.append("value_type = ?")
+            params.append(value_type)
+        query = f"""SELECT value, temperature, reference, value_type
+                    FROM user_data WHERE {' AND '.join(conditions)}
+                    ORDER BY created_at DESC LIMIT 1"""
+        row = conn.execute(query, params).fetchone()
+        conn.close()
+        return row  # (value, temperature, reference, value_type) or None
+    except Exception:
+        return None
+
+
 def get_database_path ():
 	"""获取数据库路径，适配开发环境和PyInstaller打包环境"""
 	try:
@@ -70,7 +99,26 @@ def get_miedema_data (element_name):
 
 
 def query_first_order_wagner_intp_db (solv, solui, soluj):
-	"""从数据库查询一阶瓦格纳相互作用参数。"""
+	"""从数据库查询一阶瓦格纳相互作用参数。优先查询用户数据库覆盖层。"""
+	# 优先查用户数据覆盖层
+	for vt in ("eji", "sji"):
+		user_row = _query_user_data_overlay("first_order", solv, solui, soluj, vt)
+		if user_row:
+			value, temperature, reference, value_type = user_row
+			eji_val = str(value) if value_type == "eji" else None
+			sji_val = str(value) if value_type == "sji" else None
+			print(f"  [用户数据] {solv}中{soluj}对{solui}的{value_type}={value} (来源: {reference})")
+			return (eji_val, "用户数据", sji_val, temperature, reference), True
+	# 再查反向
+	for vt in ("eji", "sji"):
+		user_row = _query_user_data_overlay("first_order", solv, soluj, solui, vt)
+		if user_row:
+			value, temperature, reference, value_type = user_row
+			eji_val = str(value) if value_type == "eji" else None
+			sji_val = str(value) if value_type == "sji" else None
+			print(f"  [用户数据] {solv}中{solui}对{soluj}的{value_type}={value} (来源: {reference})")
+			return (eji_val, "用户数据", sji_val, temperature, reference), False
+
 	conn = None  # 初始化连接变量
 	try:
 		# 使用新的连接方式
@@ -114,7 +162,21 @@ def query_first_order_wagner_intp_db (solv, solui, soluj):
 
 
 def query_ln_yi0_db (solv, solui):
-	"""从数据库查询无限稀释活度系数。"""
+	"""从数据库查询无限稀释活度系数。优先查询用户数据库覆盖层。"""
+	# 优先查用户数据覆盖层
+	for vt in ("lnYi0", "Yi0"):
+		user_row = _query_user_data_overlay("lnY0", solv, solui, "", vt)
+		if user_row:
+			value, temperature, reference, value_type = user_row
+			if value_type == "lnYi0":
+				import math as _math
+				yi0 = str(_math.exp(value))
+				return (str(value), yi0, temperature)
+			else:  # Yi0
+				import math as _math
+				lnyi0 = str(_math.log(value)) if value > 0 else "nan"
+				return (lnyi0, str(value), temperature)
+
 	conn = None
 	try:
 		# 使用新的连接方式

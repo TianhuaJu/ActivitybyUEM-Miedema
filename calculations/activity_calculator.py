@@ -37,6 +37,9 @@ class ActivityCoefficient:
         if total > 0 and len(self._comp_dict) > 1:
             self._comp_dict = {key: value / total for key, value in self._comp_dict.items()}
 
+    # 间隙元素列表
+    INTERSTITIAL_ELEMENTS = {'C', 'N', 'H', 'O', 'B'}
+
     def _calculate_ln_yi(self, comp_dict, solvent, solute_i, Tem: float, state: str,
                          geo_model: extrap_func, geo_model_name: str, activity_model_type: str, full_alloy_str: str = "") -> float:
         """内部通用计算方法。"""
@@ -44,10 +47,15 @@ class ActivityCoefficient:
             print(f"警告: 组分 {solute_i} 或溶剂 {solvent} 不在成分中。")
             return 0.0
 
+        # 对于间隙元素，使用Miedema模型计算活度系数
+        solute_upper = solute_i.upper() if isinstance(solute_i, str) else solute_i
+        if solute_upper in self.INTERSTITIAL_ELEMENTS:
+            return self._calculate_ln_yi_interstitial(comp_dict, solvent, solute_i, Tem, state)
+
         solv = Element(solvent)
         solui = Element(solute_i)
         solute_keys = [k for k in comp_dict.keys() if k != solvent]
-        
+
         ternary_melts = multicomponentSolution(Tem, state)
         ln_yi_0 = ternary_melts.ln_y0(solv, solui)
 
@@ -120,9 +128,57 @@ class ActivityCoefficient:
             
             
         return 0.0 # Should not happen
-        
-       
-        # 📍 新增功能 1: 根据 Kang-2020.pdf (UIPF模型) 实现溶剂活度系数的计算
+
+    def _calculate_ln_yi_interstitial(self, comp_dict, solvent, solute_i, Tem: float, state: str) -> float:
+        """
+        使用Miedema模型计算间隙元素的活度系数。
+
+        对于间隙元素（C, N, H, O, B），使用Miedema模型计算其活度系数：
+        ln(γᵢ) = ΔG_excess / RT
+
+        其中ΔG_excess通过Miedema模型计算二元相互作用能，
+        再用Muggianu规则外推到多元系统。
+        """
+        from models.miedema_model import MiedemaModel
+
+        R = 8.314  # J/(mol·K)
+        solvent_upper = solvent.upper()
+        solute_upper = solute_i.upper()
+
+        x_solute = comp_dict.get(solute_i, 0.0)
+        if x_solute < 1e-12:
+            return 0.0
+
+        # 计算溶质与溶剂的二元相互作用能
+        try:
+            phase_state = "LIQUID" if state.upper() == "LIQUID" else "SOLID"
+            miedema = MiedemaModel((solvent_upper, solute_upper), phase_state)
+
+            # 在稀溶液极限下，活度系数主要由溶质-溶剂相互作用决定
+            # 使用partial molar excess Gibbs energy
+            x_solvent = comp_dict.get(solvent, 0.0)
+            x_binary = x_solute / (x_solute + x_solvent) if (x_solute + x_solvent) > 1e-10 else 0.0
+
+            # 获取过剩Gibbs能
+            g_ex = miedema.get_excess_Gibbs(solute_upper, x_binary, Tem, 'SS')
+
+            # 在稀溶液下：ln(γᵢ) ≈ G_ex / (x_i * RT) * (1 - x_i)²
+            # 简化为：ln(γᵢ) ≈ G_ex_binary * (1 - x_i) / RT
+            if x_solute < 0.1:
+                # 稀溶液近似：偏摩尔过剩Gibbs能
+                ln_gamma = g_ex * (1 - x_binary) / (R * Tem) if x_binary > 1e-10 else 0.0
+            else:
+                # 非稀溶液：直接使用过剩Gibbs能的贡献
+                ln_gamma = g_ex / (R * Tem) if g_ex != 0 else 0.0
+
+            return ln_gamma
+
+        except Exception as e:
+            # 如果Miedema模型计算失败，返回0（理想溶液）
+            print(f"警告: 间隙元素 {solute_i} 的Miedema计算失败: {e}")
+            return 0.0
+
+    # 📍 新增功能 1: 根据 Kang-2020.pdf (UIPF模型) 实现溶剂活度系数的计算
     def _calculate_ln_gamma_solvent_UIPF (self, comp_dict: Dict[str, float], solvent: str, Tem: float, state: str,
                                               geo_model: extrap_func, activity_model_type:str,
                                               full_alloy_str: str = "") -> float:

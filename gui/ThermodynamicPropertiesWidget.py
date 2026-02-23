@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QSplitter, QFrame, QGroupBox, QTextEdit,
                              QMessageBox, QTableWidget, QTableWidgetItem, QProgressBar)
 from PyQt5.QtCore import Qt
+from gui.widgets import AutoResizeTextEdit
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
@@ -83,9 +84,10 @@ class ThermodynamicPropertiesWidget(QWidget):
 
         row = 0
 
-        # 合金成分
+        # 合金成分（自动调整大小）
         input_layout.addWidget(QLabel("合金成分:"), row, 0, Qt.AlignRight)
-        self.alloy_input = QLineEdit("Fe0.70C0.03Si0.27")
+        self.alloy_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+        self.alloy_input.setText("Fe0.70C0.03Si0.27")
         self.alloy_input.setPlaceholderText("例如: Fe0.7C0.03Si0.27")
         self.alloy_input.setToolTip("输入格式: 元素符号+摩尔分数")
         input_layout.addWidget(self.alloy_input, row, 1)
@@ -116,7 +118,7 @@ class ThermodynamicPropertiesWidget(QWidget):
         input_layout.addWidget(QLabel("外推模型:"), row, 0, Qt.AlignRight)
         self.extrap_model_combo = QComboBox()
         self.extrap_model_combo.addItems([
-            "UEM1", "UEM2", "UEM2-Adv", "GSM",
+            "UEM1", "UEM1_A","UEM2", "UEM2-Adv", "GSM",
             "Muggianu", "Toop-Muggianu", "Toop-Kohler"
         ])
         input_layout.addWidget(self.extrap_model_combo, row, 1)
@@ -215,7 +217,7 @@ class ThermodynamicPropertiesWidget(QWidget):
             from models.extrapolation_models import BinaryModel
             bm = BinaryModel()
             extrap_func_map = {
-                'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+                'UEM1': bm.UEM1,  'UEM1_A': bm.UEM1_A,'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
                 'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
                 'Toop-Muggianu': bm.Toop_Muggianu
             }

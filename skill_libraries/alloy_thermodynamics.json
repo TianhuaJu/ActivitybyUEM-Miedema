@@ -1,0 +1,246 @@
+{
+  "library_name": "alloy_thermodynamics",
+  "display_name": "合金热力学计算技能库",
+  "version": "1.0.0",
+  "description": "基于 UEM-Miedema 模型的合金热力学高级计算技能，包含相图分析、多合金对比、成分优化等组合技能。",
+  "author": "AlloyThermolCal Pro",
+  "category": "thermodynamics",
+  "auto_load": true,
+  "skills": [
+    {
+      "name": "compare_alloy_properties",
+      "description": "对比多个合金成分在指定温度下的全部热力学性质（混合焓、Gibbs能、活度等），返回对比表格",
+      "tags": ["comparison", "multi-alloy", "screening"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "compositions": {
+            "type": "array",
+            "description": "合金成分列表，每个元素为 {元素: 摩尔分数}",
+            "items": {"type": "object"}
+          },
+          "temperature": {
+            "type": "number",
+            "description": "温度(K)"
+          },
+          "phase": {
+            "type": "string",
+            "description": "相态",
+            "enum": ["liquid", "solid"],
+            "default": "liquid"
+          }
+        },
+        "required": ["compositions", "temperature"]
+      },
+      "code": "def compare_alloy_properties(compositions, temperature, phase='liquid'):\n    results = []\n    for i, comp in enumerate(compositions):\n        r = call_tool('calculate_all_properties', composition=comp, temperature=temperature, phase=phase)\n        label = '-'.join(f'{k}{v:.2f}' for k, v in comp.items())\n        entry = {'alloy': label, 'composition': comp}\n        if r.get('status') == 'success':\n            alloy = r.get('alloy', {})\n            entry['mixing_enthalpy_J'] = alloy.get('molar_enthalpy_J_per_mol')\n            entry['gibbs_energy_J'] = alloy.get('gibbs_energy_J_per_mol')\n            entry['entropy_J_K'] = alloy.get('entropy_J_per_mol_K')\n        else:\n            entry['error'] = r.get('message', 'unknown error')\n        results.append(entry)\n    return {'status': 'success', 'temperature_K': temperature, 'phase': phase, 'comparisons': results, 'count': len(results)}"
+    },
+    {
+      "name": "scan_binary_mixing_enthalpy",
+      "description": "扫描一个二元系在不同成分下的混合焓，生成完整的混合焓-成分曲线数据",
+      "tags": ["binary", "mixing-enthalpy", "scan"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "element_a": {
+            "type": "string",
+            "description": "组元A的元素符号"
+          },
+          "element_b": {
+            "type": "string",
+            "description": "组元B的元素符号"
+          },
+          "temperature": {
+            "type": "number",
+            "description": "温度(K)"
+          },
+          "n_points": {
+            "type": "integer",
+            "description": "扫描点数",
+            "default": 21
+          },
+          "phase": {
+            "type": "string",
+            "enum": ["liquid", "solid"],
+            "default": "liquid"
+          }
+        },
+        "required": ["element_a", "element_b", "temperature"]
+      },
+      "code": "def scan_binary_mixing_enthalpy(element_a, element_b, temperature, n_points=21, phase='liquid'):\n    curve = []\n    for i in range(n_points):\n        x_b = i / (n_points - 1)\n        if x_b < 0.001 or x_b > 0.999:\n            continue\n        comp = {element_a: round(1.0 - x_b, 4), element_b: round(x_b, 4)}\n        r = call_tool('calculate_mixing_enthalpy', composition=comp, temperature=temperature, phase=phase)\n        if r.get('status') == 'success':\n            curve.append({'x_' + element_b: round(x_b, 4), 'H_mix_J': r.get('molar_enthalpy')})\n    h_values = [p['H_mix_J'] for p in curve if p.get('H_mix_J') is not None]\n    summary = {}\n    if h_values:\n        summary = {'min_H_mix': min(h_values), 'max_H_mix': max(h_values), 'min_at_x': curve[[p.get('H_mix_J') for p in curve].index(min(h_values))]['x_' + element_b]}\n    return {'status': 'success', 'system': f'{element_a}-{element_b}', 'temperature_K': temperature, 'phase': phase, 'curve': curve, 'n_points': len(curve), 'summary': summary}"
+    },
+    {
+      "name": "multi_solute_liquidus_effect",
+      "description": "分析多种溶质元素分别添加到溶剂中时对液相线温度的影响，一次性对比多种元素的降熔效果",
+      "tags": ["liquidus", "multi-solute", "screening"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "solvent": {
+            "type": "string",
+            "description": "溶剂元素符号，如 'Fe'"
+          },
+          "solutes": {
+            "type": "array",
+            "description": "溶质元素列表，如 ['C', 'Si', 'Mn', 'Cr']",
+            "items": {"type": "string"}
+          },
+          "solute_fraction": {
+            "type": "number",
+            "description": "溶质摩尔分数（所有溶质统一使用该含量）",
+            "default": 0.05
+          }
+        },
+        "required": ["solvent", "solutes"]
+      },
+      "code": "def multi_solute_liquidus_effect(solvent, solutes, solute_fraction=0.05):\n    results = []\n    base = call_tool('calculate_liquidus_temperature', composition={solvent: 1.0})\n    base_T = base.get('liquidus_temperature') if base.get('status') == 'success' else None\n    for sol in solutes:\n        comp = {solvent: round(1.0 - solute_fraction, 4), sol: solute_fraction}\n        r = call_tool('calculate_liquidus_temperature', composition=comp)\n        entry = {'solute': sol, 'fraction': solute_fraction}\n        if r.get('status') == 'success':\n            T = r['liquidus_temperature']\n            entry['liquidus_K'] = round(T, 1)\n            entry['liquidus_C'] = round(T - 273.15, 1)\n            if base_T:\n                entry['depression_K'] = round(base_T - T, 1)\n        else:\n            entry['error'] = r.get('message', '')\n        results.append(entry)\n    results.sort(key=lambda x: x.get('depression_K', 0), reverse=True)\n    return {'status': 'success', 'solvent': solvent, 'base_melting_K': base_T, 'solute_fraction': solute_fraction, 'results': results}"
+    },
+    {
+      "name": "composition_sensitivity_analysis",
+      "description": "分析某个组元含量变化对液相线温度的敏感性（扫描组元含量范围，返回液相线温度曲线）",
+      "tags": ["sensitivity", "liquidus", "composition-scan"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "base_composition": {
+            "type": "object",
+            "description": "基础合金成分 {元素: 摩尔分数}"
+          },
+          "vary_element": {
+            "type": "string",
+            "description": "要变化的元素符号"
+          },
+          "x_min": {
+            "type": "number",
+            "description": "该元素摩尔分数下限",
+            "default": 0.01
+          },
+          "x_max": {
+            "type": "number",
+            "description": "该元素摩尔分数上限",
+            "default": 0.20
+          },
+          "n_points": {
+            "type": "integer",
+            "description": "扫描点数",
+            "default": 11
+          }
+        },
+        "required": ["base_composition", "vary_element"]
+      },
+      "code": "def composition_sensitivity_analysis(base_composition, vary_element, x_min=0.01, x_max=0.20, n_points=11):\n    curve = []\n    solvent = max(base_composition, key=base_composition.get)\n    for i in range(n_points):\n        x = x_min + (x_max - x_min) * i / (n_points - 1)\n        comp = dict(base_composition)\n        comp[vary_element] = x\n        total_others = sum(v for k, v in comp.items() if k != solvent)\n        comp[solvent] = max(1.0 - total_others, 0.01)\n        r = call_tool('calculate_liquidus_temperature', composition=comp)\n        pt = {'x_' + vary_element: round(x, 4)}\n        if r.get('status') == 'success':\n            pt['liquidus_K'] = round(r['liquidus_temperature'], 1)\n            pt['liquidus_C'] = round(r['liquidus_temperature'] - 273.15, 1)\n        else:\n            pt['error'] = r.get('message', '')\n        curve.append(pt)\n    T_vals = [p['liquidus_K'] for p in curve if 'liquidus_K' in p]\n    summary = {}\n    if len(T_vals) >= 2:\n        dT = T_vals[-1] - T_vals[0]\n        dx = x_max - x_min\n        summary = {'T_range_K': round(max(T_vals) - min(T_vals), 1), 'dT_dx': round(dT / dx, 1) if dx > 0 else 0, 'max_T_K': round(max(T_vals), 1), 'min_T_K': round(min(T_vals), 1)}\n    return {'status': 'success', 'base_composition': base_composition, 'vary_element': vary_element, 'range': [x_min, x_max], 'curve': curve, 'summary': summary}"
+    },
+    {
+      "name": "activity_temperature_scan",
+      "description": "扫描某组元活度随温度的变化曲线",
+      "tags": ["activity", "temperature-scan"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "composition": {
+            "type": "object",
+            "description": "合金成分 {元素: 摩尔分数}"
+          },
+          "component": {
+            "type": "string",
+            "description": "要计算活度的组元符号"
+          },
+          "T_min": {
+            "type": "number",
+            "description": "温度下限(K)",
+            "default": 1200
+          },
+          "T_max": {
+            "type": "number",
+            "description": "温度上限(K)",
+            "default": 2000
+          },
+          "n_points": {
+            "type": "integer",
+            "description": "温度点数",
+            "default": 17
+          },
+          "phase": {
+            "type": "string",
+            "enum": ["liquid", "solid"],
+            "default": "liquid"
+          }
+        },
+        "required": ["composition", "component"]
+      },
+      "code": "def activity_temperature_scan(composition, component, T_min=1200, T_max=2000, n_points=17, phase='liquid'):\n    curve = []\n    for i in range(n_points):\n        T = T_min + (T_max - T_min) * i / (n_points - 1)\n        r = call_tool('calculate_activity', composition=composition, component=component, temperature=T, phase=phase)\n        pt = {'temperature_K': round(T, 1)}\n        if r.get('status') == 'success':\n            pt['activity'] = r.get('activity')\n            pt['activity_coefficient'] = r.get('activity_coefficient')\n        else:\n            pt['error'] = r.get('message', '')\n        curve.append(pt)\n    return {'status': 'success', 'composition': composition, 'component': component, 'phase': phase, 'T_range': [T_min, T_max], 'curve': curve, 'n_points': len(curve)}"
+    },
+    {
+      "name": "interaction_matrix",
+      "description": "计算指定溶剂中多种溶质之间的一阶活度相互作用系数矩阵 (e_i^j)",
+      "tags": ["interaction", "matrix", "multi-solute"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "solvent": {
+            "type": "string",
+            "description": "溶剂元素符号，如 'Fe'"
+          },
+          "solutes": {
+            "type": "array",
+            "description": "溶质元素列表，如 ['C', 'Si', 'Mn', 'Cr', 'Ni']",
+            "items": {"type": "string"}
+          },
+          "temperature": {
+            "type": "number",
+            "description": "温度(K)",
+            "default": 1873
+          }
+        },
+        "required": ["solvent", "solutes"]
+      },
+      "code": "def interaction_matrix(solvent, solutes, temperature=1873):\n    matrix = {}\n    for i_elem in solutes:\n        row = {}\n        for j_elem in solutes:\n            r = call_tool('get_interaction_coefficient', solvent=solvent, solute_i=i_elem, solute_j=j_elem, temperature=temperature)\n            if r.get('status') == 'success':\n                row[j_elem] = r.get('epsilon_i_j')\n            else:\n                row[j_elem] = None\n        matrix[i_elem] = row\n    return {'status': 'success', 'solvent': solvent, 'temperature_K': temperature, 'solutes': solutes, 'matrix': matrix}"
+    },
+    {
+      "name": "alloy_design_report",
+      "description": "生成合金设计综合报告：液相线温度、各组元活度、混合焓、Gibbs能等全部关键热力学数据",
+      "tags": ["report", "comprehensive", "design"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "composition": {
+            "type": "object",
+            "description": "合金成分 {元素: 摩尔分数}"
+          },
+          "temperature": {
+            "type": "number",
+            "description": "工作温度(K)，如不提供则使用液相线温度",
+            "default": 0
+          }
+        },
+        "required": ["composition"]
+      },
+      "code": "def alloy_design_report(composition, temperature=0):\n    report = {'composition': composition}\n    liq = call_tool('calculate_liquidus_temperature', composition=composition)\n    if liq.get('status') == 'success':\n        report['liquidus_K'] = round(liq['liquidus_temperature'], 1)\n        report['liquidus_C'] = round(liq['liquidus_temperature'] - 273.15, 1)\n        report['melting_point_depression_K'] = round(liq.get('melting_point_depression', 0), 1)\n    T = temperature if temperature > 0 else (liq.get('liquidus_temperature', 1873))\n    report['analysis_temperature_K'] = round(T, 1)\n    props = call_tool('calculate_all_properties', composition=composition, temperature=T, phase='liquid')\n    if props.get('status') == 'success':\n        alloy = props.get('alloy', {})\n        report['mixing_enthalpy_J'] = alloy.get('molar_enthalpy_J_per_mol')\n        report['gibbs_energy_J'] = alloy.get('gibbs_energy_J_per_mol')\n        report['entropy_J_K'] = alloy.get('entropy_J_per_mol_K')\n    activities = {}\n    for elem in composition:\n        r = call_tool('calculate_activity', composition=composition, component=elem, temperature=T, phase='liquid')\n        if r.get('status') == 'success':\n            activities[elem] = {'activity': r.get('activity'), 'gamma': r.get('activity_coefficient')}\n    report['activities'] = activities\n    report['status'] = 'success'\n    return report"
+    },
+    {
+      "name": "batch_precipitation_scan",
+      "description": "批量扫描多种析出相在指定合金中的析出温度",
+      "tags": ["precipitation", "batch", "scan"],
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "composition": {
+            "type": "object",
+            "description": "合金成分 {元素: 摩尔分数}"
+          },
+          "phase_types": {
+            "type": "array",
+            "description": "析出相列表，如 ['TiC', 'TiN', 'NbC', 'VC']",
+            "items": {"type": "string"}
+          },
+          "solution_phase": {
+            "type": "string",
+            "enum": ["LIQUID", "SOLID"],
+            "default": "LIQUID"
+          }
+        },
+        "required": ["composition", "phase_types"]
+      },
+      "code": "def batch_precipitation_scan(composition, phase_types, solution_phase='LIQUID'):\n    results = []\n    for phase in phase_types:\n        r = call_tool('calculate_precipitation_temperature', composition=composition, solute=phase, solution_phase=solution_phase)\n        entry = {'phase': phase}\n        if r.get('status') == 'success':\n            T = r.get('precipitation_temperature')\n            entry['precipitation_K'] = round(T, 1) if T else None\n            entry['precipitation_C'] = round(T - 273.15, 1) if T else None\n        elif r.get('status') == 'no_precipitation':\n            entry['precipitation_K'] = None\n            entry['message'] = r.get('message', 'no precipitation')\n        else:\n            entry['error'] = r.get('message', '')\n        results.append(entry)\n    results.sort(key=lambda x: x.get('precipitation_K') or 0, reverse=True)\n    return {'status': 'success', 'composition': composition, 'solution_phase': solution_phase, 'results': results}"
+    }
+  ]
+}

@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QSplitter, QFrame, QGroupBox, QTextEdit,
                              QMessageBox, QRadioButton, QButtonGroup, QProgressBar, QCheckBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from gui.widgets import AutoResizeTextEdit
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
@@ -442,7 +443,7 @@ class SolubilityWidget(QWidget):
         model_layout.addWidget(QLabel("外推模型:"), row, 0, Qt.AlignRight)
         self.extrap_model_combo = QComboBox()
         self.extrap_model_combo.addItems([
-            "UEM1", "UEM2", "UEM2-Adv", "GSM",
+            "UEM1","UEM1_A", "UEM2", "UEM2-Adv", "GSM",
             "Muggianu", "Toop-Muggianu", "Toop-Kohler"
         ])
         model_layout.addWidget(self.extrap_model_combo, row, 1)
@@ -520,17 +521,19 @@ class SolubilityWidget(QWidget):
         # ==========================================
         if self.mode_single.isChecked() or self.mode_temp_curve.isChecked():
             self.input_layout.addWidget(QLabel("基础合金:"), row, 0, Qt.AlignRight)
-            self.base_alloy_input = QLineEdit("Fe0.7Si0.3")
+            self.base_alloy_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+            self.base_alloy_input.setText("Fe0.7Si0.3")
             if self.mode_temp_curve.isChecked():
                 self.base_alloy_input.setPlaceholderText("例如: Fe0.7Si0.3 (保持固定)")
             else:
                 self.base_alloy_input.setPlaceholderText("例如: Fe0.7Si0.3")
             self.input_layout.addWidget(self.base_alloy_input, row, 1)
             row += 1
-        
+
         elif self.mode_curve.isChecked():
             self.input_layout.addWidget(QLabel("固定基础成分:"), row, 0, Qt.AlignRight)
-            self.fixed_base_input = QLineEdit("Fe")
+            self.fixed_base_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+            self.fixed_base_input.setText("Fe")
             self.fixed_base_input.setPlaceholderText("例如: Fe (不变化)")
             self.input_layout.addWidget(self.fixed_base_input, row, 1)
             row += 1
@@ -799,7 +802,7 @@ class SolubilityWidget(QWidget):
         from models.extrapolation_models import BinaryModel
         bm = BinaryModel()
         extrap_func_map = {
-            'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+            'UEM1': bm.UEM1,'UEM1_A': bm.UEM1_A,  'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
             'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
             'Toop-Muggianu': bm.Toop_Muggianu
         }
@@ -990,7 +993,7 @@ class SolubilityWidget(QWidget):
         from models.extrapolation_models import BinaryModel
         bm = BinaryModel()
         extrap_func_map = {
-            'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+            'UEM1': bm.UEM1,'UEM1_A': bm.UEM1_A, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
             'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
             'Toop-Muggianu': bm.Toop_Muggianu
         }
@@ -1300,7 +1303,7 @@ class SolubilityWidget(QWidget):
         from models.extrapolation_models import BinaryModel
         bm = BinaryModel()
         extrap_func_map = {
-            'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+            'UEM1': bm.UEM1, 'UEM1_A': bm.UEM1_A,'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
             'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
             'Toop-Muggianu': bm.Toop_Muggianu
         }
@@ -1436,6 +1439,20 @@ class SolubilityWidget(QWidget):
                 status_msg = self.truncate_text(f"溶解于{solution_phase_simple}", max_length=18)
                 text_output += f"{temp_k_str} {temp_c_str} {'完全互溶':<18} {sol_ideal_str:<18} {solution_phase_simple:<10} {status_msg}\n"
 
+            elif res.get('status') == 'melted':
+                # 温度超过熔点，合金处于液态
+                sol_str = "液态"
+
+                # 理想溶解度（液态区域也设为N/A）
+                sol_ideal_str = "N/A"
+
+                # 显示液相信息
+                solution_phase_name = res.get('solution_phase_name', 'LIQUID')
+                solution_phase_simple = self.simplify_phase_name(solution_phase_name)
+
+                display_msg = self.truncate_text("已超过熔点", max_length=18)
+                text_output += f"{temp_k_str} {temp_c_str} {sol_str:<18} {sol_ideal_str:<18} {solution_phase_simple:<10} {display_msg}\n"
+
             else:
                 # 计算失败或不稳定，在曲线上显示为0
                 sol_str = "0"
@@ -1474,33 +1491,51 @@ class SolubilityWidget(QWidget):
         # 5. 绘制图表
         self.chart_canvas.axes.clear()
 
-        # 直接使用所有数据，不溶解=0%，完全互溶=100%
+        # 直接使用所有数据，不溶解=0%，完全互溶=100%，液态=None（不绘制）
         if len(t_values) > 0:
+            # 处理None值（液态区域）：转换为NaN以便matplotlib跳过这些点
+            import numpy as np
+            sol_plot_values = [s * 100 if s is not None else float('nan') for s in solubility_values]
+            ideal_plot_values = [s * 100 if s is not None else float('nan') for s in ideal_solubility_values]
+
             # 绘制实际溶解度曲线
-            self.chart_canvas.axes.plot(t_values, [s * 100 for s in solubility_values], 'b-o', linewidth=2, markersize=4,
+            self.chart_canvas.axes.plot(t_values, sol_plot_values, 'b-o', linewidth=2, markersize=4,
                                         label=f'实际溶解度 ({extrap_model_name})')
 
             # 绘制理想溶解度曲线
-            self.chart_canvas.axes.plot(t_values, [s * 100 for s in ideal_solubility_values], 'r--s', linewidth=2,
+            self.chart_canvas.axes.plot(t_values, ideal_plot_values, 'r--s', linewidth=2,
                                         markersize=4, label='理想溶解度 (γ=1)')
 
-            # 检测并标注相转变
+            # 检测并标注相转变（包括固-液转变）
             phase_transitions = []
             for i in range(len(results_list) - 1):
-                if results_list[i].get('status') == 'success' and results_list[i+1].get('status') == 'success':
-                    phase1 = results_list[i].get('solution_phase_name', '')
-                    phase2 = results_list[i+1].get('solution_phase_name', '')
-                    if phase1 and phase2 and phase1 != phase2:
-                        # 相转变发生在两点之间
-                        t_transition = (t_values[i] + t_values[i+1]) / 2
-                        phase_transitions.append((t_transition, phase1, phase2))
+                status1 = results_list[i].get('status', '')
+                status2 = results_list[i+1].get('status', '')
 
-            # 检测溶解相区域（连续相同的相）
+                # 获取相名称（melted状态也有solution_phase_name）
+                if status1 in ('success', 'fully_soluble', 'melted'):
+                    phase1 = results_list[i].get('solution_phase_name', '')
+                else:
+                    phase1 = ''
+
+                if status2 in ('success', 'fully_soluble', 'melted'):
+                    phase2 = results_list[i+1].get('solution_phase_name', '')
+                else:
+                    phase2 = ''
+
+                if phase1 and phase2 and phase1 != phase2:
+                    # 相转变发生在两点之间
+                    t_transition = (t_values[i] + t_values[i+1]) / 2
+                    phase_transitions.append((t_transition, phase1, phase2))
+
+            # 检测溶解相区域（连续相同的相，包括LIQUID区域）
             phase_regions = []
             current_phase = None
             region_start = None
             for i, result in enumerate(results_list):
-                if result.get('status') == 'success':
+                status = result.get('status', '')
+                # melted 状态也是有效的相区域（LIQUID）
+                if status in ('success', 'fully_soluble', 'melted'):
                     phase = result.get('solution_phase_name', '')
                     if phase:
                         if phase != current_phase:

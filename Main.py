@@ -1,12 +1,13 @@
 import os
 import sys
 import time
+import multiprocessing
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap, QIcon
 from PyQt5.QtWidgets import QApplication, QSplashScreen
 
-from gui.Alloyact_GUI_Pro import AlloyActProGUI
+from gui.Alloyact_GUI_Pro import AlloyThermolCalProGUI
 
 
 def get_resource_path (relative_path):
@@ -49,7 +50,7 @@ def run_gui ():
 		
 		# 显示加载信息
 		splash.showMessage(
-				"正在加载 AlloyAct Pro...",
+				"正在加载 AlloyThermolCal Pro...",
 				Qt.AlignBottom | Qt.AlignCenter,
 				Qt.white
 		)
@@ -72,7 +73,7 @@ def run_gui ():
 			app.processEvents()
 		
 		# 创建主窗口实例
-		main_window_pro = AlloyActProGUI()
+		main_window_pro = AlloyThermolCalProGUI()
 		
 		# 设置窗口图标
 		if os.path.exists(icon_path):
@@ -159,7 +160,7 @@ def run_gui_with_timer ():
 		
 		def initialize_main_window ():
 			try:
-				main_window_pro = AlloyActProGUI()
+				main_window_pro = AlloyThermolCalProGUI()
 				if os.path.exists(icon_path):
 					main_window_pro.setWindowIcon(QIcon(icon_path))
 				
@@ -194,7 +195,7 @@ def run_gui_with_timer ():
 		
 		# 直接启动主窗口
 		try:
-			main_window_pro = AlloyActProGUI()
+			main_window_pro = AlloyThermolCalProGUI()
 			if os.path.exists(icon_path):
 				main_window_pro.setWindowIcon(QIcon(icon_path))
 			main_window_pro.show()
@@ -222,13 +223,13 @@ def create_default_splash ():
 	layout.setAlignment(Qt.AlignCenter)
 	
 	# 标题
-	title_label = QLabel("AlloyAct Pro")
+	title_label = QLabel("AlloyThermolCal Pro")
 	title_label.setAlignment(Qt.AlignCenter)
 	title_label.setFont(QFont("Arial", 24, QFont.Bold))
 	title_label.setStyleSheet("color: #2C3E50; margin: 20px;")
 	
 	# 副标题
-	subtitle_label = QLabel("合金活度计算专业版")
+	subtitle_label = QLabel("合金热力学计算专业版")
 	subtitle_label.setAlignment(Qt.AlignCenter)
 	subtitle_label.setFont(QFont("Arial", 12))
 	subtitle_label.setStyleSheet("color: #7F8C8D; margin: 10px;")
@@ -256,6 +257,13 @@ def create_default_splash ():
 
 
 if __name__ == "__main__":
+	# Windows 多进程支持（必须在 main 入口点调用）
+	multiprocessing.freeze_support()
+
+	# Windows 上使用 spawn 方法创建子进程（避免 0xC0000409 错误）
+	if sys.platform == 'win32':
+		multiprocessing.set_start_method('spawn', force=True)
+
 	# 选择启动方式
 	# run_gui()           # 简单启动画面版本
 	run_gui_with_timer()  # 带进度的启动画面版本（推荐）
@@ -274,7 +282,7 @@ if __name__ == "__main__":
 #    - 尺寸：包含多种尺寸（16x16, 32x32, 48x48, 256x256）
 #
 # 3. 示例启动画面设计要素：
-#    - 应用程序名称：AlloyAct Pro
+#    - 应用程序名称：AlloyThermolCal Pro
 #    - Logo 或图标
 #    - 版本信息
 #    - 公司/组织名称

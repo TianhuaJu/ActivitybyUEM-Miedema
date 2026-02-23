@@ -106,7 +106,7 @@ class SecondOrderCoefficientWidget(QWidget):
 		# 外推模型下拉框
 		input_layout.addWidget(QLabel("外推模型:"), row, 0, Qt.AlignRight)
 		self.model_combo = QComboBox()
-		self.model_combo.addItems(["UEM1", "UEM2", "GSM", "Muggianu"])
+		self.model_combo.addItems(["UEM1","UEM1_A", "UEM2", "GSM", "Muggianu"])
 		input_layout.addWidget(self.model_combo, row, 1)
 		row += 1
 		
@@ -282,6 +282,8 @@ class SecondOrderCoefficientWidget(QWidget):
 		"""获取对应的模型函数"""
 		if model_name == "UEM1":
 			return self.parent.binary_model.UEM1
+		elif model_name == "UEM1_A":
+			return self.parent.binary_model.UEM1_A
 		elif model_name == "UEM2":
 			return self.parent.binary_model.UEM2
 		elif model_name == "GSM":

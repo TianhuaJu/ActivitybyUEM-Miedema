@@ -71,9 +71,9 @@
 ```
 ActivitybyUEM-Miedema/
 ├── calculations/
-│   └── phase_equilibrium_calculator.py    # 核心计算模块 (800+ 行)
+│   └── phase_equilibrium.py               # 核心计算模块 (含两种算法)
 ├── gui/
-│   ├── PhaseEquilibriumWidget.py          # GUI组件 (900+ 行)
+│   ├── PhaseEquilibriumWidget.py          # GUI组件
 │   └── Alloyact_GUI_Pro.py                # 主界面 (已集成)
 └── docs/
     ├── phase_equilibrium_feature_guide.md           # 用户指南
@@ -191,7 +191,7 @@ class PhaseInfo:
 ### 语法检查
 ```bash
 python -m py_compile gui/PhaseEquilibriumWidget.py
-python -m py_compile calculations/phase_equilibrium_calculator.py
+python -m py_compile calculations/phase_equilibrium.py
 ```
 ✅ 通过
 
@@ -279,8 +279,8 @@ feat: 添加相平衡计算功能模块
 ```
 
 **修改文件**:
-- `calculations/phase_equilibrium_calculator.py` (新建, 800+ 行)
-- `gui/PhaseEquilibriumWidget.py` (新建, 900+ 行)
+- `calculations/phase_equilibrium.py` (整合后的计算模块)
+- `gui/PhaseEquilibriumWidget.py` (GUI组件)
 - `gui/Alloyact_GUI_Pro.py` (修改, 添加导入和集成)
 
 ---

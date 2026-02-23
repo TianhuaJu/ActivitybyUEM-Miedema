@@ -18,6 +18,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                              QSplitter, QFrame, QGroupBox, QTextEdit,
                              QMessageBox, QRadioButton, QButtonGroup, QProgressBar)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from gui.widgets import AutoResizeTextEdit
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
@@ -111,7 +112,7 @@ class PhaseDiagramWidget(QWidget):
         model_layout.addWidget(QLabel("外推模型:"), row, 0, Qt.AlignRight)
         self.extrap_model_combo = QComboBox()
         self.extrap_model_combo.addItems([
-            "UEM1", "UEM2", "UEM2-Adv", "GSM",
+            "UEM1",  "UEM1_A","UEM2", "UEM2-Adv", "GSM",
             "Muggianu", "Toop-Muggianu", "Toop-Kohler"
         ])
         model_layout.addWidget(self.extrap_model_combo, row, 1)
@@ -179,10 +180,11 @@ class PhaseDiagramWidget(QWidget):
 
         row = 0
 
-        # 单点计算模式
+        # 单点计算模式（自动调整大小）
         if self.mode_single.isChecked():
             self.input_layout.addWidget(QLabel("合金成分:"), row, 0, Qt.AlignRight)
-            self.alloy_input = QLineEdit("Fe0.97C0.03")
+            self.alloy_input = AutoResizeTextEdit(min_lines=1, max_lines=3)
+            self.alloy_input.setText("Fe0.97C0.03")
             self.alloy_input.setPlaceholderText("例如: Fe0.97C0.03")
             self.input_layout.addWidget(self.alloy_input, row, 1)
 
@@ -312,7 +314,7 @@ class PhaseDiagramWidget(QWidget):
         from models.extrapolation_models import BinaryModel
         bm = BinaryModel()
         extrap_func_map = {
-            'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+            'UEM1': bm.UEM1,'UEM1_A': bm.UEM1_A, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
             'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
             'Toop-Muggianu': bm.Toop_Muggianu
         }
@@ -392,7 +394,7 @@ class PhaseDiagramWidget(QWidget):
         from models.extrapolation_models import BinaryModel
         bm = BinaryModel()
         extrap_func_map = {
-            'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+            'UEM1': bm.UEM1,'UEM1_A': bm.UEM1_A, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
             'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
             'Toop-Muggianu': bm.Toop_Muggianu
         }
@@ -492,7 +494,7 @@ class PhaseDiagramWidget(QWidget):
         from models.extrapolation_models import BinaryModel
         bm = BinaryModel()
         extrap_func_map = {
-            'UEM1': bm.UEM1, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
+            'UEM1': bm.UEM1,'UEM1_A': bm.UEM1_A, 'UEM2': bm.UEM2, 'UEM2-Adv': bm.UEM2_Adv,
             'GSM': bm.GSM, 'Muggianu': bm.Muggianu, 'Toop-Kohler': bm.Toop_Kohler,
             'Toop-Muggianu': bm.Toop_Muggianu
         }

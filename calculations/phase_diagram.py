@@ -23,7 +23,12 @@ from scipy.optimize import root, brentq
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from calculations.thermodynamic_properties import ThermodynamicProperties, extrap_func
-
+# 在原有导入后添加
+try:
+    from calculations.solubility_corrected import SolubilityCalculatorCorrected
+    HAS_CORRECTED_SOLUBILITY = True
+except ImportError:
+    HAS_CORRECTED_SOLUBILITY = False
 
 class PhaseDiagramCalculator(ThermodynamicProperties):
 	"""
@@ -33,6 +38,7 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 	
 	def __init__ (self):
 		super().__init__()
+		self._solubility_calc_corrected = None
 	
 	@staticmethod
 	def _check_bounds (x, epsilon=1e-9):
@@ -45,6 +51,15 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 	# =================== PART 1: 溶解度计算模块 ======================
 	# ================================================================
 	
+	
+	def _get_solubility_calculator (self):
+		'''新增方法'''
+		if self._solubility_calc_corrected is None and HAS_CORRECTED_SOLUBILITY:
+			self._solubility_calc_corrected = SolubilityCalculatorCorrected(
+					tdb_parser=self.tdb_parser,
+					activity_calculator=self.activity_calculator
+			)
+		return self._solubility_calc_corrected
 	def _estimate_lattice_stability (self, component: str, target_phase: str, T: float) -> Optional[float]:
 		"""
 		(修改版) 估算晶格稳定性参数。
@@ -63,29 +78,37 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 		# 配置：定义各元素的估算策略 (全部采用 fixed_diff)
 		# ==================================================
 		stability_config = {
-			
-			
+
+			# --- 碳 C ---
+			# 碳从石墨到金属晶格（BCC/FCC）的晶格稳定性能量约为 100-120 kJ/mol
+			# 这是间隙固溶体形成的关键参数
+			'C': {
+				'stable_phase': 'GRAPHITE',  # 稳定态 (石墨)
+				'proxy_phase': None,
+				'fixed_diff': 117000.0  # 设定值: 117 kJ/mol (参考文献典型值)
+			},
+
 			# --- 氮 N ---
 			'N': {
 				'stable_phase': 'GAS',  # 稳定态 (1/2 N2)
 				'proxy_phase': None,
 				'fixed_diff': 240000.0  # 设定值: 240 kJ/mol
 			},
-			
+
 			# --- 硅 Si ---
 			'SI': {
 				'stable_phase': 'DIAMOND_A4',  # 稳定态
 				'proxy_phase': None,
 				'fixed_diff': 33000.0  # 设定值: 33 kJ/mol
 			},
-			
+
 			# --- 锗 Ge ---
 			'GE': {
 				'stable_phase': 'DIAMOND_A4',  # 稳定态
 				'proxy_phase': None,
 				'fixed_diff': 25000.0  # 设定值: 25 kJ/mol
 			},
-			
+
 			# --- 氢 H ---
 			'H': {
 				'stable_phase': 'GAS',  # 稳定态 (1/2 H2)
@@ -110,9 +133,14 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			# 注意: PyCalphad 有时需要指定组分名称如 'N2' 而不是 'N'，但这取决于 parser 实现
 			# 这里假设 get_gibbs_energy 内部能处理 'N' -> '1/2 N2' 的转换或直接读取 SER
 			g_stable = self.tdb_parser.get_gibbs_energy(comp_upper, 'GAS', T)
+		elif ref_phase_name == 'GRAPHITE':
+			# 碳的稳定相是石墨，但TDB中可能命名为 GRAPHITE 或 SER
+			g_stable = self.tdb_parser.get_gibbs_energy(comp_upper, 'GRAPHITE', T)
+			if g_stable is None:
+				g_stable = self.tdb_parser.get_gibbs_energy(comp_upper, 'SER', T)
 		else:
 			g_stable = self.tdb_parser.get_gibbs_energy(comp_upper, ref_phase_name, T)
-		
+
 		if g_stable is None:
 			# 如果连稳定态都算不出来 (比如 TDB 缺 H)，则无法估算
 			return None
@@ -138,86 +166,129 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 	                          activity_model: str = 'Wagner',
 	                          min_solubility: float = 1e-12,
 	                          max_solubility: float = 0.999) -> dict:
-		
+
 		# ==================== 1. 预处理 ====================
 		solute = solute_element.upper()
 		precipitating_phase = self.tdb_parser.get_stable_phase(solute,temperature) #沉淀相为计算温度T下的稳定相
-		
+
 		total_base = sum(base_alloy_composition.values())
 		if total_base <= 0:
 			raise ValueError("基础合金成分不能为空")
-		
+
 		# 归一化基础合金成分
 		base_comp = {k.upper(): v / total_base for k, v in base_alloy_composition.items()}
 		solvent = max(base_comp.items(), key=lambda x: x[1])[0]
-		
+
 		# 确定溶液相的 TDB 相名（固相用溶剂的稳定相）
 		if solution_phase == 'LIQUID':
 			tdb_solution_phase = 'LIQUID'
 			phase_desc = "液相"
 		else:
-			ref = self.tdb_parser.get_stable_phase(solvent,temperature) #选择计算温度下的稳定相结构为参考态
+			ref = self.tdb_parser.get_stable_phase(solvent, temperature)  # 选择计算温度下的稳定相结构为参考态
 			tdb_solution_phase = ref if ref else 'BCC_A2'
 			phase_desc = f"固相 ({tdb_solution_phase})"
-		
-		# ==================== 2. 检查基础合金稳定性 & 自动搜寻最稳定相====================
-		#检查所有相的稳定性，如果都不稳定，则报告基础合金相不稳定；
-		# 如果稳定，则找出最稳定的那个相作为tdb_solution_phase
+
+		# ==================== 1.5 相稳定性判断：基于溶剂稳定相和合金能量比较 ====================
+		# 核心逻辑（修正版）：
+		# 1. 获取溶剂元素的稳定相（这是最重要的参考）
+		# 2. 检查溶剂元素在各候选相中的纯态能量差
+		# 3. 如果候选相对于溶剂稳定相的能量差太大（>1 kJ/mol），排除该候选相
+		# 4. 在筛选后的候选相中，选择总Gibbs能量最低的相
+		#
+		# 这样可以避免活度系数模型在不稳定相中给出不合理值的问题
+
+		# Step 1: 获取溶剂的稳定相（关键参考）
+		solvent_stable_phase = self.tdb_parser.get_stable_phase(solvent, temperature)
+		g_solvent_stable = self.tdb_parser.get_gibbs_energy(solvent, solvent_stable_phase, temperature)
+
+		# Step 2: 获取所有候选相（包括LIQUID和固相）
 		all_phases = self.tdb_parser.get_element_phases(solvent)
-		candidate_phases = [p for p in all_phases if  p != 'GAS']
-		
+		# 排除GAS相，但保留LIQUID相
+		candidate_phases = [p for p in all_phases if p != 'GAS']
+		# 确保LIQUID在候选相中
+		if 'LIQUID' not in candidate_phases:
+			candidate_phases.append('LIQUID')
+
+		# Step 3: 基于溶剂稳定性筛选候选相
+		# 如果候选相的溶剂G°比稳定相G°高超过阈值，排除该相
+		# 注：阈值设置为200 J/mol，因为在接近熔点时能量差较小，
+		# 但活度系数模型对不稳定相可能给出不合理的负偏差值
+		PHASE_EXCLUSION_THRESHOLD = 200.0  # 0.2 kJ/mol - 严格排除不稳定相
+		filtered_phases = []
+		for phase in candidate_phases:
+			g_solvent_phase = self.tdb_parser.get_gibbs_energy(solvent, phase, temperature)
+			if g_solvent_phase is None:
+				g_solvent_phase = self._estimate_lattice_stability(solvent, phase, temperature)
+
+			if g_solvent_phase is not None and g_solvent_stable is not None:
+				energy_diff = g_solvent_phase - g_solvent_stable
+				if energy_diff <= PHASE_EXCLUSION_THRESHOLD:
+					filtered_phases.append(phase)
+				# 注：被排除的相对溶剂元素而言是热力学不稳定的
+			else:
+				# 如果无法计算能量，保守地保留该相
+				filtered_phases.append(phase)
+
+		# 确保溶剂稳定相始终在候选列表中
+		if solvent_stable_phase not in filtered_phases:
+			filtered_phases.insert(0, solvent_stable_phase)
+
 		found_stable_phase = False
 		combined_issues = list()  # 收集所有尝试过的错误信息
-		
-		# === 新增变量：用于追踪最稳定的相 ===
+
+		# === 用于追踪最稳定的相（能量最低） ===
 		best_phase_name = None
 		min_gibbs_energy = float('inf')  # 初始化为无穷大
-		
-		for phase in candidate_phases:
-			# 1. 首先检查该相本身是否稳定 (没有析出，没有不合理的化学势)
-			s_try, i_try = self._check_alloy_full_stability(
+		issues = []
+
+		# Step 4: 在筛选后的候选相中，计算基础合金的总Gibbs能量
+		for phase in filtered_phases:
+			# 计算基础合金在该相中的总Gibbs能量 G = Σ(x_i * μ_i)
+			current_energy = 0.0
+			calculation_valid = True
+
+			for el, x_el in base_comp.items():
+				if x_el < 1e-12:
+					continue
+
+				mu = self._get_chemical_potential(
+						composition=base_comp,
+						component=el,
+						temperature=temperature,
+						tdb_phase=phase,
+						extrapolation_model_func=extrapolation_func,
+						extrapolation_model=extrapolation_model_name,
+						activity_model=activity_model
+				)
+
+				if mu is None:
+					calculation_valid = False
+					combined_issues.append(f"无法计算 {el} 在 {phase} 中的化学势")
+					break
+				current_energy += x_el * mu
+
+			# 如果能量计算成功，与当前最小值比较
+			if calculation_valid:
+				# 选择能量最低的相
+				if current_energy < min_gibbs_energy:
+					min_gibbs_energy = current_energy
+					best_phase_name = phase
+					found_stable_phase = True
+					issues = []
+
+		# 额外检查：确认选中的相是否热力学稳定（各组分不会析出纯态）
+		if found_stable_phase and best_phase_name:
+			stable_check, stability_issues = self._check_alloy_full_stability(
 					composition=base_comp,
 					temperature=temperature,
-					tdb_phase=phase,
+					tdb_phase=best_phase_name,
 					extrapolation_func=extrapolation_func,
 					extrapolation_model_name=extrapolation_model_name,
 					activity_model=activity_model
 			)
-			
-			if s_try:
-				# === 修改点：找到稳定相后，不立即退出，而是计算能量 ===
-				current_energy = 0.0
-				calculation_valid = True
-				
-				# 计算该相在当前成分下的总吉布斯自由能 G = sum(x_i * mu_i)
-				# 注意：这里需要重新调用 _get_chemical_potential 来获取数值
-				for el, x_el in base_comp.items():
-					mu = self._get_chemical_potential(
-							composition=base_comp,
-							component=el,
-							temperature=temperature,
-							tdb_phase=phase,
-							extrapolation_model_func=extrapolation_func,
-							extrapolation_model=extrapolation_model_name,
-							activity_model=activity_model
-					)
-					
-					if mu is None:
-						calculation_valid = False
-						break
-					current_energy += x_el * mu
-				
-				# 如果能量计算成功，与当前最小值比较
-				if calculation_valid:
-					if current_energy < min_gibbs_energy:
-						min_gibbs_energy = current_energy
-						best_phase_name = phase
-						found_stable_phase = True
-						issues = []
-			
-			# 循环继续以寻找更低能量的相
-			else:
-				combined_issues.extend(i_try)
+			if not stable_check:
+				# 如果最低能量相不稳定，记录警告但仍使用该相
+				issues.extend(stability_issues)
 		
 		# === 循环结束后，应用找到的最优相 ===
 		if found_stable_phase and best_phase_name:
@@ -268,19 +339,22 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 				return 1e20
 			
 			# 【检查加入溶质后，所有组分（包括溶剂和原有合金元素）是否仍然稳定】
-			stable_now, issues_now = self._check_alloy_full_stability(
-					composition=current_comp,
-					temperature=temperature,
-					tdb_phase=tdb_solution_phase,
-					extrapolation_func=extrapolation_func,
-					extrapolation_model_name=extrapolation_model_name,
-					activity_model=activity_model,
-					ignore_component=solute  # 只关心基础合金组成元素不要析出，溶质本身当然可能过饱和
-			)
-			if not stable_now:
-				# 只要有任何一个基体元素化学势 > 其纯态 → 说明溶质“挤出了”基体 → 强制残差为正，解趋向于0
-				
-				return 1e20
+			# 注意：对于液相溶解度计算，跳过此检查
+			# 原因：液相中组分完全互溶是常见的（如 Fe-Ni, Fe-Co 等）
+			# 这个检查仅对固相有意义（晶格稳定性）
+			if tdb_solution_phase != 'LIQUID':
+				stable_now, issues_now = self._check_alloy_full_stability(
+						composition=current_comp,
+						temperature=temperature,
+						tdb_phase=tdb_solution_phase,
+						extrapolation_func=extrapolation_func,
+						extrapolation_model_name=extrapolation_model_name,
+						activity_model=activity_model,
+						ignore_component=solute  # 只关心基础合金组成元素不要析出，溶质本身当然可能过饱和
+				)
+				if not stable_now:
+					# 只要有任何一个基体元素化学势 > 其纯态 → 说明溶质"挤出了"基体 → 强制残差为正，解趋向于0
+					return 1e20
 			
 			return mu_solute - g_ppt
 		
@@ -327,8 +401,30 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			"final_composition_mole": final_comp,
 			"warnings": issues if 'issues' in locals() else []
 		}
-		
+	
+	def calculate_solubility_v2 (self, base_alloy_composition, solute_element,
+	                             solution_phase, temperature, extrapolation_func,
+	                             extrapolation_model_name='UEM1', activity_model='Wagner',
+	                             use_intermetallic=True):
+		"""改进版溶解度计算
 
+		当use_intermetallic=True时，考虑金属间化合物平衡
+		否则使用与纯溶质的平衡计算
+		"""
+		if use_intermetallic:
+			calc = self._get_solubility_calculator()
+			if calc:
+				return calc.calculate_solubility_with_compound(
+						base_alloy_composition, solute_element, solution_phase,
+						temperature, extrapolation_func, extrapolation_model_name,
+						activity_model
+				)
+		# 使用标准溶解度计算方法
+		return self.calculate_solubility(
+			base_alloy_composition, solute_element, solution_phase,
+			temperature, extrapolation_func, extrapolation_model_name,
+			activity_model
+		)
 	
 	
 	def calculate_ideal_solubility(self,
@@ -456,10 +552,15 @@ class PhaseDiagramCalculator(ThermodynamicProperties):
 			}
 
 	def _check_alloy_full_stability (self, composition, temperature, tdb_phase, extrapolation_func,
-	                                 extrapolation_model_name, activity_model, ignore_component=None, tolerance=10.0):
+	                                 extrapolation_model_name, activity_model, ignore_component=None, tolerance=1000.0):
 		"""
 		@tdb_phase:合金相
-		检查合金组分是否析出,只检查该合金的稳定性"""
+		检查合金组分是否析出,只检查该合金的稳定性
+
+		注意：tolerance 默认值为 1000 J/mol (1 kJ/mol)
+		之前设置为 10 J/mol 太严格，导致 Fe-Ni 等完全互溶体系被错误判定为不稳定
+		对于液相，RT 在 1800K ≈ 15 kJ/mol，10 J/mol 的容差过于严格
+		"""
 		issues = []
 		
 		# =========================================================
