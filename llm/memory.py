@@ -189,6 +189,14 @@ class MemoryStore:
             json.dump(data, f, ensure_ascii=False, indent=2)
         return filepath
 
+    def delete_session(self, session_id: str) -> bool:
+        """删除指定的对话历史"""
+        filepath = os.path.join(self.sessions_dir, f"{session_id}.json")
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            return True
+        return False
+
     def load_session(self, session_id: str) -> Optional[List[Dict]]:
         """加载指定对话历史"""
         filepath = os.path.join(self.sessions_dir, f"{session_id}.json")

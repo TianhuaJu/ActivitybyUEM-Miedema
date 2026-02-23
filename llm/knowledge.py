@@ -10,10 +10,11 @@ Knowledge Store - AI助手进化式知识库
 
 import json
 import os
+import re
 import sqlite3
 import time
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 DEFAULT_KNOWLEDGE_DIR = os.path.join(os.path.expanduser("~"), ".alloyact")
 DEFAULT_KNOWLEDGE_DB = os.path.join(DEFAULT_KNOWLEDGE_DIR, "knowledge.db")
@@ -135,11 +136,118 @@ class KnowledgeStore:
 
     # ==================== 知识管理 ====================
 
+    @staticmethod
+    def _tokenize(text: str) -> set:
+        """对文本进行分词，返回词元集合（中英文混合分词）"""
+        # 英文单词
+        words = set(re.findall(r'[a-zA-Z][a-zA-Z0-9]*', text.lower()))
+        # 中文：按2-gram切分
+        chinese = re.findall(r'[\u4e00-\u9fff]+', text)
+        for seg in chinese:
+            for i in range(len(seg) - 1):
+                words.add(seg[i:i+2])
+            if len(seg) == 1:
+                words.add(seg)
+        # 元素符号（大写开头）
+        words.update(re.findall(r'[A-Z][a-z]?', text))
+        return words
+
+    @staticmethod
+    def _jaccard_similarity(set_a: set, set_b: set) -> float:
+        """计算Jaccard相似度"""
+        if not set_a or not set_b:
+            return 0.0
+        intersection = set_a & set_b
+        union = set_a | set_b
+        return len(intersection) / len(union)
+
+    def find_similar_knowledge(self, topic: str, content: str,
+                               threshold: float = 0.6) -> List[Tuple[KnowledgeEntry, float]]:
+        """
+        基于关键词重叠的相似度搜索
+
+        参数:
+            topic: 主题
+            content: 内容
+            threshold: 相似度阈值（0-1）
+        返回:
+            [(知识条目, 相似度), ...] 按相似度降序
+        """
+        query_tokens = self._tokenize(topic + " " + content)
+        all_entries = self.get_all_knowledge()
+        similar = []
+        for entry in all_entries:
+            entry_tokens = self._tokenize(entry.topic + " " + entry.content)
+            sim = self._jaccard_similarity(query_tokens, entry_tokens)
+            if sim >= threshold:
+                similar.append((entry, sim))
+        similar.sort(key=lambda x: x[1], reverse=True)
+        return similar
+
+    def merge_knowledge(self, source_ids: List[int], merged_topic: str,
+                        merged_content: str, category: str = "general",
+                        confidence: float = 0.8) -> Dict[str, Any]:
+        """
+        合并多条知识为一条
+
+        参数:
+            source_ids: 要合并的知识ID列表
+            merged_topic: 合并后的主题
+            merged_content: 合并后的内容
+            category: 分类
+            confidence: 置信度
+        返回:
+            操作结果
+        """
+        conn = self._get_conn()
+        try:
+            # 获取旧条目信息用于累计
+            placeholders = ",".join("?" * len(source_ids))
+            rows = conn.execute(
+                f"SELECT id, tags, access_count, confidence FROM knowledge WHERE id IN ({placeholders})",
+                source_ids
+            ).fetchall()
+            if not rows:
+                return {"status": "error", "message": "未找到指定的知识条目"}
+
+            max_access = max(r[2] for r in rows)
+            max_conf = max(r[3] for r in rows)
+            all_tags = set()
+            for r in rows:
+                if r[1]:
+                    all_tags.update(t.strip() for t in r[1].split(",") if t.strip())
+            merged_tags = ",".join(sorted(all_tags))
+
+            # 删除旧条目
+            conn.execute(
+                f"DELETE FROM knowledge WHERE id IN ({placeholders})",
+                source_ids
+            )
+
+            # 插入合并后的条目
+            now = time.time()
+            conn.execute(
+                """INSERT INTO knowledge
+                   (topic, content, category, source, confidence, tags,
+                    created_at, updated_at, access_count)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (merged_topic, merged_content, category, "知识库优化合并",
+                 max(confidence, max_conf), merged_tags, now, now, max_access)
+            )
+            conn.commit()
+            return {
+                "status": "success",
+                "message": f"已合并 {len(source_ids)} 条知识为: {merged_topic}",
+                "merged_count": len(source_ids)
+            }
+        finally:
+            conn.close()
+
     def add_knowledge(self, topic: str, content: str, category: str = "general",
                       source: str = "", confidence: float = 0.8,
                       tags: str = "") -> Dict[str, Any]:
         """
-        添加一条知识
+        添加一条知识（含相似度检测和自动合并）
 
         参数:
             topic: 主题
@@ -149,11 +257,47 @@ class KnowledgeStore:
             confidence: 置信度 0-1
             tags: 标签（逗号分隔）
         """
-        # 检查重复
+        # 精确匹配去重
         existing = self.search_knowledge(topic, limit=5)
         for entry in existing:
             if entry.content == content:
                 return {"status": "exists", "message": f"已存在相同知识: {topic}"}
+
+        # 相似度检测
+        similar = self.find_similar_knowledge(topic, content, threshold=0.5)
+        hint_msg = ""
+
+        if similar:
+            best_entry, best_sim = similar[0]
+            if best_sim > 0.8:
+                # 高度相似：自动合并（取较新内容，累计access_count，取较高confidence）
+                conn = self._get_conn()
+                try:
+                    new_conf = max(confidence, best_entry.confidence)
+                    new_access = best_entry.access_count + 1
+                    # 合并标签
+                    old_tags = set(t.strip() for t in best_entry.tags.split(",") if t.strip())
+                    new_tags = set(t.strip() for t in tags.split(",") if t.strip())
+                    merged_tags = ",".join(sorted(old_tags | new_tags))
+                    now = time.time()
+                    conn.execute(
+                        """UPDATE knowledge SET content=?, confidence=?, tags=?,
+                           updated_at=?, access_count=?, source=?
+                           WHERE id=?""",
+                        (content, new_conf, merged_tags, now, new_access,
+                         source or best_entry.source, best_entry.id)
+                    )
+                    conn.commit()
+                    return {
+                        "status": "success",
+                        "message": f"已与相似知识合并更新: {best_entry.topic} (相似度{best_sim:.0%})",
+                        "merged_with": best_entry.id
+                    }
+                finally:
+                    conn.close()
+            else:
+                # 中度相似(0.5-0.8)：提示但仍保存
+                hint_msg = f" (注意：与已有知识「{best_entry.topic}」相似度{best_sim:.0%})"
 
         now = time.time()
         conn = self._get_conn()
@@ -165,7 +309,7 @@ class KnowledgeStore:
                 (topic, content, category, source, confidence, tags, now, now)
             )
             conn.commit()
-            return {"status": "success", "message": f"已学习: {topic}"}
+            return {"status": "success", "message": f"已学习: {topic}{hint_msg}"}
         finally:
             conn.close()
 

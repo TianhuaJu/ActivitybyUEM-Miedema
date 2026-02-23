@@ -104,7 +104,9 @@ SYSTEM_PROMPT_EXTENDED = """
 ========== 知识学习 ==========
 - learn_knowledge → 学习领域知识 (参数: topic, content, category, confidence, tags)
 - search_knowledge → 搜索知识 (参数: keyword, category)
+- optimize_knowledge → 优化知识库，自动检测相似条目并合并去重 (参数: similarity_threshold)
 对话中出现有价值的热力学知识时，主动调用learn_knowledge保存。
+当用户要求整理知识库或条目较多时，调用optimize_knowledge进行去重和优化。
 
 ========== 实验数据更新 ==========
 - update_experimental_value → 保存实验数据 (参数: data_type, solvent, solute_i, solute_j, value, value_type, temperature, reference)
@@ -574,6 +576,7 @@ class ChatAgent:
         "screen_elements_liquidus_effect": "元素筛选",
         "learn_knowledge": "知识学习",
         "search_knowledge": "知识检索",
+        "optimize_knowledge": "知识库优化",
         "update_experimental_value": "实验数据更新",
         "list_user_data": "用户数据查询",
         "create_custom_tool": "创建自定义工具",

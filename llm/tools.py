@@ -664,6 +664,17 @@ TOOL_SCHEMAS = {
         },
         "required": ["topic", "content"]
     },
+    "optimize_knowledge": {
+        "type": "object",
+        "properties": {
+            "similarity_threshold": {
+                "type": "number",
+                "description": "相似度阈值(0-1)，超过此阈值的知识将被建议合并。默认0.6",
+                "default": 0.6
+            }
+        },
+        "required": []
+    },
     "search_knowledge": {
         "type": "object",
         "properties": {
@@ -939,6 +950,7 @@ TOOL_DESCRIPTIONS = {
     "recall_memories": "回忆已保存的记忆。可按关键词搜索，不填关键词则返回所有记忆。当用户问'你还记得吗'、'之前说过'等时调用。",
     "delete_memory": "删除一条已保存的记忆。当用户要求忘记某信息时调用。",
     "learn_knowledge": "从对话中学习并保存领域知识。当对话中出现有价值的材料科学、热力学、冶金学知识（理论、公式、实验规律、计算经验等）时，主动调用此工具保存。分类：theory(理论)、formula(公式)、experimental(实验数据规律)、experience(计算经验)、correction(数据修正)、general(其他)。",
+    "optimize_knowledge": "优化知识库：自动检测相似或重复的知识条目，合并去重，提升知识库质量。当用户要求整理/优化知识库，或知识库条目较多时主动调用。",
     "search_knowledge": "搜索已学习的领域知识。可按关键词和分类检索。当需要参考之前学到的知识时调用。",
     "update_experimental_value": "保存或更新用户提供的实验数据到用户数据库。当用户告诉你一个新的实验测量值（如活度相互作用系数、活度系数等）时，主动调用此工具保存。保存后该值将在后续计算中优先使用。支持一阶系数(first_order)、无限稀释活度系数(lnY0)、二阶系数(second_order)、焓值(enthalpy)。",
     "list_user_data": "列出用户已保存的所有实验数据。可按基体元素和数据类型过滤。",
@@ -1821,6 +1833,64 @@ class ThermodynamicTools:
             self._knowledge_store.increment_access(e.id)
         return {"status": "success", "count": len(items), "entries": items}
 
+    def optimize_knowledge(self, similarity_threshold: float = 0.6) -> Dict[str, Any]:
+        """优化知识库：查找相似条目并自动合并去重"""
+        if self._knowledge_store is None:
+            return {"status": "error", "message": "知识学习功能未启用"}
+
+        all_entries = self._knowledge_store.get_all_knowledge()
+        if len(all_entries) < 2:
+            return {"status": "success", "message": "知识库条目不足，无需优化",
+                    "merged_groups": 0, "total_merged": 0}
+
+        # 查找相似组
+        processed = set()
+        merge_groups = []
+        for i, entry in enumerate(all_entries):
+            if entry.id in processed:
+                continue
+            similar = self._knowledge_store.find_similar_knowledge(
+                entry.topic, entry.content, threshold=similarity_threshold
+            )
+            # 排除自身，只保留未处理的
+            group_ids = [entry.id]
+            group_entries = [entry]
+            for sim_entry, sim_score in similar:
+                if sim_entry.id != entry.id and sim_entry.id not in processed:
+                    group_ids.append(sim_entry.id)
+                    group_entries.append(sim_entry)
+                    processed.add(sim_entry.id)
+            if len(group_ids) > 1:
+                processed.add(entry.id)
+                merge_groups.append((group_ids, group_entries))
+
+        if not merge_groups:
+            return {"status": "success", "message": "未发现需要合并的相似知识",
+                    "merged_groups": 0, "total_merged": 0}
+
+        # 执行合并
+        total_merged = 0
+        for group_ids, group_entries in merge_groups:
+            # 取置信度最高的条目作为基准
+            best = max(group_entries, key=lambda e: (e.confidence, e.access_count))
+            # 合并内容：取最长的
+            longest = max(group_entries, key=lambda e: len(e.content))
+            self._knowledge_store.merge_knowledge(
+                source_ids=group_ids,
+                merged_topic=best.topic,
+                merged_content=longest.content,
+                category=best.category,
+                confidence=best.confidence
+            )
+            total_merged += len(group_ids)
+
+        return {
+            "status": "success",
+            "message": f"知识库优化完成：合并了 {len(merge_groups)} 组共 {total_merged} 条知识",
+            "merged_groups": len(merge_groups),
+            "total_merged": total_merged
+        }
+
     def update_experimental_value(self, data_type: str, solvent: str,
                                   solute_i: str, value: float,
                                   value_type: str, temperature: str,
@@ -2080,6 +2150,7 @@ class ThermodynamicTools:
             "delete_memory": self.delete_memory,
             "learn_knowledge": self.learn_knowledge,
             "search_knowledge": self.search_knowledge,
+            "optimize_knowledge": self.optimize_knowledge,
             "update_experimental_value": self.update_experimental_value,
             "list_user_data": self.list_user_data,
             "create_custom_tool": self.create_custom_tool,

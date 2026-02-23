@@ -479,7 +479,7 @@ class MessageBubble(QFrame):
             )
             content_label.setStyleSheet("""
                 background: transparent;
-                font-size: 16px;
+                font-size: 18px;
                 padding: 5px;
             """)
         else:
@@ -489,7 +489,7 @@ class MessageBubble(QFrame):
             content_label.setStyleSheet("""
                 QTextBrowser {
                     background: transparent;
-                    font-size: 16px;
+                    font-size: 18px;
                     padding: 5px;
                     border: none;
                 }
@@ -1106,6 +1106,9 @@ class KnowledgeDialog(QDialog):
         k_splitter.setStretchFactor(1, 2)
         k_layout.addWidget(k_splitter, stretch=1)
 
+        k_btn_bar = QHBoxLayout()
+        k_btn_bar.setSpacing(8)
+
         del_k_btn = QPushButton("删除选中知识")
         del_k_btn.clicked.connect(self._delete_knowledge)
         del_k_btn.setStyleSheet("""
@@ -1114,7 +1117,21 @@ class KnowledgeDialog(QDialog):
                           font-size:12px; }
             QPushButton:hover { background-color:#c0392b; }
         """)
-        k_layout.addWidget(del_k_btn, alignment=Qt.AlignLeft)
+        k_btn_bar.addWidget(del_k_btn)
+
+        optimize_btn = QPushButton("优化知识库")
+        optimize_btn.setToolTip("自动检测相似条目并合并去重")
+        optimize_btn.clicked.connect(self._optimize_knowledge)
+        optimize_btn.setStyleSheet("""
+            QPushButton { background-color:#2ecc71; color:white;
+                          padding:5px 14px; border:none; border-radius:5px;
+                          font-size:12px; font-weight:bold; }
+            QPushButton:hover { background-color:#27ae60; }
+        """)
+        k_btn_bar.addWidget(optimize_btn)
+        k_btn_bar.addStretch()
+
+        k_layout.addLayout(k_btn_bar)
 
         self.tab_widget.addTab(k_tab, "领域知识")
 
@@ -1374,6 +1391,75 @@ class KnowledgeDialog(QDialog):
             self.knowledge_store.delete_knowledge(kid)
         self._refresh_all()
 
+    def _optimize_knowledge(self):
+        """优化知识库：检测相似条目并合并去重"""
+        all_entries = self.knowledge_store.get_all_knowledge()
+        if len(all_entries) < 2:
+            QMessageBox.information(self, "提示", "知识库条目不足，无需优化。")
+            return
+
+        # 查找相似组
+        processed = set()
+        merge_groups = []
+        for entry in all_entries:
+            if entry.id in processed:
+                continue
+            similar = self.knowledge_store.find_similar_knowledge(
+                entry.topic, entry.content, threshold=0.6
+            )
+            group_ids = [entry.id]
+            group_entries = [entry]
+            for sim_entry, sim_score in similar:
+                if sim_entry.id != entry.id and sim_entry.id not in processed:
+                    group_ids.append(sim_entry.id)
+                    group_entries.append(sim_entry)
+                    processed.add(sim_entry.id)
+            if len(group_ids) > 1:
+                processed.add(entry.id)
+                merge_groups.append((group_ids, group_entries))
+
+        if not merge_groups:
+            QMessageBox.information(self, "优化结果", "未发现需要合并的相似知识。")
+            return
+
+        # 展示发现的相似组，让用户确认
+        detail_lines = []
+        for i, (group_ids, group_entries) in enumerate(merge_groups, 1):
+            topics = [e.topic for e in group_entries]
+            detail_lines.append(f"第{i}组 ({len(group_ids)}条): {' | '.join(topics)}")
+
+        reply = QMessageBox.question(
+            self, "确认合并",
+            f"发现 {len(merge_groups)} 组相似知识：\n\n"
+            + "\n".join(detail_lines[:10])
+            + ("\n..." if len(detail_lines) > 10 else "")
+            + "\n\n每组将合并为一条（保留最高置信度和最长内容）。确定执行？",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        # 执行合并
+        total_merged = 0
+        for group_ids, group_entries in merge_groups:
+            best = max(group_entries, key=lambda e: (e.confidence, e.access_count))
+            longest = max(group_entries, key=lambda e: len(e.content))
+            self.knowledge_store.merge_knowledge(
+                source_ids=group_ids,
+                merged_topic=best.topic,
+                merged_content=longest.content,
+                category=best.category,
+                confidence=best.confidence
+            )
+            total_merged += len(group_ids)
+
+        self._refresh_all()
+        QMessageBox.information(
+            self, "优化完成",
+            f"知识库优化完成！\n\n"
+            f"合并了 {len(merge_groups)} 组共 {total_merged} 条知识。"
+        )
+
     def _delete_data(self):
         """删除选中的实验数据"""
         selected = self.data_list.selectedItems()
@@ -1552,6 +1638,208 @@ class KnowledgeDialog(QDialog):
             self._refresh_all()
 
 
+class HistoryDialog(QDialog):
+    """历史对话管理对话框 — 查看、加载和删除历史对话记录"""
+
+    # 信号：用户选择加载某条历史
+    load_requested = pyqtSignal(str)  # session_id
+
+    def __init__(self, memory_store, parent=None):
+        super().__init__(parent)
+        self._memory_store = memory_store
+        self._sessions = []
+        self.setWindowTitle("历史对话记录")
+        self.setMinimumSize(600, 420)
+        try:
+            from PyQt5.QtGui import QGuiApplication
+            screen = QGuiApplication.primaryScreen().availableGeometry()
+            w = min(760, int(screen.width() * 0.5))
+            h = min(560, int(screen.height() * 0.55))
+            self.resize(w, h)
+        except Exception:
+            self.resize(700, 500)
+        self._setup_ui()
+        self._refresh()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(8)
+
+        title = QLabel("历史对话记录")
+        title.setStyleSheet(
+            "font-size:18px; font-weight:bold; color:#2c3e50; margin-bottom:2px;"
+        )
+        layout.addWidget(title)
+
+        hint = QLabel("选择一条对话历史可查看摘要。支持加载到当前会话或删除。")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color:#7f8c8d; font-size:12px; margin-bottom:4px;")
+        layout.addWidget(hint)
+
+        splitter = QSplitter(Qt.Vertical)
+
+        # 会话列表
+        self.session_list = QListWidget()
+        self.session_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.session_list.currentRowChanged.connect(self._on_session_selected)
+        self.session_list.setStyleSheet("""
+            QListWidget {
+                border:1px solid #e0e0e0; border-radius:6px;
+                font-size:13px; background:white; outline:none;
+            }
+            QListWidget::item {
+                padding:8px 12px; border-bottom:1px solid #f0f0f0;
+            }
+            QListWidget::item:selected { background-color:#d5e8f6; color:#000; }
+            QListWidget::item:hover:!selected { background-color:#f5f9ff; }
+        """)
+        splitter.addWidget(self.session_list)
+
+        # 摘要预览
+        self.preview = QTextBrowser()
+        self.preview.setOpenExternalLinks(False)
+        self.preview.setStyleSheet("""
+            QTextBrowser {
+                border:1px solid #e0e0e0; border-radius:6px;
+                padding:10px; font-size:13px; background:#fafbfc;
+            }
+        """)
+        splitter.addWidget(self.preview)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
+        layout.addWidget(splitter, stretch=1)
+
+        # 按钮栏
+        btn_bar = QHBoxLayout()
+        btn_bar.setSpacing(8)
+
+        load_btn = QPushButton("加载到当前会话")
+        load_btn.clicked.connect(self._load_session)
+        load_btn.setStyleSheet("""
+            QPushButton { background-color:#3498db; color:white;
+                          padding:6px 18px; border:none; border-radius:5px;
+                          font-size:13px; font-weight:bold; }
+            QPushButton:hover { background-color:#2980b9; }
+        """)
+        btn_bar.addWidget(load_btn)
+
+        del_btn = QPushButton("删除选中")
+        del_btn.clicked.connect(self._delete_sessions)
+        del_btn.setStyleSheet("""
+            QPushButton { background-color:#e74c3c; color:white;
+                          padding:6px 18px; border:none; border-radius:5px;
+                          font-size:13px; }
+            QPushButton:hover { background-color:#c0392b; }
+        """)
+        btn_bar.addWidget(del_btn)
+
+        btn_bar.addStretch()
+
+        close_btn = QPushButton("关闭")
+        close_btn.clicked.connect(self.accept)
+        close_btn.setStyleSheet("""
+            QPushButton { background-color:#95a5a6; color:white;
+                          padding:6px 22px; border:none; border-radius:5px;
+                          font-size:13px; }
+            QPushButton:hover { background-color:#7f8c8d; }
+        """)
+        btn_bar.addWidget(close_btn)
+
+        layout.addLayout(btn_bar)
+
+    def _refresh(self):
+        """刷新会话列表"""
+        import time as _time
+        self._sessions = self._memory_store.list_sessions()
+        self.session_list.clear()
+        self.preview.clear()
+        for sess in self._sessions:
+            ts = _time.strftime(
+                "%Y-%m-%d %H:%M", _time.localtime(sess["timestamp"])
+            )
+            text = f"[{ts}]  {sess['message_count']} 条消息  |  {sess['session_id']}"
+            item = QListWidgetItem(text)
+            item.setData(Qt.UserRole, sess["session_id"])
+            self.session_list.addItem(item)
+
+    def _on_session_selected(self, row: int):
+        """选中某条会话时显示摘要"""
+        if row < 0 or row >= len(self._sessions):
+            self.preview.clear()
+            return
+        sess = self._sessions[row]
+        msgs = self._memory_store.load_session(sess["session_id"])
+        if not msgs:
+            self.preview.setHtml("<i>无法加载此会话</i>")
+            return
+
+        import time as _time
+        ts = _time.strftime(
+            "%Y-%m-%d %H:%M:%S", _time.localtime(sess["timestamp"])
+        )
+        html = (
+            f"<div style='font-weight:bold;font-size:14px;color:#2c3e50;"
+            f"margin-bottom:6px;'>会话: {sess['session_id']}</div>"
+            f"<div style='font-size:12px;color:#888;margin-bottom:8px;'>"
+            f"时间: {ts} &nbsp;|&nbsp; 消息数: {sess['message_count']}</div>"
+            f"<hr style='border:none;border-top:1px solid #eee;'>"
+        )
+        # 显示前10条消息摘要
+        count = 0
+        for msg in msgs:
+            if count >= 10:
+                html += "<div style='color:#999;font-size:12px;'>... (更多消息)</div>"
+                break
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if not content or role == "system" or role == "tool":
+                continue
+            content_preview = content[:150].replace("<", "&lt;").replace(">", "&gt;")
+            if len(content) > 150:
+                content_preview += "..."
+            if role == "user":
+                html += (
+                    f"<div style='margin:4px 0;padding:4px 8px;"
+                    f"background:#dceefb;border-radius:4px;font-size:12px;'>"
+                    f"<b>你:</b> {content_preview}</div>"
+                )
+            else:
+                html += (
+                    f"<div style='margin:4px 0;padding:4px 8px;"
+                    f"background:#f0f0f0;border-radius:4px;font-size:12px;'>"
+                    f"<b>助手:</b> {content_preview}</div>"
+                )
+            count += 1
+        self.preview.setHtml(html)
+
+    def _load_session(self):
+        """加载选中的会话"""
+        selected = self.session_list.selectedItems()
+        if not selected:
+            QMessageBox.information(self, "提示", "请先选择一条对话历史")
+            return
+        session_id = selected[0].data(Qt.UserRole)
+        self.load_requested.emit(session_id)
+        self.accept()
+
+    def _delete_sessions(self):
+        """删除选中的会话"""
+        selected = self.session_list.selectedItems()
+        if not selected:
+            return
+        reply = QMessageBox.question(
+            self, "确认删除",
+            f"确定删除选中的 {len(selected)} 条对话历史？删除后无法恢复。",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            for item in selected:
+                session_id = item.data(Qt.UserRole)
+                self._memory_store.delete_session(session_id)
+            self._refresh()
+
+
 class ChatWidget(QWidget):
     """对话式热力学计算界面"""
 
@@ -1727,6 +2015,21 @@ class ChatWidget(QWidget):
         """)
         row2.addWidget(self.knowledge_btn)
 
+        self.history_btn = QPushButton("  历史记录  ")
+        self.history_btn.setToolTip("查看、加载和删除历史对话记录")
+        self.history_btn.clicked.connect(self._open_history_dialog)
+        self.history_btn.setFixedHeight(30)
+        self.history_btn.setCursor(Qt.PointingHandCursor)
+        self.history_btn.setStyleSheet("""
+            QPushButton {
+                background:#e67e22; color:#fff; font-size:13px;
+                padding:2px 14px; border:none; border-radius:4px;
+                font-weight:bold;
+            }
+            QPushButton:hover { background:#d35400; }
+        """)
+        row2.addWidget(self.history_btn)
+
         outer.addLayout(row2)
 
         return bar
@@ -1796,7 +2099,7 @@ class ChatWidget(QWidget):
                 border-top: 1px solid #d0d0d0;
             }
         """)
-        bar.setFixedHeight(70)
+        bar.setFixedHeight(96)
 
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(12, 10, 12, 10)
@@ -1805,11 +2108,11 @@ class ChatWidget(QWidget):
         # 输入框
         self.input_text = QTextEdit()
         self.input_text.setPlaceholderText("输入您的问题… (Ctrl+Enter 发送)")
-        self.input_text.setFixedHeight(48)
+        self.input_text.setFixedHeight(72)
         self.input_text.setStyleSheet("""
             QTextEdit {
                 border: 1px solid #ccc; border-radius: 10px;
-                padding: 8px 14px; font-size: 14px;
+                padding: 8px 14px; font-size: 15px;
                 background: #f5f6f8;
             }
             QTextEdit:focus { border-color: #3498db; background: #fff; }
@@ -1821,7 +2124,7 @@ class ChatWidget(QWidget):
         self.send_btn = QPushButton("发送")
         self.send_btn.clicked.connect(self._send_message)
         self.send_btn.setEnabled(False)
-        self.send_btn.setFixedSize(72, 48)
+        self.send_btn.setFixedSize(72, 72)
         self.send_btn.setCursor(Qt.PointingHandCursor)
         self.send_btn.setStyleSheet("""
             QPushButton {
@@ -1837,7 +2140,7 @@ class ChatWidget(QWidget):
         # 清空按钮
         self.clear_btn = QPushButton("清空")
         self.clear_btn.clicked.connect(self._clear_chat)
-        self.clear_btn.setFixedSize(72, 48)
+        self.clear_btn.setFixedSize(72, 72)
         self.clear_btn.setCursor(Qt.PointingHandCursor)
         self.clear_btn.setStyleSheet("""
             QPushButton {
@@ -2107,6 +2410,50 @@ class ChatWidget(QWidget):
                     msg += f", {sk} 个自定义技能"
                 self._add_system_message(msg)
 
+    def _open_history_dialog(self):
+        """打开历史对话管理对话框"""
+        from llm.memory import MemoryStore
+        store = self.agent.memory if self.agent else MemoryStore()
+        dlg = HistoryDialog(store, parent=self)
+        dlg.load_requested.connect(self._load_history_session)
+        dlg.exec_()
+
+    def _load_history_session(self, session_id: str):
+        """从历史记录加载对话到当前界面"""
+        from llm.memory import MemoryStore
+        store = self.agent.memory if self.agent else MemoryStore()
+        msgs = store.load_session(session_id)
+        if not msgs:
+            self._add_system_message("无法加载该对话历史")
+            return
+
+        # 清空当前显示
+        self._clear_chat_display()
+
+        # 如果已连接代理，重置并恢复消息到代理
+        if self.agent:
+            self.agent.reset()
+            for msg in msgs:
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+                if role in ("user", "assistant") and content:
+                    self.agent.session.add_message(role, content)
+
+        # 显示消息
+        self._add_system_message(
+            f"-- 已加载历史对话 {session_id} ({len(msgs)} 条消息) --"
+        )
+        for msg in msgs:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if not content or role == "system" or role == "tool":
+                continue
+            if role == "user":
+                self._add_user_message(content)
+            elif role == "assistant":
+                self._add_assistant_message(content)
+        self._add_system_message("-- 历史对话结束，请继续提问 --")
+
     def _send_message(self):
         """发送消息"""
         message = self.input_text.toPlainText().strip()
@@ -2242,6 +2589,7 @@ class ChatWidget(QWidget):
         "screen_elements_liquidus_effect": "筛选元素影响",
         "search_knowledge": "检索知识库",
         "learn_knowledge": "学习新知识",
+        "optimize_knowledge": "优化知识库",
         "update_experimental_value": "保存实验数据",
         "create_custom_tool": "创建自定义技能",
         "plot_chart": "绘制图表",
