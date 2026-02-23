@@ -2730,7 +2730,7 @@ class ChatWidget(QWidget):
         """显示功能指南对话框"""
         dialog = QDialog(self)
         dialog.setWindowTitle("AI助手 - 功能指南")
-        dialog.resize(650, 550)
+        dialog.resize(750, 600)
 
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -2740,8 +2740,8 @@ class ChatWidget(QWidget):
         browser.setStyleSheet("""
             QTextBrowser {
                 font-family: "Microsoft YaHei UI", "SimHei", sans-serif;
-                font-size: 13px;
-                padding: 12px;
+                font-size: 16px;
+                padding: 16px;
                 border: 1px solid #dee2e6;
                 border-radius: 4px;
                 background: #fff;

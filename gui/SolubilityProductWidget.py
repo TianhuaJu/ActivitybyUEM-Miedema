@@ -389,7 +389,7 @@ class SolubilityProductWidget(QWidget):
                 comp_layout.addWidget(lbl, r, c * 2, Qt.AlignRight)
                 inp = QLineEdit()
                 inp.setPlaceholderText("0")
-                inp.setFixedWidth(80)
+                inp.setMinimumWidth(90)
                 comp_layout.addWidget(inp, r, c * 2 + 1)
                 self.comp_inputs[el] = inp
 
